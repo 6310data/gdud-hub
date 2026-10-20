@@ -1,0 +1,1255 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>לוגיסטיקה גדודית</title>
+<style>
+  :root{
+    --bg:#f3f5f7;--card:#fff;--ink:#17202a;--muted:#6b7785;--line:#e1e6eb;
+    --brand:#2f5d3a;--brand-ink:#fff;--accent:#c98a1b;--danger:#b23a3a;--ok:#2e7d4f;
+    --radius:14px;--shadow:0 1px 2px rgba(0,0,0,.06),0 4px 14px rgba(0,0,0,.05);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font:16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,"Noto Sans Hebrew",sans-serif}
+  body{padding-bottom:84px}
+  button,input,select,textarea{font:inherit;color:inherit}
+  button{cursor:pointer;border:0;background:none}
+  a{color:inherit}
+  [hidden]{display:none!important}
+
+  /* header */
+  .top{position:sticky;top:0;z-index:20;background:var(--brand);color:var(--brand-ink);padding:10px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 2px 6px rgba(0,0,0,.15)}
+  .top h1{font-size:17px;margin:0;flex:1;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .top .ib{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:20px;background:rgba(255,255,255,.12)}
+  .top .ib:active{background:rgba(255,255,255,.28)}
+  .top .badge{font-size:12px;background:rgba(255,255,255,.18);padding:3px 8px;border-radius:999px}
+  .spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+
+  .page{padding:14px;max-width:760px;margin:0 auto}
+  .card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px;margin-bottom:12px}
+  .card h2{font-size:16px;margin:0 0 10px}
+  .muted{color:var(--muted)}
+  .small{font-size:13px}
+  .row{display:flex;gap:8px;align-items:center}
+  .row>*{min-width:0}
+  .grow{flex:1}
+  .right{text-align:right}.center{text-align:center}
+  .mt{margin-top:10px}.mb{margin-bottom:10px}
+
+  input[type=text],input[type=search],input[type=password],input[type=number],select,textarea{
+    width:100%;padding:12px 12px;border:1px solid var(--line);border-radius:12px;background:#fff;outline:none;font-size:16px
+  }
+  input:focus,select:focus,textarea:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(47,93,58,.12)}
+  textarea{min-height:80px;resize:vertical}
+  .num{direction:ltr;text-align:right;font-variant-numeric:tabular-nums}
+
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:12px 16px;border-radius:12px;background:var(--brand);color:#fff;font-weight:600;min-height:46px}
+  .btn:active{filter:brightness(.9)}
+  .btn.full{width:100%}
+  .btn.ghost{background:#fff;color:var(--brand);border:1.5px solid var(--brand)}
+  .btn.warn{background:var(--accent)}
+  .btn.danger{background:var(--danger)}
+  .btn.sm{padding:7px 12px;min-height:34px;font-size:14px;border-radius:10px}
+  .btn[disabled]{opacity:.45;pointer-events:none}
+
+  .tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+  .tile{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 12px;text-align:center;font-weight:700;display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--ink)}
+  .tile .ic{font-size:28px}
+  .tile .sub{font-size:12px;color:var(--muted);font-weight:400}
+  .tile:active{transform:scale(.98)}
+  .tile.admin{border:1.5px solid var(--brand)}
+
+  .list{display:flex;flex-direction:column}
+  .item{display:flex;align-items:center;gap:10px;padding:11px 4px;border-bottom:1px solid var(--line);text-align:right;width:100%}
+  .item:last-child{border-bottom:0}
+  .item .t{flex:1;min-width:0}
+  .item .t b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .item .t span{display:block;font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .item .cnt{min-width:30px;height:30px;padding:0 8px;border-radius:999px;background:#eef2ee;color:var(--brand);display:grid;place-items:center;font-weight:700;font-size:14px}
+  .item .chev{color:#b7c0c9}
+  .item:active{background:#f6f8f6}
+  .chip{display:inline-block;padding:3px 9px;border-radius:999px;font-size:12px;background:#eef2ee;color:var(--brand);font-weight:600}
+  .chip.store{background:#fff4dd;color:#8a5a00}
+  .chip.gray{background:#eef0f2;color:#556}
+  .chip.broken{background:#fde4e4;color:#9b2c2c}
+  .chip.brig{background:#e4ecfb;color:#2b4a8b}
+  .kit{margin:4px 34px 2px 0;padding-right:10px;border-right:2px solid #dfe5df;font-size:13px}
+  .kit .kl{display:flex;align-items:center;gap:6px;padding:4px 0}
+  .kit .kl .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .kit .qb{width:26px;height:26px;border-radius:7px;border:1px solid var(--line);background:#fff;font-size:15px;display:grid;place-items:center}
+  .kit .q{min-width:20px;text-align:center;font-weight:700}
+  .kit .rm{color:var(--danger);font-size:16px;padding:0 4px}
+  .kit .add{display:flex;gap:6px;margin-top:4px}
+  .kit .add input{padding:7px 10px;font-size:14px;border-radius:9px}
+  .kit .add input.qty{width:56px;text-align:center}
+  .preview{width:100%;height:60vh;border:1px solid var(--line);border-radius:10px;background:#fff}
+  .chips{display:flex;gap:6px;flex-wrap:wrap}
+  .item .t .chips{display:flex;gap:6px;flex-wrap:wrap}
+  .item .t .chips .chip{display:inline-block;width:auto;white-space:nowrap}
+  .chipbtn{padding:7px 12px;border-radius:999px;background:#fff;border:1.5px solid var(--line);font-size:14px}
+  .chipbtn.on{background:var(--brand);color:#fff;border-color:var(--brand)}
+
+  .check{width:24px;height:24px;border-radius:7px;border:2px solid #b7c0c9;display:grid;place-items:center;flex:none;font-size:15px;color:#fff}
+  .check.on{background:var(--brand);border-color:var(--brand)}
+
+  .sec{font-size:13px;color:var(--muted);font-weight:700;margin:14px 4px 6px;text-transform:uppercase;letter-spacing:.02em}
+  .empty{padding:24px;text-align:center;color:var(--muted)}
+
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:14px}
+  .kv div:nth-child(odd){color:var(--muted)}
+
+  table{border-collapse:collapse;width:100%;font-size:13px;white-space:nowrap}
+  th,td{padding:8px 8px;border-bottom:1px solid var(--line);text-align:center}
+  th{background:#f7f9f8;position:sticky;top:0;font-weight:700}
+  th:first-child,td:first-child{position:sticky;right:0;background:#fff;text-align:right;z-index:1;max-width:180px;overflow:hidden;text-overflow:ellipsis}
+  th:first-child{background:#f7f9f8;z-index:2}
+  td.z{color:#c3cad1}
+  .tblwrap{overflow:auto;max-height:70vh;border-radius:10px;border:1px solid var(--line)}
+
+  /* sticky bottom action bar */
+  .bar{position:fixed;bottom:0;right:0;left:0;background:#fff;border-top:1px solid var(--line);padding:10px 14px calc(10px + env(safe-area-inset-bottom));display:flex;gap:10px;align-items:center;z-index:30;box-shadow:0 -4px 14px rgba(0,0,0,.06)}
+  .bar .info{flex:1;font-size:14px}
+
+  /* toast & overlay */
+  .toast{position:fixed;bottom:100px;left:50%;transform:translateX(-50%);background:#222;color:#fff;padding:12px 18px;border-radius:12px;font-size:15px;z-index:100;max-width:90vw;white-space:pre-line;text-align:center;opacity:0;transition:opacity .2s;pointer-events:none}
+  .toast.show{opacity:1}
+  .toast.err{background:var(--danger)}
+  .toast.ok{background:var(--ok)}
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:90;display:grid;place-items:end center}
+  .sheet{background:#fff;border-radius:18px 18px 0 0;width:100%;max-width:760px;padding:18px 16px calc(18px + env(safe-area-inset-bottom));max-height:85vh;overflow:auto}
+  .sheet h3{margin:0 0 10px;font-size:17px}
+  .busy{position:fixed;inset:0;background:rgba(255,255,255,.55);z-index:95;display:grid;place-items:center;font-weight:700;color:var(--brand)}
+
+  .login{max-width:360px;margin:16vh auto 0;text-align:center}
+  .login .logo{font-size:52px;margin-bottom:6px}
+  .login h1{font-size:22px;margin:0 0 4px}
+</style>
+</head>
+<body>
+
+<header class="top" id="top" hidden>
+  <button class="ib" id="btnBack" title="חזרה">‹</button>
+  <h1 id="title">לוגיסטיקה גדודית</h1>
+  <span class="badge" id="roleBadge"></span>
+  <button class="ib" id="btnRefresh" title="משיכת נתונים">⟳</button>
+  <button class="ib" id="btnHome" title="בית">⌂</button>
+</header>
+
+<main id="view" class="page"></main>
+<div id="bar" class="bar" hidden></div>
+<div id="toast" class="toast"></div>
+<div id="busy" class="busy" hidden>טוען…</div>
+<div id="overlay" class="overlay" hidden></div>
+
+<script>
+/* ======================================================================
+   Server bridge – google.script.run wrapped in promises
+   ====================================================================== */
+var isGAS = typeof google !== 'undefined' && google.script && google.script.run;
+function call(fn){
+  var args = Array.prototype.slice.call(arguments,1);
+  if(!isGAS){ // local dev shim
+    return new Promise(function(res,rej){
+      try{ if(window.MOCK && window.MOCK[fn]) res(window.MOCK[fn].apply(null,args)); else rej(new Error('no mock for '+fn)); }
+      catch(e){ rej(e); }
+    });
+  }
+  return new Promise(function(res,rej){
+    var r = google.script.run.withSuccessHandler(res).withFailureHandler(function(e){ rej(new Error((e&&e.message)||String(e))); });
+    r[fn].apply(r,args);
+  });
+}
+
+/* ======================================================================
+   State
+   ====================================================================== */
+var LS = { code:'bl_code', role:'bl_role', snap:'bl_snapshot', email:'bl_email', mode:'bl_mode', vce:'bl_vce' };
+var S = {
+  code: ls(LS.code) || '',
+  role: ls(LS.role) || '',
+  email: ls(LS.email) || '',
+  mode: ls(LS.mode) || '',          // 'sheet' (Google sharing) | 'codes'
+  vce: ls(LS.vce)==='1',            // viewer may edit soldier details (codes mode only)
+  denied: '',                       // sheet mode: no-access message
+  snap: null,
+  idx: null,
+  stack: [],          // navigation stack of {page, params}
+  cart: {}            // signout cart: serial -> {item,serial,holder}
+};
+function ls(k,v){ try{ if(v===undefined) return localStorage.getItem(k); if(v===null) localStorage.removeItem(k); else localStorage.setItem(k,v); }catch(e){} }
+function isAdmin(){ return S.role==='admin'; }
+function canEditPerson(){ return isAdmin() || S.vce; }
+function roleLabel(){ return isAdmin()?'מנהל':'צפייה'; }
+function applyAuth(r){
+  if(r.email && S.email && r.email!==S.email){ ls(LS.snap,null); S.snap=null; S.idx=null; }   // different Google account on this device
+  S.role=r.role; S.mode=r.mode||S.mode; S.email=r.email||''; S.vce=!!r.viewerCanEditPeople; S.denied='';
+  ls(LS.role,S.role); ls(LS.mode,S.mode); ls(LS.email,S.email); ls(LS.vce,S.vce?'1':'0');
+}
+function denyAccess(msg,email){
+  S.role=''; S.denied=msg||'אין הרשאה'; if(email) S.email=email;
+  ls(LS.role,null); ls(LS.snap,null); S.snap=null; S.idx=null; S.stack=[{page:'home',params:{}}];
+  render();
+}
+
+/* ---------- indexes derived from snapshot ---------- */
+var ST={SIGNED:'חתום',OK:'נשקייה תקין',BROKEN:'נשקייה תקול',BRIGADE:'נשקייה חטיבה'};
+function stLabel(s){ return s===ST.OK?'תקין':s===ST.BROKEN?'תקול':s===ST.BRIGADE?'חטיבה':s===ST.SIGNED?'חתום':(s||'תקין'); }
+function stChip(s){ var c=s===ST.BROKEN?'broken':s===ST.BRIGADE?'brig':s===ST.SIGNED?'':'store'; return h('span',{class:'chip '+c},[stLabel(s)]); }
+function newItem_(cat,item){ return {cat:cat,item:item,total:0,signed:0,store:0,ok:0,broken:0,brigade:0}; }
+function buildIndex(snap){
+  var idx = { bySerial:{}, assignBySerial:{}, byPerson:{}, people:{}, byItem:{}, itemTypes:[], companies:[], unitsByCompany:{}, warehouse:[], kit:snap.kit||{} };
+  snap.people.forEach(function(p){ idx.people[p.name]=p; });
+  snap.serials.forEach(function(s){
+    if(!s.serial) return;
+    if(!s.status) s.status=ST.OK;
+    if(!idx.bySerial[s.serial]) idx.bySerial[s.serial]=s;
+    (idx.byItem[s.item] = idx.byItem[s.item] || newItem_(s.cat,s.item)).total++;
+  });
+  snap.assignments.forEach(function(a){
+    if(a.serial) idx.assignBySerial[a.serial]=a;
+    if(!idx.byPerson[a.name]) idx.byPerson[a.name]=[];
+    idx.byPerson[a.name].push(a);
+    if(!idx.people[a.name]) idx.people[a.name]={name:a.name,pid:a.pid,company:a.company,unit:a.unit,orphan:true};
+    else { // prefer the sheet's resolved company/unit if directory lacks it
+      if(!idx.people[a.name].company && a.company) idx.people[a.name].company=a.company;
+      if(!idx.people[a.name].unit && a.unit) idx.people[a.name].unit=a.unit;
+    }
+    var it = idx.byItem[a.item] = idx.byItem[a.item] || newItem_('',a.item);
+    it.signed++;
+  });
+  Object.keys(idx.bySerial).forEach(function(k){
+    var s=idx.bySerial[k];
+    if(idx.assignBySerial[k]) return;
+    var it=idx.byItem[s.item];
+    if(s.status===ST.BRIGADE){ it.brigade++; }
+    else { it.store++; if(s.status===ST.BROKEN) it.broken++; else it.ok++; }
+    idx.warehouse.push(s);
+  });
+  idx.warehouse.sort(function(a,b){ return a.item.localeCompare(b.item,'he') || a.serial.localeCompare(b.serial,'he',{numeric:true}); });
+  // item types: catalogue ∪ observed
+  var seen={};
+  snap.items.forEach(function(i){ if(!seen[i.item]){ seen[i.item]=1; idx.itemTypes.push({item:i.item,cat:i.cat,sub:i.sub}); } });
+  Object.keys(idx.byItem).forEach(function(k){ if(!seen[k]){ seen[k]=1; idx.itemTypes.push({item:k,cat:idx.byItem[k].cat,sub:''}); } });
+  idx.itemTypes.sort(function(a,b){ return a.item.localeCompare(b.item,'he'); });
+  // companies
+  var cset={}; snap.companies.forEach(function(c){ cset[c]=1; });
+  Object.keys(idx.people).forEach(function(n){ var c=idx.people[n].company; if(c) cset[c]=1; });
+  idx.companies = Object.keys(cset);
+  idx.companies.forEach(function(c){ idx.unitsByCompany[c]={}; });
+  // storage (אפסון) – active rows only
+  idx.storage=(snap.storage||[]).slice(); idx.storageBySerial={}; idx.storageByPerson={};
+  idx.storage.forEach(function(r){ if(r.serial) idx.storageBySerial[r.serial]=r; (idx.storageByPerson[r.name]=idx.storageByPerson[r.name]||[]).push(r); if(r.company&&!cset[r.company]){ cset[r.company]=1; idx.companies.push(r.company); idx.unitsByCompany[r.company]={}; } });
+  Object.keys(idx.people).forEach(function(n){ var p=idx.people[n]; if(p.company&&idx.unitsByCompany[p.company]){ var u=p.unit||'ללא מחלקה'; (idx.unitsByCompany[p.company][u]=idx.unitsByCompany[p.company][u]||[]).push(p); } });
+  return idx;
+}
+function loadSnapLocal(){ try{ var s=ls(LS.snap); if(s){ S.snap=JSON.parse(s); S.idx=buildIndex(S.snap); return true; } }catch(e){} return false; }
+function refresh(silent){
+  var btn=el('btnRefresh'); btn.classList.add('spin');
+  return call('getSnapshot',S.code).then(function(snap){
+    applyAuth(snap);
+    S.snap=snap; S.idx=buildIndex(snap); ls(LS.snap,JSON.stringify(snap));
+    el('roleBadge').textContent = roleLabel();
+    if(!silent) toast('הנתונים עודכנו','ok');
+    render();
+  }).catch(function(e){
+    if(/קוד גישה/.test(e.message)){ logout(); }
+    else if(/^אין הרשאה|לא ניתן לזהות/.test(e.message)){ return denyAccess(e.message); }
+    toast(e.message,'err');
+  }).finally(function(){ btn.classList.remove('spin'); });
+}
+
+/* ======================================================================
+   Tiny DOM helpers
+   ====================================================================== */
+function el(id){ return document.getElementById(id); }
+function h(tag, attrs, children){
+  var e=document.createElement(tag);
+  if(attrs) Object.keys(attrs).forEach(function(k){
+    if(k==='class') e.className=attrs[k];
+    else if(k==='html') e.innerHTML=attrs[k];
+    else if(k.slice(0,2)==='on') e.addEventListener(k.slice(2),attrs[k]);
+    else if(k==='hidden'){ if(attrs[k]) e.hidden=true; }
+    else if(k==='disabled'||k==='selected'||k==='checked'){ if(attrs[k]) e.setAttribute(k,''); }
+    else if(attrs[k]===false||attrs[k]===null||attrs[k]===undefined){ /* skip */ }
+    else e.setAttribute(k,attrs[k]);
+  });
+  (children||[]).forEach(function(c){ if(c===null||c===undefined||c===false) return; e.appendChild(typeof c==='string'?document.createTextNode(c):c); });
+  return e;
+}
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+var toastT;
+function toast(msg,kind){ var t=el('toast'); t.textContent=msg; t.className='toast show '+(kind||''); clearTimeout(toastT); toastT=setTimeout(function(){ t.className='toast'; }, kind==='err'?4500:2200); }
+function busy(on){ el('busy').hidden=!on; }
+function sheet(title, body, actions){
+  var ov=el('overlay'); ov.innerHTML=''; ov.hidden=false;
+  var sh=h('div',{class:'sheet'},[h('h3',{},[title]), body, h('div',{class:'row mt'}, actions)]);
+  ov.appendChild(sh);
+  ov.onclick=function(e){ if(e.target===ov) closeSheet(); };
+  return sh;
+}
+function closeSheet(){ el('overlay').hidden=true; el('overlay').innerHTML=''; }
+function confirmSheet(title, text, okLabel, danger){
+  return new Promise(function(res){
+    sheet(title, h('p',{},[text]), [
+      h('button',{class:'btn ghost grow',onclick:function(){ closeSheet(); res(false); }},['ביטול']),
+      h('button',{class:'btn grow '+(danger?'danger':''),onclick:function(){ closeSheet(); res(true); }},[okLabel||'אישור'])
+    ]);
+  });
+}
+function norm(s){ return String(s||'').replace(/[\s\-'"׳״]/g,'').toLowerCase(); }
+
+/* ======================================================================
+   Navigation
+   ====================================================================== */
+function go(page, params, replace){
+  if(replace) S.stack.pop();
+  S.stack.push({page:page, params:params||{}});
+  render();
+}
+function back(){ if(S.stack.length>1){ S.stack.pop(); render(); } }
+function home(){ S.stack=[{page:'home',params:{}}]; render(); }
+el('btnBack').onclick=back; el('btnHome').onclick=home; el('btnRefresh').onclick=function(){ refresh(false); };
+
+function render(){
+  var view=el('view'); view.innerHTML=''; el('bar').hidden=true; el('bar').innerHTML=''; closeSheet();
+  if(!S.role){ el('top').hidden=true; document.body.style.paddingBottom='0'; return S.mode==='codes'?renderLogin(view):renderGate(view); }
+  el('top').hidden=false; document.body.style.paddingBottom='84px';
+  el('roleBadge').textContent = roleLabel();
+  if(!S.snap){ view.appendChild(h('div',{class:'empty'},['טוען נתונים מהטבלה…'])); return; }
+  var cur=S.stack[S.stack.length-1]||{page:'home',params:{}};
+  el('btnBack').style.visibility = S.stack.length>1?'visible':'hidden';
+  var fn=PAGES[cur.page]||PAGES.home;
+  fn(view,cur.params);
+  window.scrollTo(0,0);
+}
+function setTitle(t){ el('title').textContent=t; }
+
+/* ======================================================================
+   Login
+   ====================================================================== */
+function renderLogin(view){
+  var inp=h('input',{type:'password',inputmode:'numeric',placeholder:'קוד גישה',autocomplete:'off',class:'center'});
+  var btn=h('button',{class:'btn full mt',onclick:doLogin},['כניסה']);
+  function doLogin(){
+    var code=inp.value.trim(); if(!code) return;
+    busy(true);
+    call('login',code).then(function(r){
+      if(!r.ok) throw new Error(r.error||'קוד שגוי');
+      S.code=code; ls(LS.code,code); applyAuth(r);
+      S.stack=[{page:'home',params:{}}];
+      render();
+      return refresh(true);
+    }).catch(function(e){ toast(e.message,'err'); }).finally(function(){ busy(false); });
+  }
+  inp.addEventListener('keydown',function(e){ if(e.key==='Enter') doLogin(); });
+  view.appendChild(h('div',{class:'login'},[
+    h('div',{class:'logo'},['🎖️']), h('h1',{},['לוגיסטיקה גדודית']),
+    h('p',{class:'muted mb'},['הזן קוד גישה כדי להמשיך']),
+    inp, btn
+  ]));
+  setTimeout(function(){ inp.focus(); },50);
+}
+function logout(){ S.code=''; S.role=''; ls(LS.code,null); ls(LS.role,null); S.stack=[]; render(); }
+
+/* sheet mode: access comes from the Google account – checking / no-access screen */
+function renderGate(view){
+  var box=h('div',{class:'login'},[h('div',{class:'logo'},['🎖️']), h('h1',{},['לוגיסטיקה גדודית'])]);
+  if(!S.denied){ box.appendChild(h('p',{class:'muted'},['בודק הרשאות…'])); view.appendChild(box); return; }
+  box.appendChild(h('p',{class:'mb',style:'color:var(--danger);font-weight:600'},['אין גישה']));
+  box.appendChild(h('p',{class:'muted small'},[S.denied]));
+  box.appendChild(h('button',{class:'btn full mt',onclick:function(){ checkAccess(true); }},['בדיקה מחדש']));
+  box.appendChild(h('p',{class:'muted small mt'},['מחובר/ת לחשבון אחר? החלף חשבון Google בדפדפן ופתח שוב את הקישור.']));
+  view.appendChild(box);
+}
+/** Ask the server who we are. force = skip the server-side 5-minute cache. */
+function checkAccess(force){
+  if(force){ S.denied=''; render(); }
+  return call('login',S.code,!!force).then(function(r){
+    S.mode=r.mode||S.mode; ls(LS.mode,S.mode);
+    if(r.ok){
+      var roleChanged = r.role!==S.role;
+      applyAuth(r);
+      if(!S.stack.length) S.stack=[{page:'home',params:{}}];
+      if(force) toast('הרשאה: '+roleLabel(),'ok');
+      if(roleChanged||force||!S.snap){ render(); return refresh(true); }
+      return;
+    }
+    if(r.mode==='codes'){ S.role=''; ls(LS.role,null); render(); if(r.error) toast(r.error,'err'); return; }
+    denyAccess(r.error,r.email);
+  }).catch(function(e){ if(S.role) toast(e.message,'err'); else { S.denied=e.message; render(); } });
+}
+
+/* ======================================================================
+   Pages
+   ====================================================================== */
+var PAGES={};
+
+/* ---------- home ---------- */
+PAGES.home=function(view){
+  setTitle('לוגיסטיקה גדודית');
+  var idx=S.idx, snap=S.snap;
+  var q=h('input',{type:'search',placeholder:'חיפוש: שם חייל / צ׳ / פריט',autocomplete:'off'});
+  q.addEventListener('input',function(){ renderSearch(results,q.value); });
+  var results=h('div',{});
+  view.appendChild(h('div',{class:'card'},[q,results]));
+
+  var tiles=h('div',{class:'tiles'});
+  function tile(ic,label,sub,page,admin,params){
+    var t=h('button',{class:'tile'+(admin?' admin':''),onclick:function(){ go(page,params); }},[h('div',{class:'ic'},[ic]),h('div',{},[label]),h('div',{class:'sub'},[sub])]);
+    tiles.appendChild(t);
+  }
+  if(isAdmin()){
+    tile('✍️','החתמה','ציוד מהמחסן על חייל','signout',true);
+    tile('↩️','זיכוי','החזרת ציוד למחסן','return',true);
+  }
+  tile('🏷️','פלוגות',idx.companies.length+' פלוגות','companies');
+  tile('📊','סיכום אמצעים','כמויות לפי פלוגה','summary');
+  tile('🗄️','אפסון גדודי',idx.storage.length+' פריטים באפסון','storage');
+  tile('📦','מחסן',idx.warehouse.filter(function(s){ return s.status!==ST.BRIGADE; }).length+' צ׳ים במלאי','stock');
+  tile('👤','אלפון',snap.people.length+' חיילים'+(isAdmin()?' · עריכה':''),'people');
+  tile('🕓','לוג פעולות','היסטוריה','log');
+  view.appendChild(tiles);
+
+  view.appendChild(h('p',{class:'muted small center mt'},[
+    'סה״כ '+snap.serials.length+' צ׳ים · '+snap.assignments.length+' מוחתמים · '+idx.warehouse.length+' במחסן',
+    h('br'),'עודכן: '+fmtTime(snap.version),
+    h('br'),
+    S.mode==='codes'
+      ? h('a',{href:'#',onclick:function(e){ e.preventDefault(); logout(); }},['יציאה'])
+      : h('span',{},[h('bdi',{},[S.email||'']),' · '+roleLabel()+' · ',
+          h('a',{href:'#',onclick:function(e){ e.preventDefault(); checkAccess(true); }},['בדיקת הרשאות'])])
+  ]));
+  setTimeout(function(){ if(!/Mobi/.test(navigator.userAgent)) q.focus(); },50);
+};
+
+function renderSearch(box,qraw){
+  box.innerHTML='';
+  var q=norm(qraw); if(q.length<2) return;
+  var idx=S.idx;
+  var people=Object.keys(idx.people).filter(function(n){ var p=idx.people[n]; return norm(n).indexOf(q)>=0 || (p.pid&&norm(p.pid).indexOf(q)>=0); }).slice(0,12);
+  var serials=Object.keys(idx.bySerial).filter(function(k){ return norm(k).indexOf(q)>=0; }).slice(0,12);
+  // serials that appear in assignments but not in the serial table
+  Object.keys(idx.assignBySerial).forEach(function(k){ if(!idx.bySerial[k] && norm(k).indexOf(q)>=0 && serials.indexOf(k)<0 && serials.length<12) serials.push(k); });
+  var items=idx.itemTypes.filter(function(t){ return norm(t.item).indexOf(q)>=0; }).slice(0,8);
+
+  if(people.length){ box.appendChild(h('div',{class:'sec'},['חיילים'])); var l=h('div',{class:'list'}); people.forEach(function(n){ l.appendChild(personRow(idx.people[n])); }); box.appendChild(l); }
+  if(serials.length){ box.appendChild(h('div',{class:'sec'},['צ׳ים'])); var l2=h('div',{class:'list'}); serials.forEach(function(k){ l2.appendChild(serialRow(k)); }); box.appendChild(l2); }
+  if(items.length){ box.appendChild(h('div',{class:'sec'},['פריטים'])); var l3=h('div',{class:'list'}); items.forEach(function(t){ l3.appendChild(itemTypeRow(t)); }); box.appendChild(l3); }
+  if(!people.length&&!serials.length&&!items.length) box.appendChild(h('div',{class:'empty'},['לא נמצא כלום']));
+}
+function personRow(p, onclick){
+  var n=(S.idx.byPerson[p.name]||[]).length, st=(S.idx.storageByPerson[p.name]||[]).length;
+  return h('button',{class:'item',onclick:onclick||function(){ go('person',{name:p.name}); }},[
+    h('div',{class:'t'},[h('b',{},[p.name]),h('span',{},[[p.company,p.unit,p.pid].filter(Boolean).join(' · ')||'לא באלפון'])]),
+    st?h('span',{class:'chip brig',title:'פריטים באפסון'},['🗄️ '+st]):null,
+    h('span',{class:'cnt'},[String(n)]), h('span',{class:'chev'},['‹'])
+  ]);
+}
+function serialRow(k){
+  var s=S.idx.bySerial[k], a=S.idx.assignBySerial[k];
+  var item=(s&&s.item)||(a&&a.item)||'';
+  return h('button',{class:'item',onclick:function(){ go('serial',{serial:k}); }},[
+    h('div',{class:'t'},[h('b',{},[item]),h('span',{class:'num'},[k])]),
+    a?h('span',{class:'chip'},[a.name]):stChip(s?s.status:ST.OK), h('span',{class:'chev'},['‹'])
+  ]);
+}
+function stockChips(st){
+  return [h('span',{class:'chip store'},[st.store+' מחסן'+(st.broken?' ('+st.broken+' תקול)':'')]),
+          h('span',{class:'chip gray'},[st.signed+' חתום']),
+          st.brigade?h('span',{class:'chip brig'},[st.brigade+' חטיבה']):null];
+}
+function itemTypeRow(t){
+  var st=S.idx.byItem[t.item]||newItem_('',t.item);
+  return h('button',{class:'item',onclick:function(){ go('itemType',{item:t.item}); }},[
+    h('div',{class:'t'},[h('b',{},[t.item]),h('span',{},[[t.cat,t.sub].filter(Boolean).join(' / ')]),h('span',{class:'chips',style:'margin-top:4px'},stockChips(st))]),
+    h('span',{class:'chev'},['‹'])
+  ]);
+}
+
+/* ---------- person ---------- */
+PAGES.person=function(view,p){
+  var person=S.idx.people[p.name]||{name:p.name};
+  var items=(S.idx.byPerson[p.name]||[]).slice().sort(function(a,b){ return a.item.localeCompare(b.item,'he'); });
+  setTitle(person.name);
+  view.appendChild(h('div',{class:'card'},[
+    h('h2',{},[person.name]),
+    h('div',{class:'kv'},[
+      h('div',{},['פלוגה']),h('div',{},[person.company||'—']),
+      h('div',{},['מחלקה']),h('div',{},[person.unit||'—']),
+      h('div',{},['מס׳ אישי']),h('div',{class:'num right'},[person.pid||'—']),
+      h('div',{},['טלפון']),h('div',{class:'num right'},[person.phone?h('a',{href:'tel:'+person.phone},[person.phone]):'—'])
+    ]),
+    person.row&&canEditPerson()?h('button',{class:'btn ghost sm mt',onclick:function(){ go('editPerson',{row:person.row}); }},['✏️ עריכת פרטים']):null
+  ]));
+  var card=h('div',{class:'card'},[h('div',{class:'row'},[h('h2',{class:'grow',style:'margin:0'},['ציוד מוחתם ('+items.length+')']),
+    items.length?h('button',{class:'btn ghost sm',onclick:function(){ holdingsForm(person.name); }},['📋 טופס ציוד חתום']):null]),h('div',{class:'mt'})]);
+  if(!items.length) card.appendChild(h('div',{class:'empty'},['אין ציוד מוחתם']));
+  var l=h('div',{class:'list'});
+  items.forEach(function(a){
+    l.appendChild(h('button',{class:'item',onclick:function(){ go('serial',{serial:a.serial}); }},[
+      h('div',{class:'t'},[h('b',{},[a.item]),h('span',{class:'num'},[a.serial+(a.notes?'  ·  '+a.notes:'')]),a.kit?h('span',{},['+ '+a.kit]):null]),
+      S.idx.storageBySerial[a.serial]?h('span',{class:'chip brig'},['באפסון']):null,
+      h('span',{class:'chev'},['‹'])
+    ]));
+  });
+  card.appendChild(l); view.appendChild(card);
+  // storage
+  var stored=S.idx.storageByPerson[person.name]||[];
+  if(stored.length||(isAdmin()&&items.length)){
+    var sc=h('div',{class:'card'},[h('div',{class:'row'},[h('h2',{class:'grow',style:'margin:0'},['🗄️ באפסון ('+stored.length+')']),
+      isAdmin()&&items.length?h('button',{class:'btn ghost sm',onclick:function(){ go('storeIn',{name:person.name}); }},['אפסון']):null,
+      isAdmin()&&stored.length?h('button',{class:'btn ghost sm',onclick:function(){ go('storeOut',{name:person.name}); }},['הוצאה']):null]),h('div',{class:'mt'})]);
+    if(!stored.length) sc.appendChild(h('div',{class:'muted small'},['אין פריטים באפסון']));
+    var sl=h('div',{class:'list'}); stored.forEach(function(r){ sl.appendChild(storageRowEl(r)); }); sc.appendChild(sl); view.appendChild(sc);
+  }
+  // PDFs
+  var pdfCard=h('div',{class:'card'},[h('h2',{},['טפסים']),h('div',{class:'muted small'},['טוען…'])]); view.appendChild(pdfCard);
+  call('getPersonPdfs',S.code,person.name).then(function(r){
+    pdfCard.innerHTML=''; pdfCard.appendChild(h('h2',{},['טפסים ('+r.files.length+')']));
+    if(!r.files.length) return pdfCard.appendChild(h('div',{class:'muted small'},['אין טפסים']));
+    var pl=h('div',{class:'list'}); r.files.forEach(function(f){ pl.appendChild(h('a',{class:'item',href:f.url,target:'_blank',style:'text-decoration:none'},[h('div',{class:'t'},[h('b',{},[f.kind==='holdings'?'📋 טופס ציוד חתום':'📄 טופס החתמה']),h('span',{},[f.time])]),h('span',{class:'chev'},['‹'])])); }); pdfCard.appendChild(pl);
+  }).catch(function(){ pdfCard.hidden=true; });
+  if(isAdmin()){
+    bar([
+      h('button',{class:'btn ghost grow',onclick:function(){ go('return',{name:person.name}); },disabled:!items.length},['↩️ זיכוי']),
+      h('button',{class:'btn grow',onclick:function(){ S.cart={}; go('signout',{name:person.name}); }},['✍️ החתמה'])
+    ]);
+  }
+};
+
+/* ---------- serial ---------- */
+PAGES.serial=function(view,p){
+  var k=p.serial, s=S.idx.bySerial[k], a=S.idx.assignBySerial[k];
+  setTitle('צ׳ '+k);
+  view.appendChild(h('div',{class:'card'},[
+    h('h2',{},[(s&&s.item)||(a&&a.item)||'פריט לא מזוהה']),
+    h('div',{class:'kv'},[
+      h('div',{},['צ׳']),h('div',{class:'num right'},[k]),
+      h('div',{},['קטגוריה']),h('div',{},[(s&&s.cat)||'—']),
+      h('div',{},['מצב']),h('div',{},[a?h('span',{class:'chip'},['מוחתם']):stChip(s?s.status:ST.OK)]),
+      a?h('div',{},['על שם']):null, a?h('button',{class:'right',style:'color:var(--brand);font-weight:700;text-align:right;padding:0',onclick:function(){ go('person',{name:a.name}); }},[a.name+(a.company?' · '+a.company:'')]):null,
+      a?h('div',{},['ציוד משלים']):null, a?h('div',{},[a.kit||'—']):null,
+      a?h('div',{},['הערות']):null, a?h('div',{},[a.notes||'—']):null,
+      S.idx.storageBySerial[k]?h('div',{},['אפסון']):null, S.idx.storageBySerial[k]?h('div',{},[h('span',{class:'chip brig'},['באפסון מ-'+S.idx.storageBySerial[k].inDate])]):null,
+      !s?h('div',{},['אזהרה']):null, !s?h('div',{style:'color:var(--danger)'},['הצ׳ מוחתם אבל לא קיים בטבלת צ']):null
+    ]),
+    (isAdmin()&&!a&&s)?h('div',{class:'mt'},[h('div',{class:'sec',style:'margin-top:4px'},['שינוי סטטוס']),h('div',{class:'chips'},S.snap.statuses.map(function(st){ return h('button',{class:'chipbtn'+(s.status===st?' on':''),onclick:function(){ if(s.status!==st) changeStatus(k,st); }},[stLabel(st)]); }))]):null
+  ]));
+  if(isAdmin()){
+    var acts=[];
+    if(a){
+      acts.push(h('button',{class:'btn ghost grow',onclick:function(){ editNotes(a); }},['✏️ הערה']));
+      acts.push(h('button',{class:'btn danger grow',onclick:function(){ doReturn([k],a.name); }},['↩️ זיכוי']));
+      acts.push(h('button',{class:'btn grow',onclick:function(){ S.cart={}; S.cart[k]=cartEntry(k,a.name); go('signout',{}); }},['⇄ העבר']));
+    } else {
+      var canSign=s.status===ST.OK;
+      acts.push(h('button',{class:'btn grow',disabled:!canSign,onclick:function(){ S.cart={}; S.cart[k]=cartEntry(k); go('signout',{}); }},[canSign?'✍️ החתם על חייל':'לא ניתן להחתמה ('+stLabel(s.status)+')']));
+      acts.push(h('button',{class:'btn ghost sm',onclick:function(){ removeSerial(k); }},['🗑️']));
+    }
+    bar(acts);
+  }
+};
+function changeStatus(k,st){
+  busy(true);
+  call('setStatus',{code:S.code,serial:k,status:st}).then(function(){ toast('הסטטוס עודכן ל-'+stLabel(st),'ok'); return refresh(true); }).catch(function(e){ toast(e.message,'err'); }).finally(function(){ busy(false); });
+}
+/* cart entry with a copy of the accessory kit for the item */
+function cartEntry(k,holder){
+  var s=S.idx.bySerial[k], a=S.idx.assignBySerial[k];
+  var item=(s&&s.item)||(a&&a.item)||'';
+  var kit=(S.idx.kit[item]||[]).map(function(x){ return {name:x.name,qty:x.qty}; });
+  return {item:item,serial:k,holder:holder||'',kit:kit};
+}
+function editNotes(a){
+  var kit=h('input',{type:'text',value:a.kit||'',placeholder:'ציוד משלים (מופרד בפסיקים)'});
+  var ta=h('textarea',{placeholder:'הערות'},[a.notes||'']);
+  sheet('צ׳ '+a.serial, h('div',{},[h('div',{class:'sec',style:'margin-top:0'},['ציוד משלים']),kit,h('div',{class:'sec'},['הערות']),ta]), [
+    h('button',{class:'btn ghost grow',onclick:closeSheet},['ביטול']),
+    h('button',{class:'btn grow',onclick:function(){ closeSheet(); busy(true); call('updateNotes',{code:S.code,serial:a.serial,notes:ta.value,kit:kit.value}).then(function(){ toast('נשמר','ok'); return refresh(true); }).catch(function(e){ toast(e.message,'err'); }).finally(function(){ busy(false); }); }},['שמירה'])
+  ]);
+}
+function removeSerial(k){
+  confirmSheet('מחיקת צ׳','למחוק את צ׳ '+k+' מטבלת צ? הפעולה מוחקת את השורה בטבלה.','מחק',true).then(function(ok){
+    if(!ok) return; busy(true);
+    call('removeSerials',{code:S.code,serials:[k]}).then(function(){ toast('הצ׳ נמחק','ok'); back(); return refresh(true); }).catch(function(e){ toast(e.message,'err'); }).finally(function(){ busy(false); });
+  });
+}
+
+/* ---------- item type ---------- */
+PAGES.itemType=function(view,p){
+  var it=p.item, idx=S.idx, st=idx.byItem[it]||newItem_('',it);
+  setTitle(it);
+  var store=idx.warehouse.filter(function(s){ return s.item===it&&s.status!==ST.BRIGADE; });
+  var brig=idx.warehouse.filter(function(s){ return s.item===it&&s.status===ST.BRIGADE; });
+  var signed=S.snap.assignments.filter(function(a){ return a.item===it; }).sort(function(a,b){ return (a.company+a.name).localeCompare(b.company+b.name,'he'); });
+  var kit=idx.kit[it]||[];
+  view.appendChild(h('div',{class:'card'},[h('h2',{},[it]),h('div',{class:'chips'},[h('span',{class:'chip gray'},['סה״כ '+st.total])].concat(stockChips(st))),
+    h('div',{class:'row mt'},[h('div',{class:'grow small'},[h('b',{},['תקן ציוד משלים: ']),kit.length?kit.map(function(x){ return (x.qty>1?x.qty+' ':'')+x.name; }).join(', '):h('span',{class:'muted'},['אין'])]),isAdmin()?h('button',{class:'btn ghost sm',onclick:function(){ editKit(it); }},['✏️']):null])
+  ]));
+  // per company
+  var byC={}; signed.forEach(function(a){ var c=a.company||'לא ידוע'; byC[c]=(byC[c]||0)+1; });
+  var cc=h('div',{class:'chips mb'}); Object.keys(byC).forEach(function(c){ cc.appendChild(h('span',{class:'chip gray'},[c+': '+byC[c]])); });
+  var tabs=h('div',{class:'chips mb'}), body=h('div',{class:'list'});
+  function show(which){
+    body.innerHTML=''; Array.prototype.forEach.call(tabs.children,function(b){ b.classList.toggle('on',b.dataset.w===which); });
+    if(which==='store'){ if(!store.length) body.appendChild(h('div',{class:'empty'},['אין במחסן'])); store.forEach(function(s){ body.appendChild(serialRow(s.serial)); }); }
+    else if(which==='brig'){ if(!brig.length) body.appendChild(h('div',{class:'empty'},['אין בחטיבה'])); brig.forEach(function(s){ body.appendChild(serialRow(s.serial)); }); }
+    else { if(!signed.length) body.appendChild(h('div',{class:'empty'},['לא מוחתם על אף אחד'])); signed.forEach(function(a){ body.appendChild(h('button',{class:'item',onclick:function(){ go('serial',{serial:a.serial}); }},[h('div',{class:'t'},[h('b',{},[a.name]),h('span',{},[[a.company,a.unit].filter(Boolean).join(' · ')])]),h('span',{class:'num small muted'},[a.serial]),h('span',{class:'chev'},['‹'])])); }); }
+  }
+  tabs.appendChild(h('button',{class:'chipbtn','data-w':'store',onclick:function(){ show('store'); }},['מחסן ('+store.length+')']));
+  tabs.appendChild(h('button',{class:'chipbtn','data-w':'signed',onclick:function(){ show('signed'); }},['חתום ('+signed.length+')']));
+  if(brig.length||st.brigade) tabs.appendChild(h('button',{class:'chipbtn','data-w':'brig',onclick:function(){ show('brig'); }},['חטיבה ('+brig.length+')']));
+  view.appendChild(h('div',{class:'card'},[cc,tabs,body]));
+  show(store.length?'store':'signed');
+  if(isAdmin()) bar([h('button',{class:'btn grow',onclick:function(){ go('addSerials',{item:it,cat:(idx.byItem[it]||{}).cat||''}); }},['➕ הוספת צ׳ים לפריט זה'])]);
+};
+/* kit editor (admin) – edits 'תקן ציוד משלים' for one item type */
+function kitEditor(list,onChange){
+  var box=h('div',{class:'kit',style:'margin-right:0;border:0;padding:0'});
+  function draw(){
+    box.innerHTML='';
+    list.forEach(function(x,i){
+      box.appendChild(h('div',{class:'kl'},[
+        h('span',{class:'nm'},[x.name]),
+        h('button',{class:'qb',onclick:function(){ if(x.qty>1){ x.qty--; draw(); onChange&&onChange(); } }},['−']),h('span',{class:'q'},[String(x.qty)]),h('button',{class:'qb',onclick:function(){ x.qty++; draw(); onChange&&onChange(); }},['+']),
+        h('button',{class:'rm',onclick:function(){ list.splice(i,1); draw(); onChange&&onChange(); }},['✕'])
+      ]));
+    });
+    var nm=h('input',{type:'text',placeholder:'פריט משלים נוסף'}), q=h('input',{type:'number',class:'qty',value:'1',min:'1',inputmode:'numeric'});
+    function add(){ var n=nm.value.trim(); if(!n) return; var qty=Math.max(1,Number(q.value)||1); var ex=list.filter(function(x){ return x.name===n; })[0]; if(ex) ex.qty+=qty; else list.push({name:n,qty:qty}); draw(); onChange&&onChange(); }
+    nm.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); add(); } });
+    box.appendChild(h('div',{class:'add'},[nm,q,h('button',{class:'btn sm',onclick:add},['➕'])]));
+  }
+  draw(); return box;
+}
+function editKit(item){
+  var list=(S.idx.kit[item]||[]).map(function(x){ return {name:x.name,qty:x.qty}; });
+  sheet('תקן ציוד משלים – '+item, h('div',{},[h('p',{class:'small muted'},['הרשימה תתווסף אוטומטית בכל החתמה של '+item+'.']),kitEditor(list)]), [
+    h('button',{class:'btn ghost grow',onclick:closeSheet},['ביטול']),
+    h('button',{class:'btn grow',onclick:function(){ closeSheet(); busy(true); call('saveKit',{code:S.code,item:item,kit:list}).then(function(){ toast('התקן נשמר','ok'); return refresh(true); }).catch(function(e){ toast(e.message,'err'); }).finally(function(){ busy(false); }); }},['שמירה'])
+  ]);
+}
+
+/* ---------- companies ---------- */
+PAGES.companies=function(view){
+  setTitle('פלוגות');
+  var idx=S.idx; var l=h('div',{class:'list'});
+  var counts={}; S.snap.assignments.forEach(function(a){ var c=a.company||'לא ידוע'; counts[c]=(counts[c]||0)+1; });
+  idx.companies.forEach(function(c){
+    var ppl=Object.keys(idx.unitsByCompany[c]||{}).reduce(function(n,u){ return n+idx.unitsByCompany[c][u].length; },0);
+    l.appendChild(h('button',{class:'item',onclick:function(){ go('company',{company:c}); }},[h('div',{class:'t'},[h('b',{},[c]),h('span',{},[ppl+' חיילים באלפון'])]),h('span',{class:'cnt'},[String(counts[c]||0)]),h('span',{class:'chev'},['‹'])]));
+  });
+  if(counts['לא ידוע']) l.appendChild(h('button',{class:'item',onclick:function(){ go('company',{company:'לא ידוע'}); }},[h('div',{class:'t'},[h('b',{},['ללא פלוגה']),h('span',{},['חיילים שלא נמצאו באלפון'])]),h('span',{class:'cnt'},[String(counts['לא ידוע'])]),h('span',{class:'chev'},['‹'])]));
+  view.appendChild(h('div',{class:'card'},[l]));
+};
+PAGES.company=function(view,p){
+  var c=p.company, idx=S.idx; setTitle(c);
+  var units={};
+  if(c==='לא ידוע'){ S.snap.assignments.forEach(function(a){ if(!a.company){ var u='—'; units[u]=units[u]||{}; units[u][a.name]=idx.people[a.name]; } }); }
+  else { var ub=idx.unitsByCompany[c]||{}; Object.keys(ub).forEach(function(u){ units[u]={}; ub[u].forEach(function(pp){ units[u][pp.name]=pp; }); }); }
+  var q=h('input',{type:'search',placeholder:'חיפוש לפי שם / מס׳ אישי / צ׳'}); var box=h('div',{});
+  var onlyStored=!!p.stored, chips=h('div',{class:'chips mt'});
+  function drawChips(){
+    var n=0; Object.keys(units).forEach(function(u){ Object.keys(units[u]).forEach(function(nm){ n+=(idx.storageByPerson[nm]||[]).length; }); });
+    chips.innerHTML='';
+    chips.appendChild(h('button',{class:'chipbtn'+(onlyStored?'':' on'),onclick:function(){ onlyStored=false; S.stack[S.stack.length-1].params.stored=false; drawChips(); draw(); }},['כל החיילים']));
+    chips.appendChild(h('button',{class:'chipbtn'+(onlyStored?' on':''),onclick:function(){ onlyStored=true; S.stack[S.stack.length-1].params.stored=true; drawChips(); draw(); }},['🗄️ באפסון ('+n+')']));
+  }
+  function draw(){
+    box.innerHTML=''; var qq=norm(q.value); var any=false;
+    // serial match: which people in this company hold a matching serial
+    var serialHits={};
+    if(qq.length>=2) Object.keys(units).forEach(function(u){ Object.keys(units[u]).forEach(function(n){ (idx.byPerson[n]||[]).forEach(function(a){ if(norm(a.serial).indexOf(qq)>=0||norm(a.item).indexOf(qq)>=0){ (serialHits[n]=serialHits[n]||[]).push(a); } }); }); });
+    Object.keys(units).sort(function(a,b){ return a.localeCompare(b,'he',{numeric:true}); }).forEach(function(u){
+      var ppl=Object.keys(units[u]).map(function(n){ return units[u][n]||{name:n}; }).filter(function(pp){ return (!onlyStored||(idx.storageByPerson[pp.name]||[]).length)&&(!qq||norm(pp.name).indexOf(qq)>=0||norm(pp.pid).indexOf(qq)>=0||serialHits[pp.name]); }).sort(function(a,b){ return a.name.localeCompare(b.name,'he'); });
+      if(!ppl.length) return; any=true;
+      var tot=ppl.reduce(function(n,pp){ return n+(idx.byPerson[pp.name]||[]).length; },0);
+      var stTot=ppl.reduce(function(n,pp){ return n+(idx.storageByPerson[pp.name]||[]).length; },0);
+      box.appendChild(h('div',{class:'sec'},[u+' · '+ppl.length+' חיילים · '+tot+' פריטים'+(stTot?' · '+stTot+' באפסון':'')]));
+      var l=h('div',{class:'list card',style:'padding:0 10px'});
+      ppl.forEach(function(pp){
+        l.appendChild(personRow(pp));
+        (serialHits[pp.name]||[]).forEach(function(a){ l.appendChild(h('button',{class:'item',style:'padding-right:34px;background:#fbfcfb',onclick:function(){ go('serial',{serial:a.serial}); }},[h('div',{class:'t'},[h('b',{class:'small'},[a.item]),h('span',{class:'num'},[a.serial])]),idx.storageBySerial[a.serial]?h('span',{class:'chip brig'},['באפסון']):null,h('span',{class:'chev'},['‹'])])); });
+        if(onlyStored) (idx.storageByPerson[pp.name]||[]).forEach(function(r){ l.appendChild(h('button',{class:'item',style:'padding-right:34px;background:#f5f8fd',onclick:function(){ if(r.serial) go('serial',{serial:r.serial}); else go('person',{name:r.name}); }},[h('div',{class:'t'},[h('b',{class:'small'},['🗄️ '+r.item]),h('span',{class:'num'},[(r.serial||'ללא צ׳')+' · מ-'+r.inDate])]),h('span',{class:'chev'},['‹'])])); });
+      });
+      box.appendChild(l);
+    });
+    if(!any) box.appendChild(h('div',{class:'empty'},['אין תוצאות']));
+  }
+  q.addEventListener('input',draw);
+  view.appendChild(h('div',{class:'card'},[q,chips])); view.appendChild(box); drawChips(); draw();
+  view.appendChild(h('button',{class:'btn ghost full mt',onclick:function(){ go('summary',{company:c}); }},['📊 סיכום אמצעים – '+c]));
+  view.appendChild(h('button',{class:'btn ghost full mt',onclick:function(){ go('storage',{company:c}); }},['🗄️ אפסון – '+c]));
+};
+
+/* ---------- summary ---------- */
+PAGES.summary=function(view,p){
+  setTitle('סיכום אמצעים');
+  var idx=S.idx, comps=idx.companies.slice();
+  var only=p.company&&comps.indexOf(p.company)>=0?p.company:null;
+  var m={}; // item -> company -> n
+  S.snap.assignments.forEach(function(a){ var it=a.item||'?'; m[it]=m[it]||{}; var c=a.company||'לא ידוע'; m[it][c]=(m[it][c]||0)+1; });
+  var rows=Object.keys(idx.byItem).sort(function(a,b){ return a.localeCompare(b,'he'); });
+  var cols=only?[only]:comps; var unknown=S.snap.assignments.some(function(a){ return !a.company; });
+  var tbl=h('table'); var thead=h('tr',{},[h('th',{},['פריט'])]); cols.forEach(function(c){ thead.appendChild(h('th',{},[c])); });
+  if(!only&&unknown) thead.appendChild(h('th',{},['ללא']));
+  var stm={}; S.idx.storage.forEach(function(r){ if(only&&r.company!==only) return; stm[r.item]=(stm[r.item]||0)+1; });
+  Object.keys(stm).forEach(function(it){ if(rows.indexOf(it)<0) rows.push(it); }); rows.sort(function(a,b){ return a.localeCompare(b,'he'); });
+  thead.appendChild(h('th',{title:only?'באפסון בפלוגה':'באפסון (כלל הגדוד)'},['באפסון']));
+  thead.appendChild(h('th',{},['מוחתם'])); thead.appendChild(h('th',{},['מחסן'])); thead.appendChild(h('th',{},['סה״כ']));
+  tbl.appendChild(h('thead',{},[thead]));
+  var tb=h('tbody'); var tot={};
+  rows.forEach(function(it){
+    var st=idx.byItem[it]||newItem_('',it); var tr=h('tr',{},[h('td',{},[h('button',{style:'text-align:right;padding:0;font-weight:600',onclick:function(){ go('itemType',{item:it}); }},[it])])]);
+    var signedShown=0;
+    cols.forEach(function(c){ var n=(m[it]&&m[it][c])||0; signedShown+=n; tot[c]=(tot[c]||0)+n; tr.appendChild(h('td',{class:n?'':'z'},[String(n)])); });
+    if(!only&&unknown){ var nu=(m[it]&&m[it]['לא ידוע'])||0; tot._u=(tot._u||0)+nu; tr.appendChild(h('td',{class:nu?'':'z'},[String(nu)])); }
+    if(only&&!signedShown&&!stm[it]) return;
+    var ns=stm[it]||0; tot._st=(tot._st||0)+ns;
+    tr.appendChild(h('td',{class:ns?'':'z',style:ns?'color:#2b4a8b;font-weight:700':''},[ns?h('button',{style:'padding:0;color:inherit;font-weight:700',onclick:function(){ go('storage',{company:only,q:it}); }},[String(ns)]):'0']));
+    tr.appendChild(h('td',{},[String(st.signed)])); tr.appendChild(h('td',{class:st.store?'':'z'},[String(st.store)])); tr.appendChild(h('td',{},[String(st.total)]));
+    tot._s=(tot._s||0)+st.signed; tot._w=(tot._w||0)+st.store; tot._t=(tot._t||0)+st.total;
+    tb.appendChild(tr);
+  });
+  var tf=h('tr',{style:'font-weight:700'},[h('td',{},['סה״כ'])]); cols.forEach(function(c){ tf.appendChild(h('td',{},[String(tot[c]||0)])); });
+  if(!only&&unknown) tf.appendChild(h('td',{},[String(tot._u||0)]));
+  tf.appendChild(h('td',{},[String(tot._st||0)]));
+  tf.appendChild(h('td',{},[String(tot._s||0)])); tf.appendChild(h('td',{},[String(tot._w||0)])); tf.appendChild(h('td',{},[String(tot._t||0)]));
+  tb.appendChild(tf); tbl.appendChild(tb);
+  var sel=h('select',{onchange:function(){ go('summary',{company:sel.value||null},true); }},[h('option',{value:''},['כל הפלוגות'])]);
+  comps.forEach(function(c){ var o=h('option',{value:c},[c]); if(only===c) o.selected=true; sel.appendChild(o); });
+  view.appendChild(h('div',{class:'card'},[sel,h('div',{class:'tblwrap mt'},[tbl])]));
+};
+
+/* ---------- storage (אפסון) ---------- */
+function storageRowEl(r, onclick){
+  return h('button',{class:'item',onclick:onclick||function(){ if(r.serial) go('serial',{serial:r.serial}); else go('person',{name:r.name}); }},[
+    h('div',{class:'t'},[h('b',{},[r.item]),h('span',{class:'num'},[(r.serial||'ללא צ׳')+'  ·  מ-'+r.inDate])]),
+    h('span',{class:'chev'},['‹'])
+  ]);
+}
+PAGES.storage=function(view,p){
+  setTitle('אפסון גדודי');
+  var idx=S.idx, all=idx.storage;
+  var comps=idx.companies.filter(function(c){ return all.some(function(r){ return r.company===c; }); });
+  var only=p.company&&comps.indexOf(p.company)>=0?p.company:null;
+  var unknown=all.some(function(r){ return !r.company; });
+  var m={}, items={};
+  all.forEach(function(r){ var it=r.item||'?', c=r.company||'ללא'; items[it]=1; m[it]=m[it]||{}; m[it][c]=(m[it][c]||0)+1; });
+  var cols=only?[only]:comps.concat(unknown?['ללא']:[]);
+  var rows=Object.keys(items).sort(function(a,b){ return a.localeCompare(b,'he'); });
+  if(only) rows=rows.filter(function(it){ return m[it][only]; });
+
+  var sel=h('select',{onchange:function(){ go('storage',{company:sel.value||null},true); }},[h('option',{value:''},['כל הפלוגות'])]);
+  comps.forEach(function(c){ var o=h('option',{value:c},[c]); if(only===c) o.selected=true; sel.appendChild(o); });
+  var top=h('div',{class:'card'},[sel]);
+  if(!rows.length){ top.appendChild(h('div',{class:'empty'},['אין פריטים באפסון'])); }
+  else {
+    var tbl=h('table'), th=h('tr',{},[h('th',{},['פריט'])]);
+    cols.forEach(function(c){ th.appendChild(h('th',{},[c])); }); if(!only) th.appendChild(h('th',{},['סה״כ']));
+    tbl.appendChild(h('thead',{},[th]));
+    var tb=h('tbody'), tot={}, gt=0;
+    rows.forEach(function(it){
+      var tr=h('tr',{},[h('td',{},[h('button',{style:'text-align:right;padding:0;font-weight:600',onclick:function(){ q.value=it; drawList(); }},[it])])]), sum=0;
+      cols.forEach(function(c){ var n=(m[it]&&m[it][c])||0; sum+=n; tot[c]=(tot[c]||0)+n; tr.appendChild(h('td',{class:n?'':'z'},[String(n)])); });
+      if(!only) tr.appendChild(h('td',{style:'font-weight:700'},[String(sum)])); gt+=sum;
+      tb.appendChild(tr);
+    });
+    var tf=h('tr',{style:'font-weight:700'},[h('td',{},['סה״כ'])]); cols.forEach(function(c){ tf.appendChild(h('td',{},[String(tot[c]||0)])); }); if(!only) tf.appendChild(h('td',{},[String(gt)]));
+    tb.appendChild(tf); tbl.appendChild(tb);
+    top.appendChild(h('div',{class:'tblwrap mt'},[tbl]));
+  }
+  view.appendChild(top);
+
+  // detail list
+  var q=h('input',{type:'search',placeholder:'חיפוש: שם / צ׳ / פריט',autocomplete:'off',value:p.q||''});
+  var list=h('div',{class:'list mt'});
+  q.addEventListener('input',drawList);
+  function drawList(){
+    list.innerHTML=''; var qq=norm(q.value);
+    var rs=all.filter(function(r){ return (!only||r.company===only) && (!qq||norm(r.name).indexOf(qq)>=0||norm(r.serial).indexOf(qq)>=0||norm(r.item).indexOf(qq)>=0||norm(r.pid).indexOf(qq)>=0); })
+      .sort(function(a,b){ return (a.company||'').localeCompare(b.company||'','he')||a.name.localeCompare(b.name,'he')||a.item.localeCompare(b.item,'he'); });
+    var byName={}, order=[]; rs.forEach(function(r){ if(!byName[r.name]){ byName[r.name]=[]; order.push(r.name); } byName[r.name].push(r); });
+    order.forEach(function(n){
+      var f=byName[n][0];
+      list.appendChild(h('button',{class:'item',onclick:function(){ go('person',{name:n}); }},[
+        h('div',{class:'t'},[h('b',{},[n]),h('span',{},[[f.company,f.pid].filter(Boolean).join(' · ')]),
+          h('span',{style:'white-space:normal'},byName[n].map(function(r){ return h('span',{style:'display:block'},[r.item+(r.serial?' '+r.serial:'')+' · ',h('bdi',{class:'num'},['מ-'+r.inDate])]); }))]),
+        h('span',{class:'cnt'},[String(byName[n].length)]),h('span',{class:'chev'},['‹'])]));
+    });
+    if(!order.length) list.appendChild(h('div',{class:'empty'},[all.length?'לא נמצא':'אין פריטים באפסון']));
+  }
+  view.appendChild(h('div',{class:'card'},[h('h2',{},['לפי חייל']),q,list])); drawList();
+
+  if(isAdmin()) bar([
+    h('button',{class:'btn ghost grow',disabled:!all.length,onclick:function(){ go('storeOut',{}); }},['📤 הוצאה מאפסון']),
+    h('button',{class:'btn grow',onclick:function(){ go('storeIn',{}); }},['🗄️ אפסון נשק'])
+  ]);
+};
+
+/** Shared soldier picker. pool(name) → true if the soldier can be picked. */
+function storagePicker(box,state,title,pool,onPick){
+  var idx=S.idx; box.innerHTML=''; box.appendChild(h('h2',{},[title]));
+  if(state.name){
+    var pp=idx.people[state.name]||{name:state.name};
+    box.appendChild(h('div',{class:'row'},[h('div',{class:'grow'},[h('b',{},[pp.name]),h('div',{class:'small muted'},[[pp.company,pp.unit,pp.pid].filter(Boolean).join(' · ')])]),
+      h('button',{class:'btn ghost sm',onclick:function(){ state.name=''; onPick(''); }},['שינוי'])]));
+    return;
+  }
+  var q=h('input',{type:'search',placeholder:'חיפוש חייל / מס׳ אישי / צ׳',autocomplete:'off'}), res=h('div',{class:'list'});
+  q.addEventListener('input',function(){
+    res.innerHTML=''; var qq=norm(q.value); if(qq.length<2) return;
+    var names={}; Object.keys(idx.byPerson).concat(Object.keys(idx.storageByPerson)).forEach(function(n){ names[n]=1; });
+    Object.keys(names).filter(pool).filter(function(n){ var x=idx.people[n]||{};
+      return norm(n).indexOf(qq)>=0||(x.pid&&norm(x.pid).indexOf(qq)>=0)||(idx.byPerson[n]||[]).some(function(a){ return norm(a.serial).indexOf(qq)>=0; })||(idx.storageByPerson[n]||[]).some(function(r){ return norm(r.serial).indexOf(qq)>=0; });
+    }).slice(0,10).forEach(function(n){ res.appendChild(personRow(idx.people[n]||{name:n},function(){ state.name=n; onPick(n,qq); })); });
+    if(!res.children.length) res.appendChild(h('div',{class:'empty'},['לא נמצא']));
+  });
+  box.appendChild(q); box.appendChild(res); setTimeout(function(){ q.focus(); },50);
+}
+
+PAGES.storeIn=function(view,p){
+  setTitle('אפסון נשק');
+  var idx=S.idx, state={name:p.name||''}, sel={}, extra=[];
+  var who=h('div',{class:'card'}), list=h('div',{class:'card'});
+  function pick(n,qq){ sel={}; extra=[]; if(n&&qq&&qq.length>=3) (idx.byPerson[n]||[]).forEach(function(a){ if(!idx.storageBySerial[a.serial]&&norm(a.serial).indexOf(qq)>=0) sel[a.serial]=1; }); draw(); }
+  function draw(){
+    storagePicker(who,state,'של מי הציוד?',function(n){ return (idx.byPerson[n]||[]).length>0; },pick);
+    list.innerHTML=''; if(!state.name){ list.hidden=true; drawBar(); return; } list.hidden=false;
+    var its=(idx.byPerson[state.name]||[]).filter(function(a){ return a.serial; }).sort(function(a,b){ return a.item.localeCompare(b.item,'he'); });
+    var free=its.filter(function(a){ return !idx.storageBySerial[a.serial]; });
+    var all=free.length&&free.every(function(a){ return sel[a.serial]; });
+    list.appendChild(h('div',{class:'row mb'},[h('h2',{class:'grow',style:'margin:0'},['מה נכנס לאפסון?']),
+      free.length?h('button',{class:'btn ghost sm',onclick:function(){ if(all) sel={}; else free.forEach(function(a){ sel[a.serial]=1; }); draw(); }},[all?'נקה':'בחר הכל']):null]));
+    var l=h('div',{class:'list'});
+    its.forEach(function(a){
+      var inSt=idx.storageBySerial[a.serial];
+      l.appendChild(h('button',{class:'item',disabled:!!inSt,style:inSt?'opacity:.55':'',onclick:function(){ if(inSt) return; if(sel[a.serial]) delete sel[a.serial]; else sel[a.serial]=1; draw(); }},[
+        h('span',{class:'check'+(sel[a.serial]?' on':'')},[sel[a.serial]?'✓':'']),
+        h('div',{class:'t'},[h('b',{},[a.item]),h('span',{class:'num'},[a.serial])]),
+        inSt?h('span',{class:'chip brig'},['כבר באפסון']):null]));
+    });
+    if(!its.length) l.appendChild(h('div',{class:'empty'},['אין ציוד מוחתם']));
+    list.appendChild(l);
+    // items without a serial (e.g. accessories)
+    list.appendChild(h('div',{class:'sec'},['פריט ללא צ׳ (אופציונלי)']));
+    extra.forEach(function(x,i){ list.appendChild(h('div',{class:'row mb'},[h('div',{class:'grow'},[x]),h('button',{class:'btn ghost sm',onclick:function(){ extra.splice(i,1); draw(); }},['✕'])])); });
+    var dl=h('datalist',{id:'stItems'}); idx.itemTypes.forEach(function(t){ dl.appendChild(h('option',{value:t.item})); });
+    var inp=h('input',{type:'text',list:'stItems',placeholder:'שם פריט'});
+    list.appendChild(h('div',{class:'row'},[h('div',{class:'grow'},[inp]),dl,h('button',{class:'btn ghost sm',onclick:function(){ var v=inp.value.trim(); if(v){ extra.push(v); draw(); } }},['➕ הוסף'])]));
+    drawBar();
+  }
+  function drawBar(){
+    var n=Object.keys(sel).length+extra.length;
+    bar([h('div',{class:'info'},[n?n+' פריטים נבחרו':'בחר פריטים']),h('button',{class:'btn',disabled:!n,onclick:confirm},['🗄️ אפסון'])]);
+  }
+  function confirm(){
+    var lines=Object.keys(sel).map(function(k){ return {item:idx.assignBySerial[k].item,serial:k}; }).concat(extra.map(function(x){ return {item:x,serial:''}; }));
+    var notes=h('input',{type:'text',placeholder:'הערה ללוג (אופציונלי)'});
+    sheet('אישור אפסון',h('div',{},[h('p',{},['להכניס לאפסון '+lines.length+' פריטים של '+state.name+'?']),
+      h('p',{class:'small muted'},[lines.map(function(l){ return l.item+(l.serial?' '+l.serial:''); }).join(' · ')]),
+      h('p',{class:'small muted'},['הציוד נשאר מוחתם על החייל.']),notes]),[
+      h('button',{class:'btn ghost grow',onclick:closeSheet},['ביטול']),
+      h('button',{class:'btn grow',onclick:function(){ closeSheet(); busy(true);
+        call('storeItems',{code:S.code,name:state.name,notes:notes.value,lines:lines}).then(function(r){ toast(r.count+' פריטים נכנסו לאפסון','ok'); back(); return refresh(true); })
+          .catch(function(e){ toast(e.message,'err'); }).finally(function(){ busy(false); }); }},['אפסון'])
+    ]);
+  }
+  view.appendChild(who); view.appendChild(list); draw();
+};
+
+PAGES.storeOut=function(view,p){
+  setTitle('הוצאה מאפסון');
+  var idx=S.idx, state={name:p.name||''}, sel={};
+  var who=h('div',{class:'card'}), list=h('div',{class:'card'});
+  function pick(n,qq){ sel={}; if(n&&qq&&qq.length>=3) (idx.storageByPerson[n]||[]).forEach(function(r){ if(r.serial&&norm(r.serial).indexOf(qq)>=0) sel[r.row]=1; }); draw(); }
+  function draw(){
+    storagePicker(who,state,'למי מוציאים?',function(n){ return (idx.storageByPerson[n]||[]).length>0; },pick);
+    list.innerHTML=''; if(!state.name){ list.hidden=true; drawBar(); return; } list.hidden=false;
+    var rs=(idx.storageByPerson[state.name]||[]).slice().sort(function(a,b){ return a.item.localeCompare(b.item,'he'); });
+    var all=rs.length&&rs.every(function(r){ return sel[r.row]; });
+    list.appendChild(h('div',{class:'row mb'},[h('h2',{class:'grow',style:'margin:0'},['מה יוצא מהאפסון?']),
+      rs.length?h('button',{class:'btn ghost sm',onclick:function(){ if(all) sel={}; else rs.forEach(function(r){ sel[r.row]=1; }); draw(); }},[all?'נקה':'בחר הכל']):null]));
+    var l=h('div',{class:'list'});
+    rs.forEach(function(r){ l.appendChild(storageRowEl(r,function(){ if(sel[r.row]) delete sel[r.row]; else sel[r.row]=1; draw(); })); l.lastChild.insertBefore(h('span',{class:'check'+(sel[r.row]?' on':'')},[sel[r.row]?'✓':'']),l.lastChild.firstChild); });
+    if(!rs.length) l.appendChild(h('div',{class:'empty'},['אין פריטים באפסון']));
+    list.appendChild(l); drawBar();
+  }
+  function drawBar(){
+    var n=Object.keys(sel).length;
+    bar([h('div',{class:'info'},[n?n+' פריטים נבחרו':'בחר פריטים']),h('button',{class:'btn',disabled:!n,onclick:confirm},['📤 הוצא'])]);
+  }
+  function confirm(){
+    var rows=(idx.storageByPerson[state.name]||[]).filter(function(r){ return sel[r.row]; });
+    var notes=h('input',{type:'text',placeholder:'הערה ללוג (אופציונלי)'});
+    sheet('אישור הוצאה מאפסון',h('div',{},[h('p',{},['להוציא מהאפסון '+rows.length+' פריטים של '+state.name+'?']),
+      h('p',{class:'small muted'},[rows.map(function(r){ return r.item+(r.serial?' '+r.serial:''); }).join(' · ')]),notes]),[
+      h('button',{class:'btn ghost grow',onclick:closeSheet},['ביטול']),
+      h('button',{class:'btn grow',onclick:function(){ closeSheet(); busy(true);
+        call('releaseItems',{code:S.code,notes:notes.value,rows:rows.map(function(r){ return {row:r.row,name:r.name,item:r.item,serial:r.serial}; })})
+          .then(function(r){ toast(r.count+' פריטים יצאו מהאפסון','ok'); back(); return refresh(true); })
+          .catch(function(e){ toast(e.message,'err'); }).finally(function(){ busy(false); }); }},['הוצא'])
+    ]);
+  }
+  view.appendChild(who); view.appendChild(list); draw();
+};
+
+/* ---------- stock / warehouse ---------- */
+PAGES.stock=function(view){
+  setTitle('מחסן');
+  var idx=S.idx;
+  var q=h('input',{type:'search',placeholder:'סינון לפי פריט / צ׳'}); var box=h('div',{class:'list'});
+  var groups={}; idx.warehouse.forEach(function(s){ (groups[s.item]=groups[s.item]||[]).push(s); });
+  function draw(){
+    box.innerHTML=''; var qq=norm(q.value); var any=false;
+    Object.keys(groups).sort(function(a,b){ return a.localeCompare(b,'he'); }).forEach(function(it){
+      var list=groups[it].filter(function(s){ return !qq||norm(it).indexOf(qq)>=0||norm(s.serial).indexOf(qq)>=0; });
+      if(!list.length) return; any=true;
+      var st=idx.byItem[it];
+      box.appendChild(h('button',{class:'item',onclick:function(){ go('itemType',{item:it}); }},[h('div',{class:'t'},[h('b',{},[it]),h('span',{},[(st.cat||'')+(qq&&norm(it).indexOf(qq)<0?'  ·  '+list.map(function(s){ return s.serial; }).join(', '):'')]),h('span',{class:'chips',style:'margin-top:4px'},stockChips(st))]),h('span',{class:'chev'},['‹'])]));
+    });
+    if(!any) box.appendChild(h('div',{class:'empty'},['אין תוצאות']));
+  }
+  q.addEventListener('input',draw);
+  var tot=idx.warehouse.reduce(function(o,s){ o[s.status]=(o[s.status]||0)+1; return o; },{});
+  view.appendChild(h('div',{class:'card'},[h('div',{class:'chips mb'},[h('span',{class:'chip store'},[(tot[ST.OK]||0)+' תקין']),h('span',{class:'chip broken'},[(tot[ST.BROKEN]||0)+' תקול']),h('span',{class:'chip brig'},[(tot[ST.BRIGADE]||0)+' חטיבה']),h('span',{class:'chip gray'},[S.snap.assignments.length+' חתום'])]),q,box])); draw();
+  if(isAdmin()){
+    view.appendChild(h('button',{class:'btn ghost full',onclick:function(){
+      confirmSheet('סנכרון סטטוסים','יסמן "חתום" לכל צ׳ שנמצא בגדודי, ויחזיר ל"נשקייה תקין" צ׳ים שמסומנים חתום אבל לא בגדודי. להמשיך?','סנכרן').then(function(ok){ if(!ok) return; busy(true); call('syncStatuses',S.code).then(function(r){ toast('סומנו חתום: '+r.toSigned+' · הוחזרו לתקין: '+r.toOk+(r.missingInSerials?' · בגדודי בלי טבלת צ: '+r.missingInSerials:''),'ok'); return refresh(true); }).catch(function(e){ toast(e.message,'err'); }).finally(function(){ busy(false); }); });
+    }},['🔄 סנכרון סטטוסים מול גדודי']));
+    bar([
+      h('button',{class:'btn ghost grow',onclick:function(){ go('addItemType'); }},['🆕 פריט חדש']),
+      h('button',{class:'btn grow',onclick:function(){ go('addSerials',{}); }},['➕ הוספת צ׳ים'])
+    ]);
+  }
+};
+
+PAGES.addSerials=function(view,p){
+  setTitle('הוספת צ׳ים');
+  var idx=S.idx;
+  var sel=h('select'); sel.appendChild(h('option',{value:''},['— בחר פריט —']));
+  idx.itemTypes.forEach(function(t){ var o=h('option',{value:t.item},[t.item]); if(p.item===t.item) o.selected=true; sel.appendChild(o); });
+  var cats={}; S.snap.serials.forEach(function(s){ if(s.cat) cats[s.cat]=1; }); idx.itemTypes.forEach(function(t){ if(t.sub) cats[t.sub]=1; });
+  var catSel=h('select'); catSel.appendChild(h('option',{value:''},['— קטגוריה (כמו בטבלת צ) —']));
+  Object.keys(cats).sort(function(a,b){ return a.localeCompare(b,'he'); }).forEach(function(c){ catSel.appendChild(h('option',{value:c},[c])); });
+  function guessCat(){ var it=sel.value; var s=S.snap.serials.filter(function(x){ return x.item===it&&x.cat; })[0]; var t=idx.itemTypes.filter(function(x){ return x.item===it; })[0]; catSel.value=(s&&s.cat)||(t&&t.sub)||''; }
+  sel.addEventListener('change',guessCat); if(p.item) guessCat();
+  var ta=h('textarea',{placeholder:'צ׳ אחד בכל שורה (או מופרדים בפסיק)',style:'min-height:140px;direction:ltr;text-align:right'});
+  var stSel=h('select'); S.snap.statuses.forEach(function(st){ stSel.appendChild(h('option',{value:st},[st])); });
+  view.appendChild(h('div',{class:'card'},[h('h2',{},['פריט']),sel,h('div',{class:'mt'}),catSel,h('h2',{class:'mt'},['צ׳ים']),ta,h('h2',{class:'mt'},['סטטוס']),stSel,h('p',{class:'small muted'},['הצ׳ים ייתוספו לדף "טבלת צ".'])]));
+  bar([h('button',{class:'btn grow',onclick:function(){
+    var list=ta.value.split(/[\n,;]+/).map(function(x){ return x.trim(); }).filter(Boolean);
+    if(!sel.value) return toast('בחר פריט','err'); if(!list.length) return toast('הזן צ׳ים','err');
+    var dup=list.filter(function(k){ return idx.bySerial[k.replace(/[\s\-]/g,'')]; }); if(dup.length) return toast('צ׳ים שכבר קיימים: '+dup.join(', '),'err');
+    busy(true);
+    call('addSerials',{code:S.code,cat:catSel.value,item:sel.value,serials:list,status:stSel.value}).then(function(r){ toast('נוספו '+r.count+' צ׳ים','ok'); back(); return refresh(true); }).catch(function(e){ toast(e.message,'err'); }).finally(function(){ busy(false); });
+  }},['שמירה'])]);
+};
+
+PAGES.addItemType=function(view){
+  setTitle('פריט חדש');
+  var idx=S.idx;
+  var catsMain={}, subs={}; S.snap.items.forEach(function(i){ if(i.cat) catsMain[i.cat]=1; if(i.sub) subs[i.sub]=1; });
+  function dl(id,keys){ var d=h('datalist',{id:id}); Object.keys(keys).sort().forEach(function(k){ d.appendChild(h('option',{value:k})); }); return d; }
+  var name=h('input',{type:'text',placeholder:'שם הפריט (כמו שיופיע ברשימה)'});
+  var cat=h('input',{type:'text',placeholder:'קטגוריה (למשל: נשק, אמר"לים)',list:'dlc'});
+  var sub=h('input',{type:'text',placeholder:'תת קטגוריה (למשל: כוונות)',list:'dls'});
+  var sku=h('input',{type:'text',placeholder:'מק"ט (אופציונלי)',class:'num'});
+  view.appendChild(h('div',{class:'card'},[name,h('div',{class:'mt'}),cat,h('div',{class:'mt'}),sub,h('div',{class:'mt'}),sku,dl('dlc',catsMain),dl('dls',subs),h('p',{class:'small muted mt'},['הפריט ייתוסף לדף Dropdowns ויופיע ברשימות הבחירה.'])]));
+  bar([h('button',{class:'btn grow',onclick:function(){
+    if(!name.value.trim()) return toast('הזן שם פריט','err');
+    if(idx.itemTypes.some(function(t){ return t.item===name.value.trim(); })) return toast('הפריט כבר קיים','err');
+    busy(true);
+    call('addItemType',{code:S.code,item:name.value.trim(),cat:cat.value.trim(),sub:sub.value.trim(),sku:sku.value.trim()}).then(function(){ toast('הפריט נוסף','ok'); back(); return refresh(true); }).catch(function(e){ toast(e.message,'err'); }).finally(function(){ busy(false); });
+  }},['שמירה'])]);
+};
+
+/* ---------- sign-out flow ---------- */
+PAGES.signout=function(view,p){
+  setTitle('החתמה');
+  var idx=S.idx;
+  var state=p;  // {name}
+  // --- step 1: soldier
+  var who=h('div',{class:'card'});
+  function drawWho(){
+    who.innerHTML=''; who.appendChild(h('h2',{},['1. על מי מחתימים?']));
+    if(state.name){
+      var pp=idx.people[state.name]||{name:state.name};
+      who.appendChild(h('div',{class:'row'},[h('div',{class:'grow'},[h('b',{},[pp.name]),h('div',{class:'small muted'},[[pp.company,pp.unit,pp.pid].filter(Boolean).join(' · ')])]),h('button',{class:'btn ghost sm',onclick:function(){ state.name=''; drawWho(); }},['שינוי'])]));
+    } else {
+      var q=h('input',{type:'search',placeholder:'חיפוש חייל לפי שם / מס׳ אישי',autocomplete:'off'}); var res=h('div',{class:'list'});
+      q.addEventListener('input',function(){
+        res.innerHTML=''; var qq=norm(q.value); if(qq.length<2) return;
+        Object.keys(idx.people).filter(function(n){ var x=idx.people[n]; return norm(n).indexOf(qq)>=0||(x.pid&&norm(x.pid).indexOf(qq)>=0); }).slice(0,10).forEach(function(n){ res.appendChild(personRow(idx.people[n],function(){ state.name=n; drawWho(); drawItems(); })); });
+        if(!res.children.length) res.appendChild(h('div',{class:'empty small'},['לא נמצא באלפון. אפשר להחתים בכל זאת: ',h('button',{style:'color:var(--brand);font-weight:700',onclick:function(){ state.name=q.value.trim(); drawWho(); drawItems(); }},['השתמש בשם "'+q.value.trim()+'"'])]));
+      });
+      who.appendChild(q); who.appendChild(res); setTimeout(function(){ q.focus(); },50);
+    }
+    drawBar();
+  }
+  // --- step 2: items
+  var items=h('div',{class:'card'});
+  var typeFilter='';
+  function drawItems(){
+    items.innerHTML=''; items.appendChild(h('h2',{},['2. איזה ציוד?']));
+    // cart
+    var keys=Object.keys(S.cart);
+    if(keys.length){
+      var cl=h('div',{class:'list mb'});
+      keys.forEach(function(k){
+        var c=S.cart[k];
+        cl.appendChild(h('div',{style:'border-bottom:1px solid var(--line)'},[
+          h('div',{class:'item',style:'border:0'},[h('span',{class:'check on'},['✓']),h('div',{class:'t'},[h('b',{},[c.item]),h('span',{class:'num'},[k+(c.holder?'  ·  ⇄ העברה מ-'+c.holder:'')])]),h('button',{class:'btn ghost sm',onclick:function(){ delete S.cart[k]; drawItems(); }},['הסר'])]),
+          h('div',{class:'kit'},[kitEditor(c.kit,drawBar)])
+        ]));
+      });
+      items.appendChild(cl);
+    }
+    // serial direct entry
+    var sn=h('input',{type:'search',placeholder:'הקלד צ׳ (או חלק ממנו)',inputmode:'numeric',autocomplete:'off',class:'num'});
+    var sres=h('div',{class:'list'});
+    sn.addEventListener('input',function(){
+      sres.innerHTML=''; var qq=norm(sn.value); if(qq.length<2) return;
+      Object.keys(idx.bySerial).filter(function(k){ return norm(k).indexOf(qq)>=0&&!S.cart[k]; }).slice(0,8).forEach(function(k){
+        var s=idx.bySerial[k], a=idx.assignBySerial[k];
+        sres.appendChild(h('button',{class:'item',onclick:function(){ addToCart(k); sn.value=''; sres.innerHTML=''; }},[h('div',{class:'t'},[h('b',{},[s.item]),h('span',{class:'num'},[k])]),a?h('span',{class:'chip'},['אצל '+a.name]):stChip(s.status),h('span',{class:'chev'},['+'])]));
+      });
+    });
+    items.appendChild(sn); items.appendChild(sres);
+    // browse warehouse by type
+    items.appendChild(h('div',{class:'sec'},['או בחר מהמחסן לפי פריט']));
+    var ti=h('input',{type:'search',placeholder:'הקלד שם פריט / קטגוריה…',autocomplete:'off',value:typeFilter});
+    var tres=h('div',{class:'list'});
+    var wl=h('div',{class:'list mt'});
+    function avail(t){ var st=idx.byItem[t.item]; return st?st.ok:0; }
+    function drawTypes(){
+      tres.innerHTML=''; var qq=norm(ti.value);
+      if(typeFilter&&ti.value===typeFilter) return;           // a type is chosen – show its serials instead
+      var list=idx.itemTypes.filter(function(t){ return avail(t)>0&&(!qq||norm(t.item).indexOf(qq)>=0||norm(t.cat).indexOf(qq)>=0||norm(t.sub).indexOf(qq)>=0); });
+      list.slice(0,qq?12:8).forEach(function(t){
+        tres.appendChild(h('button',{class:'item',onclick:function(){ typeFilter=t.item; ti.value=t.item; drawTypes(); drawWl(); }},[h('div',{class:'t'},[h('b',{},[t.item]),h('span',{},[[t.cat,t.sub].filter(Boolean).join(' / ')])]),h('span',{class:'chip store'},[avail(t)+' פנוי']),h('span',{class:'chev'},['‹'])]));
+      });
+      if(qq&&!list.length) tres.appendChild(h('div',{class:'empty small'},['אין פריט פנוי שמתאים']));
+    }
+    function drawWl(){
+      wl.innerHTML=''; if(!typeFilter||ti.value!==typeFilter) return;
+      idx.warehouse.filter(function(s){ return s.item===typeFilter&&s.status===ST.OK&&!S.cart[s.serial]; }).slice(0,60).forEach(function(s){
+        wl.appendChild(h('button',{class:'item',onclick:function(){ addToCart(s.serial); }},[h('span',{class:'check'}),h('div',{class:'t'},[h('b',{class:'num right'},[s.serial]),h('span',{},[s.cat])])]));
+      });
+      if(!wl.children.length) wl.appendChild(h('div',{class:'empty small'},['אין צ׳ים פנויים מהפריט הזה']));
+    }
+    ti.addEventListener('input',function(){ if(ti.value!==typeFilter) typeFilter=''; drawTypes(); drawWl(); });
+    ti.addEventListener('focus',drawTypes);
+    items.appendChild(ti); items.appendChild(tres); items.appendChild(wl); drawTypes(); drawWl();
+    drawBar();
+  }
+  function addToCart(k){
+    var s=idx.bySerial[k], a=idx.assignBySerial[k];
+    if(a&&a.name===state.name) return toast('הצ׳ כבר מוחתם על '+state.name,'err');
+    if(a){
+      confirmSheet('צ׳ מוחתם','צ׳ '+k+' ('+s.item+') מוחתם על '+a.name+'. להעביר אותו?','⇄ העבר').then(function(ok){ if(ok){ S.cart[k]=cartEntry(k,a.name); drawItems(); } });
+      return;
+    }
+    if(s.status!==ST.OK) return toast('צ׳ '+k+' במצב "'+stLabel(s.status)+'" – לא ניתן להחתמה','err');
+    S.cart[k]=cartEntry(k); drawItems();
+  }
+  var notes=h('input',{type:'text',placeholder:'הערות לטופס (אופציונלי)'});
+  var signer=h('input',{type:'text',placeholder:'שם המחתים (מי מבצע את ההחתמה)',autocomplete:'off',value:ls('bl_signer')||''});
+  signer.addEventListener('input',function(){ ls('bl_signer',signer.value); });
+  var signerCard=h('div',{class:'card'},[h('h2',{},['3. מי מחתים?']),signer]);
+  function drawBar(){
+    var n=Object.keys(S.cart).length;
+    bar([h('div',{class:'info'},[n?n+' פריטים'+(state.name?' → '+state.name:''):'בחר חייל ופריטים']),
+      h('button',{class:'btn',disabled:!(n&&state.name),onclick:submit},['📄 תצוגה מקדימה'])]);
+  }
+  function payload(){
+    var lines=Object.keys(S.cart).map(function(k){ return {item:S.cart[k].item,serial:k,kit:S.cart[k].kit}; });
+    var force=Object.keys(S.cart).some(function(k){ return S.cart[k].holder; });
+    return {code:S.code,name:state.name,signer:signer.value.trim(),notes:notes.value,lines:lines,force:force};
+  }
+  function submit(){
+    if(!signer.value.trim()){ signer.focus(); signerCard.scrollIntoView({behavior:'smooth'}); return toast('הזן את שם המחתים','err'); }
+    var p=payload();
+    busy(true);
+    call('previewSignOut',p).then(function(r){
+      busy(false);
+      var fr=h('iframe',{class:'preview'});
+      var sh=sheet('תצוגה מקדימה – טופס החתמה',h('div',{},[fr,h('div',{class:'mt'},[notes])]),[
+        h('button',{class:'btn ghost grow',onclick:closeSheet},['חזרה לעריכה']),
+        h('button',{class:'btn grow',onclick:function(){ issue(); }},['✍️ הנפק והחתם'])
+      ]);
+      fr.srcdoc=r.html;
+    }).catch(function(e){ busy(false); toast(e.message,'err'); });
+  }
+  function issue(){
+    var p=payload(); closeSheet(); busy(true);
+    call('signOut',p).then(function(r){
+      S.cart={}; var nm=state.name; S.stack.pop(); go('person',{name:nm});
+      var body=h('div',{},[h('p',{},['הוחתמו '+r.count+' פריטים על '+nm+'.']),
+        r.pdf?h('div',{class:'chips'},[h('a',{class:'btn grow',href:r.pdf.url,target:'_blank'},['📄 פתח את הטופס']),h('a',{class:'btn ghost grow',href:r.pdf.download,target:'_blank'},['⬇️ הורדה'])]):h('p',{style:'color:var(--danger)'},['ה-PDF לא נוצר: '+(r.pdfError||'')])]);
+      return refresh(true).then(function(){ sheet('ההחתמה בוצעה',body,[h('button',{class:'btn ghost grow',onclick:closeSheet},['סגור'])]); });
+    }).catch(function(e){ toast(e.message,'err'); }).finally(function(){ busy(false); });
+  }
+  view.appendChild(who); view.appendChild(items); view.appendChild(signerCard); drawWho(); drawItems();
+};
+
+/* ---------- holdings form: everything signed to one person ---------- */
+function printHtml(html, fr){
+  var w=null; try{ w=window.open('','_blank'); }catch(e){}
+  if(w){ w.document.open(); w.document.write(html); w.document.close(); setTimeout(function(){ try{ w.focus(); w.print(); }catch(e){} },400); return; }
+  try{ fr.contentWindow.focus(); fr.contentWindow.print(); }catch(e){ toast('הדפדפן חסם את ההדפסה – אפשר חלונות קופצים ונסה שוב','err'); }
+}
+function holdingsForm(name){
+  var signer=h('input',{type:'text',placeholder:'שם המאשר (לא חובה)',autocomplete:'off',value:ls('bl_signer')||''});
+  var fr=h('iframe',{class:'preview'}), html='';
+  var status=h('div',{class:'small muted mt'},['טוען תצוגה מקדימה…']);
+  function load(){
+    status.textContent='טוען תצוגה מקדימה…';
+    return call('previewPersonForm',{code:S.code,name:name,signer:signer.value.trim()}).then(function(r){
+      html=r.html; fr.srcdoc=r.html; status.textContent=r.count+' פריטים · הדפסה → "שמירה כ-PDF" מורידה את הקובץ לטלפון';
+    }).catch(function(e){ status.textContent=e.message; });
+  }
+  signer.addEventListener('change',function(){ ls('bl_signer',signer.value); load(); });
+  var actions=[h('button',{class:'btn ghost grow',onclick:closeSheet},['סגור']),
+    h('button',{class:(isAdmin()?'btn ghost':'btn')+' grow',onclick:function(){ if(html) printHtml(html,fr); }},['🖨️ הדפסה'])];
+  if(isAdmin()) actions.push(h('button',{class:'btn grow',onclick:function(){
+    busy(true);
+    call('issuePersonForm',{code:S.code,name:name,signer:signer.value.trim()}).then(function(r){
+      closeSheet(); render();
+      sheet('הטופס נשמר',h('div',{},[h('p',{},['טופס ציוד חתום ('+r.count+' פריטים) נשמר בתיקיית הטפסים.']),
+        h('div',{class:'chips'},[h('a',{class:'btn grow',href:r.pdf.url,target:'_blank'},['📄 פתח']),h('a',{class:'btn ghost grow',href:r.pdf.download,target:'_blank'},['⬇️ הורדה'])])]),
+        [h('button',{class:'btn ghost grow',onclick:closeSheet},['סגור'])]);
+    }).catch(function(e){ toast(e.message,'err'); }).finally(function(){ busy(false); });
+  }},['💾 שמירת PDF']));
+  sheet('טופס ציוד חתום – '+name,h('div',{},[signer,h('div',{class:'mt'}),fr,status]),actions);
+  load();
+}
+
+/* ---------- return flow ---------- */
+PAGES.return=function(view,p){
+  setTitle('זיכוי');
+  var idx=S.idx; var state=p; var sel={};
+  var who=h('div',{class:'card'}), list=h('div',{class:'card'});
+  function drawWho(){
+    who.innerHTML=''; who.appendChild(h('h2',{},['ממי מזכים?']));
+    if(state.name){ var pp=idx.people[state.name]||{name:state.name}; who.appendChild(h('div',{class:'row'},[h('div',{class:'grow'},[h('b',{},[pp.name]),h('div',{class:'small muted'},[[pp.company,pp.unit].filter(Boolean).join(' · ')])]),h('button',{class:'btn ghost sm',onclick:function(){ state.name=''; sel={}; drawWho(); drawList(); }},['שינוי'])])); }
+    else {
+      var q=h('input',{type:'search',placeholder:'חיפוש חייל / צ׳',autocomplete:'off'}); var res=h('div',{class:'list'});
+      q.addEventListener('input',function(){
+        res.innerHTML=''; var qq=norm(q.value); if(qq.length<2) return;
+        Object.keys(idx.byPerson).filter(function(n){ var x=idx.people[n]||{}; return norm(n).indexOf(qq)>=0||(x.pid&&norm(x.pid).indexOf(qq)>=0)||idx.byPerson[n].some(function(a){ return norm(a.serial).indexOf(qq)>=0; }); }).slice(0,10).forEach(function(n){ res.appendChild(personRow(idx.people[n]||{name:n},function(){ state.name=n; sel={}; idx.byPerson[n].forEach(function(a){ if(norm(a.serial).indexOf(qq)>=0&&qq.length>=3) sel[a.serial]=1; }); drawWho(); drawList(); })); });
+      });
+      who.appendChild(q); who.appendChild(res); setTimeout(function(){ q.focus(); },50);
+    }
+  }
+  function drawList(){
+    list.innerHTML=''; if(!state.name){ list.hidden=true; drawBar(); return; } list.hidden=false;
+    var its=(idx.byPerson[state.name]||[]).slice().sort(function(a,b){ return a.item.localeCompare(b.item,'he'); });
+    var all=its.length&&its.every(function(a){ return sel[a.serial]; });
+    list.appendChild(h('div',{class:'row mb'},[h('h2',{class:'grow',style:'margin:0'},['בחר פריטים לזיכוי']),h('button',{class:'btn ghost sm',onclick:function(){ if(all) sel={}; else its.forEach(function(a){ sel[a.serial]=1; }); drawList(); }},[all?'נקה':'בחר הכל'])]));
+    var l=h('div',{class:'list'});
+    its.forEach(function(a){ l.appendChild(h('button',{class:'item',onclick:function(){ if(sel[a.serial]) delete sel[a.serial]; else sel[a.serial]=1; drawList(); }},[h('span',{class:'check'+(sel[a.serial]?' on':'')},[sel[a.serial]?'✓':'']),h('div',{class:'t'},[h('b',{},[a.item]),h('span',{class:'num'},[a.serial+(a.notes?'  ·  '+a.notes:'')])])])); });
+    if(!its.length) l.appendChild(h('div',{class:'empty'},['אין ציוד מוחתם']));
+    list.appendChild(l); drawBar();
+  }
+  function drawBar(){ var n=Object.keys(sel).length; bar([h('div',{class:'info'},[n?n+' פריטים נבחרו':'בחר פריטים']),h('button',{class:'btn danger',disabled:!n,onclick:function(){ doReturn(Object.keys(sel),state.name); }},['↩️ זכה'])]); }
+  view.appendChild(who); view.appendChild(list); drawWho(); drawList();
+};
+function doReturn(serials,name){
+  var notes=h('input',{type:'text',placeholder:'הערה ללוג (אופציונלי)'});
+  var dest=ST.OK;
+  var chips=h('div',{class:'chips mb'});
+  function drawChips(){ chips.innerHTML=''; S.snap.statuses.forEach(function(st){ chips.appendChild(h('button',{class:'chipbtn'+(dest===st?' on':''),onclick:function(){ dest=st; drawChips(); }},[st])); }); }
+  drawChips();
+  sheet('אישור זיכוי',h('div',{},[h('p',{},['לזכות '+serials.length+' פריטים'+(name?' מ-'+name:'')+'?']),h('p',{class:'small muted num right'},[serials.join(', ')]),h('div',{class:'sec'},['לאן הציוד הולך?']),chips,notes]),[
+    h('button',{class:'btn ghost grow',onclick:closeSheet},['ביטול']),
+    h('button',{class:'btn danger grow',onclick:function(){ closeSheet(); busy(true); call('returnItems',{code:S.code,serials:serials,destination:dest,notes:notes.value}).then(function(r){ toast('זוכו '+r.count+' פריטים → '+r.destination,'ok'); if(name){ S.stack=S.stack.filter(function(x){ return x.page!=='return'; }); if(S.stack[S.stack.length-1].page!=='person') go('person',{name:name}); else render(); } else back(); return refresh(true); }).catch(function(e){ toast(e.message,'err'); }).finally(function(){ busy(false); }); }},['זכה'])
+  ]);
+}
+
+/* ---------- people directory (אלפון) ---------- */
+PAGES.people=function(view){
+  setTitle('אלפון גדודי');
+  var idx=S.idx;
+  var q=h('input',{type:'search',placeholder:'חיפוש: שם / מס׳ אישי / טלפון',autocomplete:'off'}); var box=h('div',{class:'list'});
+  var comp=''; var chips=h('div',{class:'chips mb'});
+  function drawChips(){ chips.innerHTML=''; [''].concat(idx.companies).forEach(function(c){ chips.appendChild(h('button',{class:'chipbtn'+(comp===c?' on':''),onclick:function(){ comp=c; drawChips(); draw(); }},[c||'הכל'])); }); }
+  function draw(){
+    box.innerHTML=''; var qq=norm(q.value);
+    var list=S.snap.people.filter(function(p){ return (!comp||p.company===comp)&&(!qq||norm(p.name).indexOf(qq)>=0||norm(p.pid).indexOf(qq)>=0||norm(p.phone).indexOf(qq)>=0); })
+      .sort(function(a,b){ return (a.company+a.unit+a.name).localeCompare(b.company+b.unit+b.name,'he'); }).slice(0,150);
+    if(!list.length) box.appendChild(h('div',{class:'empty'},['אין תוצאות']));
+    list.forEach(function(p){ box.appendChild(personRow(p)); });
+  }
+  q.addEventListener('input',draw); drawChips();
+  view.appendChild(h('div',{class:'card'},[q,chips,box])); draw();
+  if(isAdmin()) bar([h('button',{class:'btn grow',onclick:function(){ go('editPerson',{row:0}); }},['➕ חייל חדש'])]);
+};
+PAGES.editPerson=function(view,p){
+  var idx=S.idx, row=p.row||0;
+  var cur=row?S.snap.people.filter(function(x){ return x.row===row; })[0]:null;
+  setTitle(cur?'עריכת חייל':'חייל חדש');
+  var first=h('input',{type:'text',placeholder:'שם פרטי',value:cur?cur.first:''});
+  var last=h('input',{type:'text',placeholder:'שם משפחה',value:cur?cur.last:''});
+  var pid=h('input',{type:'text',inputmode:'numeric',class:'num',placeholder:'מספר אישי',value:cur?cur.pid:''});
+  var phone=h('input',{type:'tel',class:'num',placeholder:'מספר טלפון',value:cur?cur.phone:''});
+  var company=h('select'); company.appendChild(h('option',{value:''},['— פלוגה —'])); idx.companies.forEach(function(c){ var o=h('option',{value:c},[c]); if(cur&&cur.company===c) o.selected=true; company.appendChild(o); });
+  var unit=h('input',{type:'text',placeholder:'מחלקה / צוות',list:'dlu',value:cur?cur.unit:''});
+  var dlu=h('datalist',{id:'dlu'});
+  function fillUnits(){ dlu.innerHTML=''; var us=idx.unitsByCompany[company.value]||{}; Object.keys(us).sort().forEach(function(u){ if(u!=='ללא מחלקה') dlu.appendChild(h('option',{value:u})); }); }
+  company.addEventListener('change',fillUnits); fillUnits();
+  var full=h('div',{class:'small muted mt'});
+  function upd(){ full.textContent='שם מלא: '+((first.value.trim()+' '+last.value.trim()).trim()||'—')+(cur&&cur.name!==(first.value.trim()+' '+last.value.trim()).trim()&&(idx.byPerson[cur.name]||[]).length?'  ·  השם ישתנה גם ב-'+(idx.byPerson[cur.name]||[]).length+' שורות בגדודי':''); }
+  first.addEventListener('input',upd); last.addEventListener('input',upd); upd();
+  view.appendChild(h('div',{class:'card'},[
+    h('div',{class:'row'},[first,last]),h('div',{class:'mt'}),pid,h('div',{class:'mt'}),phone,h('div',{class:'mt'}),company,h('div',{class:'mt'}),unit,dlu,full
+  ]));
+  if(cur&&isAdmin()) view.appendChild(h('button',{class:'btn ghost full',style:'color:var(--danger);border-color:var(--danger)',onclick:function(){
+    confirmSheet('מחיקת חייל','למחוק את '+cur.name+' מהאלפון? (אפשרי רק אם אין עליו ציוד מוחתם)','מחק',true).then(function(ok){ if(!ok) return; busy(true); call('deletePerson',{code:S.code,row:cur.row,name:cur.name}).then(function(){ toast('החייל נמחק','ok'); S.stack=S.stack.filter(function(x){ return x.page!=='editPerson'&&x.page!=='person'; }); render(); return refresh(true); }).catch(function(e){ toast(e.message,'err'); }).finally(function(){ busy(false); }); });
+  }},['🗑️ מחיקת חייל']));
+  bar([h('button',{class:'btn grow',onclick:function(){
+    if(!first.value.trim()||!last.value.trim()) return toast('חסר שם פרטי או שם משפחה','err');
+    busy(true);
+    call('savePerson',{code:S.code,row:row,first:first.value.trim(),last:last.value.trim(),pid:pid.value.trim(),company:company.value,unit:unit.value.trim(),phone:phone.value.trim()}).then(function(r){
+      toast(cur?'הפרטים נשמרו':'החייל נוסף','ok'); S.stack.pop(); if(S.stack.length&&S.stack[S.stack.length-1].page==='person') S.stack[S.stack.length-1].params={name:r.name}; else go('person',{name:r.name}); return refresh(true);
+    }).catch(function(e){ toast(e.message,'err'); }).finally(function(){ busy(false); });
+  }},['💾 שמירה'])]);
+};
+
+/* ---------- log ---------- */
+PAGES.log=function(view){
+  setTitle('לוג פעולות');
+  var box=h('div',{class:'card'},[h('div',{class:'empty'},['טוען…'])]); view.appendChild(box);
+  call('getLog',S.code,300).then(function(r){
+    box.innerHTML='';
+    if(!r.rows.length) return box.appendChild(h('div',{class:'empty'},['אין פעולות עדיין']));
+    var q=h('input',{type:'search',placeholder:'סינון'}); var l=h('div',{class:'list mt'});
+    function draw(){ l.innerHTML=''; var qq=norm(q.value); r.rows.filter(function(x){ return !qq||norm(x.name+x.item+x.serial+x.action+x.notes).indexOf(qq)>=0; }).forEach(function(x){
+      l.appendChild(h('div',{class:'item'},[h('div',{class:'t'},[h('b',{},[x.action+(x.name?' · '+x.name:'')]),h('span',{},[[x.item,x.serial,x.notes].filter(Boolean).join(' · ')]),h('span',{class:'small'},[x.time+' · '+x.role])]),/^https?:/.test(x.link||'')?h('a',{href:x.link,target:'_blank',class:'chip'},['📄']):null]));
+    }); }
+    q.addEventListener('input',draw); box.appendChild(q); box.appendChild(l); draw();
+  }).catch(function(e){ box.innerHTML=''; box.appendChild(h('div',{class:'empty'},[e.message])); });
+};
+
+/* ---------- bottom bar ---------- */
+function bar(children){ var b=el('bar'); b.innerHTML=''; children.forEach(function(c){ b.appendChild(c); }); b.hidden=false; }
+function fmtTime(iso){ try{ var d=new Date(iso); return d.toLocaleString('he-IL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); }catch(e){ return iso; } }
+
+/* ======================================================================
+   Boot
+   ====================================================================== */
+(function boot(){
+  S.stack=[{page:'home',params:{}}];
+  if(S.role && (S.mode!=='codes' || S.code)){
+    loadSnapLocal();
+    render();                   // show the cached snapshot right away
+    refresh(true);              // getSnapshot re-checks the role (it may have changed in the sheet sharing)
+  } else {
+    render();                   // gate screen ("בודק הרשאות…") or code login
+    checkAccess(false);
+  }
+})();
+</script>
+</body>
+</html>

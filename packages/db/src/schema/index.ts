@@ -1,3 +1,3 @@
 export * from "./core";
-// Department modules add their tables here, e.g.:
-// export * from "./logistics";
+// Department modules add their tables here.
+export * from "./logistics";

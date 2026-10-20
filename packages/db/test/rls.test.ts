@@ -295,3 +295,272 @@ describe("audit_log", () => {
     await rejects(as(su, (tx) => tx.insert(auditLog).values({ tableName: "x", action: "fake" })));
   });
 });
+
+describe("logistics", () => {
+  const {
+    logisticsItems: items,
+    logisticsKitItems: kitItems,
+    logisticsSerials: serials,
+    logisticsAssignments: assignments,
+    logisticsStorage: storage,
+    logisticsForms: forms,
+    logisticsEvents: events,
+  } = schema;
+
+  const logAdmin: TestUser = { authId: randomUUID(), email: "log-admin@example.com" };
+  const plsrAdmin: TestUser = { authId: randomUUID(), email: "plsr-rasap@example.com" };
+  const plsrViewer: TestUser = { authId: randomUUID(), email: "plsr-mp@example.com" };
+  const plntViewer: TestUser = { authId: randomUUID(), email: "plnt-mp@example.com" };
+  const logisticsUsers = [logAdmin, plsrAdmin, plsrViewer, plntViewer];
+
+  const lid = { item: "", s1: "", s2: "", s3: "", plsrSoldier: "", plntSoldier: "" };
+
+  const formData = {
+    title: "טופס החתמת ציוד",
+    battalion: "גדוד",
+    issuedAt: new Date().toISOString(),
+    person: { name: "x", personalNumber: null, company: null, platoon: null, phone: null },
+    lines: [],
+    notes: "",
+    signer: "",
+    signerTitle: "מחתים",
+    issuedBy: "",
+    declaration: "",
+  };
+
+  const heldSerials = (u: TestUser) =>
+    as(u, async (tx) => {
+      const r = await tx.execute<{ id: string }>(sql`select app.logistics_held_serials() as id`);
+      return (r as unknown as { rows: { id: string }[] }).rows.map((x) => x.id);
+    });
+
+  beforeAll(async () => {
+    const rows = await db
+      .insert(appUsers)
+      .values(logisticsUsers.map((u) => ({ email: u.email, authUserId: u.authId })))
+      .returning();
+    for (const u of logisticsUsers) u.appId = rows.find((r) => r.email === u.email)!.id;
+    await db.insert(memberships).values([
+      { userId: logAdmin.appId!, module: "logistics", role: "admin", unitId: null },
+      { userId: plsrAdmin.appId!, module: "logistics", role: "admin", unitId: ids.plsr },
+      { userId: plsrViewer.appId!, module: "logistics", role: "viewer", unitId: ids.plsr },
+      { userId: plntViewer.appId!, module: "logistics", role: "viewer", unitId: ids.plnt },
+    ]);
+
+    const [item] = await db.insert(items).values({ name: "M4 קצר", category: "נשק" }).returning();
+    lid.item = item!.id;
+    const ss = await db
+      .insert(serials)
+      .values([
+        { itemId: lid.item, serial: "1001" },
+        { itemId: lid.item, serial: "1002" },
+        { itemId: lid.item, serial: "1003", condition: "broken" },
+      ])
+      .returning();
+    lid.s1 = ss[0]!.id;
+    lid.s2 = ss[1]!.id;
+    lid.s3 = ss[2]!.id;
+    const ppl = await db.select().from(people);
+    lid.plsrSoldier = ppl.find((p) => p.fullName === "חייל מחלקה 1")!.id;
+    lid.plntSoldier = ppl.find((p) => p.fullName === "חייל פלנט")!.id;
+  });
+
+  describe("catalogue & serials", () => {
+    it("users without a logistics membership see nothing", async () => {
+      expect(await as(clerk, (tx) => tx.select().from(items))).toHaveLength(0);
+      expect(await as(clerk, (tx) => tx.select().from(serials))).toHaveLength(0);
+    });
+
+    it("any logistics member reads the catalogue and every serial", async () => {
+      expect(await as(plntViewer, (tx) => tx.select().from(items))).toHaveLength(1);
+      expect(await as(plntViewer, (tx) => tx.select().from(serials))).toHaveLength(3);
+    });
+
+    it("only a battalion-wide admin adds item types, kit and serials", async () => {
+      await rejects(as(plsrViewer, (tx) => tx.insert(items).values({ name: "x" })));
+      await rejects(as(plsrAdmin, (tx) => tx.insert(items).values({ name: "x" })));
+      await rejects(as(plsrAdmin, (tx) => tx.insert(serials).values({ itemId: lid.item, serial: "9" })));
+      await rejects(as(plsrAdmin, (tx) => tx.insert(kitItems).values({ itemId: lid.item, name: "רצועה" })));
+      const ok = await as(logAdmin, async (tx) => {
+        await tx.insert(kitItems).values({ itemId: lid.item, name: "רצועה" });
+        return tx.insert(serials).values({ itemId: lid.item, serial: "1004" }).returning();
+      });
+      expect(ok).toHaveLength(1);
+    });
+
+    it("only a battalion-wide admin changes a serial's condition directly", async () => {
+      const company = await as(plsrAdmin, (tx) =>
+        tx.update(serials).set({ condition: "ok" }).where(eq(serials.id, lid.s3)).returning(),
+      );
+      expect(company).toHaveLength(0);
+      const v = await as(plsrViewer, (tx) =>
+        tx.update(serials).set({ condition: "ok" }).where(eq(serials.id, lid.s3)).returning(),
+      );
+      expect(v).toHaveLength(0);
+      const r = await as(logAdmin, (tx) =>
+        tx.update(serials).set({ condition: "ok" }).where(eq(serials.id, lid.s3)).returning(),
+      );
+      expect(r).toHaveLength(1);
+    });
+
+    it("the serial number itself can never be edited", async () => {
+      await rejects(as(su, (tx) => tx.update(serials).set({ serial: "evil" }).where(eq(serials.id, lid.s1))));
+    });
+
+    it("rejects serials with whitespace", async () => {
+      await rejects(as(logAdmin, (tx) => tx.insert(serials).values({ itemId: lid.item, serial: "12 34" })));
+    });
+  });
+
+  describe("assignments", () => {
+    it("company admin signs out to a soldier in their company, not in another", async () => {
+      const ok = await as(plsrAdmin, (tx) =>
+        tx.insert(assignments).values({ serialId: lid.s1, personId: lid.plsrSoldier }).returning(),
+      );
+      expect(ok[0]!.signedBy).toBe(plsrAdmin.appId);
+      await rejects(
+        as(plsrAdmin, (tx) => tx.insert(assignments).values({ serialId: lid.s2, personId: lid.plntSoldier })),
+      );
+    });
+
+    it("a serial can have only one open assignment", async () => {
+      await rejects(
+        as(logAdmin, (tx) => tx.insert(assignments).values({ serialId: lid.s1, personId: lid.plntSoldier })),
+      );
+    });
+
+    it("cannot sign out in someone else's name", async () => {
+      await rejects(
+        as(logAdmin, (tx) =>
+          tx.insert(assignments).values({ serialId: lid.s2, personId: lid.plsrSoldier, signedBy: plsrAdmin.appId! }),
+        ),
+      );
+    });
+
+    it("assignments are visible only within scope, but held serials are known to all members", async () => {
+      expect(await as(plsrViewer, (tx) => tx.select().from(assignments))).toHaveLength(1);
+      expect(await as(plntViewer, (tx) => tx.select().from(assignments))).toHaveLength(0);
+      expect(await heldSerials(plntViewer)).toEqual([lid.s1]);
+      expect(await heldSerials(clerk)).toEqual([]);
+    });
+
+    it("viewers cannot return items", async () => {
+      const v = await as(plsrViewer, (tx) =>
+        tx.update(assignments).set({ returnedAt: new Date() }).where(eq(assignments.serialId, lid.s1)).returning(),
+      );
+      expect(v).toHaveLength(0);
+    });
+
+    it("cannot move an assignment to another soldier, and nobody deletes history", async () => {
+      await rejects(
+        as(su, (tx) =>
+          tx.update(assignments).set({ personId: lid.plntSoldier }).where(eq(assignments.serialId, lid.s1)),
+        ),
+      );
+      await rejects(as(su, (tx) => tx.delete(assignments).where(eq(assignments.serialId, lid.s1))));
+    });
+
+    it("a signed-out serial cannot be deleted", async () => {
+      await rejects(as(logAdmin, (tx) => tx.delete(serials).where(eq(serials.id, lid.s1))));
+    });
+
+    it("returning (by a company admin) closes the row, sets the condition and frees the serial", async () => {
+      await as(plsrAdmin, (tx) =>
+        tx
+          .update(assignments)
+          .set({ returnedAt: new Date(), returnedTo: "broken" })
+          .where(eq(assignments.serialId, lid.s1)),
+      );
+      const [s1] = await db.select().from(serials).where(eq(serials.id, lid.s1));
+      expect(s1!.condition).toBe("broken");
+      expect(await heldSerials(logAdmin)).toEqual([]);
+      await rejects(
+        as(plsrAdmin, (tx) => tx.update(assignments).set({ returnedAt: null }).where(eq(assignments.serialId, lid.s1))),
+      );
+      const again = await as(logAdmin, (tx) =>
+        tx.insert(assignments).values({ serialId: lid.s1, personId: lid.plntSoldier }).returning(),
+      );
+      expect(again).toHaveLength(1);
+    });
+  });
+
+  describe("storage, forms and events", () => {
+    it("storage follows the soldier's unit", async () => {
+      const ok = await as(plsrAdmin, (tx) =>
+        tx.insert(storage).values({ personId: lid.plsrSoldier, itemName: "קסדה" }).returning(),
+      );
+      expect(ok).toHaveLength(1);
+      await rejects(
+        as(plsrAdmin, (tx) => tx.insert(storage).values({ personId: lid.plntSoldier, itemName: "קסדה" })),
+      );
+      expect(await as(plntViewer, (tx) => tx.select().from(storage))).toHaveLength(0);
+    });
+
+    it("forms: created by the acting admin, readable only within scope, immutable", async () => {
+      const [f] = await as(plsrAdmin, (tx) =>
+        tx.insert(forms).values({ kind: "signout", personId: lid.plsrSoldier, data: formData }).returning(),
+      );
+      expect(f!.createdBy).toBe(plsrAdmin.appId);
+      expect(await as(plsrViewer, (tx) => tx.select().from(forms))).toHaveLength(1);
+      expect(await as(plntViewer, (tx) => tx.select().from(forms))).toHaveLength(0);
+      await rejects(
+        as(plsrViewer, (tx) => tx.insert(forms).values({ kind: "holdings", personId: lid.plsrSoldier, data: formData })),
+      );
+      await rejects(as(su, (tx) => tx.update(forms).set({ kind: "holdings" }).where(eq(forms.id, f!.id))));
+    });
+
+    it("events: admins append with their own id; viewers cannot write; nobody deletes", async () => {
+      const [e] = await as(plsrAdmin, (tx) =>
+        tx.insert(events).values({ kind: "sign", personId: lid.plsrSoldier, personName: "חייל מחלקה 1" }).returning(),
+      );
+      expect(e!.actorUserId).toBe(plsrAdmin.appId);
+      const [named] = await as(plsrAdmin, (tx) =>
+        tx.insert(events).values({ kind: "notes", personId: lid.plsrSoldier, actorName: "מישהו אחר" }).returning(),
+      );
+      expect(named!.actorName).toBe(plsrAdmin.email);
+      await rejects(as(plsrAdmin, (tx) => tx.insert(events).values({ kind: "sign", actorUserId: logAdmin.appId! })));
+      // stock events (no soldier) are battalion-wide: company admins can't write them
+      await rejects(as(plsrAdmin, (tx) => tx.insert(events).values({ kind: "serial_remove", item: "M4 קצר" })));
+      await rejects(as(plsrAdmin, (tx) => tx.insert(events).values({ kind: "sign", personId: lid.plntSoldier })));
+      await rejects(as(plsrViewer, (tx) => tx.insert(events).values({ kind: "kit" })));
+      await rejects(as(su, (tx) => tx.delete(events).where(eq(events.id, e!.id))));
+    });
+
+    it("events about soldiers are scoped; stock events are visible to all members", async () => {
+      await as(logAdmin, (tx) => tx.insert(events).values({ kind: "serials_add", item: "M4 קצר" }));
+      const plnt = await as(plntViewer, (tx) => tx.select().from(events));
+      expect(plnt.map((e) => e.kind)).toEqual(["serials_add"]);
+      const plsr = await as(plsrViewer, (tx) => tx.select().from(events));
+      expect(plsr.map((e) => e.kind).sort()).toEqual(["notes", "serials_add", "sign"]);
+      expect(await as(clerk, (tx) => tx.select().from(events))).toHaveLength(0);
+    });
+  });
+
+  describe("people (אלפון)", () => {
+    it("a logistics admin adds and edits soldiers in their unit only", async () => {
+      const [p] = await as(plsrAdmin, (tx) =>
+        tx.insert(people).values({ unitId: ids.plsr1, fullName: "חייל חדש מלוגיסטיקה" }).returning(),
+      );
+      expect(p).toBeTruthy();
+      await rejects(as(plsrAdmin, (tx) => tx.insert(people).values({ unitId: ids.plnt, fullName: "x" })));
+      const r = await as(plsrAdmin, (tx) =>
+        tx.update(people).set({ phone: "050" }).where(eq(people.id, lid.plntSoldier)).returning(),
+      );
+      expect(r).toHaveLength(0);
+    });
+
+    it("a logistics viewer cannot edit soldiers, and a logistics admin cannot delete them", async () => {
+      const r = await as(plsrViewer, (tx) =>
+        tx.update(people).set({ phone: "050" }).where(eq(people.id, lid.plsrSoldier)).returning(),
+      );
+      expect(r).toHaveLength(0);
+      const d = await as(plsrAdmin, (tx) => tx.delete(people).where(eq(people.id, lid.plsrSoldier)).returning());
+      expect(d).toHaveLength(0);
+    });
+  });
+
+  it("logistics changes are audited with the acting user", async () => {
+    const rows = await db.select().from(auditLog).where(eq(auditLog.tableName, "logistics_assignments"));
+    expect(rows.some((r) => r.actorUserId === plsrAdmin.appId)).toBe(true);
+  });
+});

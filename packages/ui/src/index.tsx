@@ -19,7 +19,26 @@ export type IconName =
   | "chevron"
   | "logout"
   | "shield"
-  | "tree";
+  | "tree"
+  | "search"
+  | "pencil"
+  | "undo"
+  | "refresh"
+  | "wrench"
+  | "flag"
+  | "clock"
+  | "table"
+  | "archive"
+  | "check"
+  | "close"
+  | "phone"
+  | "doc"
+  | "swap"
+  | "trash"
+  | "alert"
+  | "minus"
+  | "print"
+  | "logo";
 
 const PATHS: Record<IconName, ReactNode> = {
   home: <path d="M4 11.5 12 5l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H5a1 1 0 0 1-1-1z" />,
@@ -73,6 +92,96 @@ const PATHS: Record<IconName, ReactNode> = {
       <rect x="3.5" y="16" width="6" height="4.5" rx="1" />
       <rect x="14.5" y="16" width="6" height="4.5" rx="1" />
       <path d="M12 8v4M6.5 16v-4h11v4" />
+    </>
+  ),
+  search: (
+    <>
+      <circle cx="11" cy="11" r="7" />
+      <path d="M20 20l-3.5-3.5" />
+    </>
+  ),
+  pencil: (
+    <>
+      <path d="M4 20h4L19 9l-4-4L4 16z" />
+      <path d="M14 6l4 4" />
+    </>
+  ),
+  undo: (
+    <>
+      <path d="M15 14l5-5-5-5" />
+      <path d="M20 9H10a6 6 0 0 0 0 12h3" />
+    </>
+  ),
+  refresh: (
+    <>
+      <path d="M20 12a8 8 0 1 1-2.3-5.6" />
+      <path d="M20 4v5h-5" />
+    </>
+  ),
+  wrench: <path d="M14.7 6.3a4 4 0 0 0-5.3 5.3L3.7 17.3a1.4 1.4 0 0 0 2 2l5.7-5.7a4 4 0 0 0 5.3-5.3l-2.5 2.5-2-.5-.5-2z" />,
+  flag: (
+    <>
+      <path d="M5 21V4" />
+      <path d="M5 4h11l-2 4 2 4H5" />
+    </>
+  ),
+  clock: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </>
+  ),
+  table: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2.5" />
+      <path d="M3 9.5h18M9 4v16" />
+    </>
+  ),
+  archive: (
+    <>
+      <rect x="3" y="4" width="18" height="5" rx="1.5" />
+      <path d="M5 9v9.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V9M10 13h4" />
+    </>
+  ),
+  check: <path d="M5 12.5l4.5 4.5L19 7.5" />,
+  close: <path d="M6 6l12 12M18 6L6 18" />,
+  phone: <path d="M5 4h3.5l1.5 4-2 1.5a11 11 0 0 0 6.5 6.5l1.5-2 4 1.5V19a1.5 1.5 0 0 1-1.5 1.5A16.5 16.5 0 0 1 3.5 5.5 1.5 1.5 0 0 1 5 4z" />,
+  doc: (
+    <>
+      <path d="M7 3h7l5 5v11.5A1.5 1.5 0 0 1 17.5 21h-10A1.5 1.5 0 0 1 6 19.5v-15A1.5 1.5 0 0 1 7.5 3z" />
+      <path d="M14 3v5h5M9.5 13h5M9.5 16.5h5" />
+    </>
+  ),
+  swap: (
+    <>
+      <path d="M7 4L3 8l4 4M3 8h14" />
+      <path d="M17 20l4-4-4-4M21 16H7" />
+    </>
+  ),
+  trash: (
+    <>
+      <path d="M4 7h16M10 7V4.5h4V7" />
+      <path d="M6 7l1 12.5A1.5 1.5 0 0 0 8.5 21h7a1.5 1.5 0 0 0 1.5-1.5L18 7" />
+    </>
+  ),
+  alert: (
+    <>
+      <path d="M12 3l10 18H2z" />
+      <path d="M12 10v4.5M12 18v.01" />
+    </>
+  ),
+  minus: <path d="M5 12h14" />,
+  print: (
+    <>
+      <path d="M7 9V3.5h10V9" />
+      <rect x="3" y="9" width="18" height="8" rx="2" />
+      <path d="M7 14h10v6.5H7z" />
+    </>
+  ),
+  logo: (
+    <>
+      <path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z" />
+      <path d="M8.5 12l2.5 2.5 4.5-5" />
     </>
   ),
 };
@@ -146,14 +255,19 @@ export function Tile({ icon, color = "primary" }: { icon: IconName; color?: Tile
   );
 }
 
-export function Avatar({ name }: { name: string }) {
+export function Avatar({ name, size }: { name: string; size?: number }) {
   const initials = name
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 2)
     .map((w) => w[0])
     .join("");
-  return <span className="tz-avatar">{initials}</span>;
+  const style = size ? { width: size, height: size, fontSize: Math.round(size * 0.36) } : undefined;
+  return (
+    <span className="tz-avatar" style={style}>
+      {initials}
+    </span>
+  );
 }
 
 interface RowProps {
@@ -225,5 +339,31 @@ export function Field({ label, children }: { label: ReactNode; children: ReactNo
       <span className="tz-label">{label}</span>
       {children}
     </label>
+  );
+}
+
+/* ── StockBar: armory share of an item (signed = the empty track) ── */
+export function StockBar({
+  ok,
+  broken,
+  brigade,
+  total,
+  height = 6,
+  label,
+}: {
+  ok: number;
+  broken: number;
+  brigade: number;
+  total: number;
+  height?: number;
+  label?: string;
+}) {
+  const w = (n: number) => (total > 0 ? `${(n / total) * 100}%` : "0%");
+  return (
+    <span className="tz-bar" style={{ height }} role="img" aria-label={label ?? `${ok} תקין, ${broken} תקול, ${brigade} חטיבה מתוך ${total}`}>
+      {ok ? <span className="ok" style={{ width: w(ok) }} /> : null}
+      {broken ? <span className="broken" style={{ width: w(broken) }} /> : null}
+      {brigade ? <span className="brigade" style={{ width: w(brigade) }} /> : null}
+    </span>
   );
 }

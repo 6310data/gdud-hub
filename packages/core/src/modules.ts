@@ -35,10 +35,14 @@ export const MODULES = [
     description: "החתמות, זיכויים ומלאי צ׳",
     href: "/logistics",
     icon: "box",
-    status: "planned",
+    status: "live",
     roles: [
-      { id: "admin", label: "מנהל", description: "החתמה, זיכוי, ניהול מלאי ואלפון" },
-      { id: "viewer", label: "צפייה", description: "חיפוש וצפייה, עריכת פרטי חייל" },
+      {
+        id: "admin",
+        label: "מנהל",
+        description: "החתמה, זיכוי, אפסון ואלפון (במסגרת שלו); מלאי וקטלוג — כשההרשאה על כל הגדוד",
+      },
+      { id: "viewer", label: "צפייה", description: "חיפוש, צפייה והדפסת טפסים" },
     ],
   },
   {

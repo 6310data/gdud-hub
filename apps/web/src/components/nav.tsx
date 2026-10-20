@@ -37,7 +37,7 @@ export function SideNav({ items }: { items: NavItem[] }) {
 export function TabBar({ items }: { items: NavItem[] }) {
   const pathname = usePathname();
   return (
-    <nav className="tz-tabs fixed inset-x-0 bottom-0 z-20 lg:hidden" aria-label="ניווט ראשי">
+    <nav className="tz-tabs fixed inset-x-0 bottom-0 z-20 lg:hidden print:hidden" aria-label="ניווט ראשי">
       {items.map((it) => (
         <Link
           key={it.href}

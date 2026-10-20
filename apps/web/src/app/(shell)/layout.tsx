@@ -13,8 +13,8 @@ export default async function ShellLayout({ children }: { children: React.ReactN
   ];
 
   return (
-    <div className="min-h-dvh lg:grid lg:grid-cols-[248px_minmax(0,1fr)]">
-      <aside className="sticky top-0 hidden h-dvh flex-col border-e border-separator bg-surface lg:flex">
+    <div className="min-h-dvh lg:grid lg:grid-cols-[248px_minmax(0,1fr)] print:block">
+      <aside className="sticky top-0 hidden h-dvh flex-col border-e border-separator bg-surface lg:flex print:hidden">
         <div className="flex items-center gap-3 px-5 pb-2 pt-6">
           <div
             className="grid size-9 place-items-center text-lg font-bold text-white"
@@ -42,7 +42,10 @@ export default async function ShellLayout({ children }: { children: React.ReactN
         </div>
       </aside>
 
-      <main className="mx-auto w-full max-w-[960px] px-4 pb-28 pt-6 lg:px-8 lg:pb-12">{children}</main>
+      {/* pages that mark themselves data-wide (desktop data screens) get the full width */}
+      <main className="mx-auto w-full max-w-[960px] px-4 pb-28 pt-6 has-[[data-wide]]:max-w-[1440px] lg:px-8 lg:pb-12 print:max-w-none print:p-0">
+        {children}
+      </main>
 
       <TabBar items={items} />
     </div>

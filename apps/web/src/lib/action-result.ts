@@ -21,3 +21,13 @@ function pgCode(err: unknown): string | undefined {
   return undefined;
 }
 
+/** Result of an action that returns data (e.g. the id of a created form). */
+export type ActionOutcome<T> = { ok: true; data: T; error?: undefined } | { ok?: undefined; error: string };
+
+/** A validation failure whose message is safe to show the user as is. */
+export class UserError extends Error {}
+
+/** UserError → its message; anything else → a generic Hebrew message (details logged). */
+export function actionError(err: unknown): string {
+  return err instanceof UserError ? err.message : dbErrorMessage(err);
+}

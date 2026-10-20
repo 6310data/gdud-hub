@@ -151,6 +151,63 @@ a.tz-row, button.tz-row { cursor: pointer; }
 .tz-side-link:hover { background: var(--fill); }
 .tz-side-link[aria-current="page"] { background: var(--primary-tinted); color: var(--primary); font-weight: 600; }
 
+/* ── Desktop data screens (tables, inspector panels, KPIs) ── */
+.tz-card { background: var(--surface-100); border-radius: var(--radius-group); }
+.tz-panel-title { margin: 0; padding: 0 4px; font-size: 13px; font-weight: 600; color: var(--ink-muted); }
+.tz-table-wrap { background: var(--surface-100); border-radius: var(--radius-group); overflow-x: auto; }
+.tz-table { width: 100%; border-collapse: collapse; font-size: 14px; white-space: nowrap; }
+.tz-table th, .tz-table td { padding: 10px 12px; border-bottom: 1px solid var(--separator); text-align: start; font-weight: 400; }
+.tz-table :is(th, td):first-child { padding-inline-start: 16px; }
+.tz-table :is(th, td):last-child { padding-inline-end: 16px; }
+.tz-table thead th { font-size: 12px; font-weight: 600; color: var(--ink-muted); }
+.tz-table tbody tr:last-child > * { border-bottom: 0; }
+.tz-table tfoot :is(th, td) { font-weight: 600; border-top: 1px solid var(--line-strong); border-bottom: 0; }
+.tz-table tbody tr[data-href]:hover, .tz-table tbody tr.tz-hover:hover { background: var(--ground); cursor: pointer; }
+.tz-table tbody tr[data-selected] { background: var(--primary-tinted); }
+.tz-table .tz-group-row > th { background: var(--ground); font-size: 13px; font-weight: 600; color: var(--ink-muted); padding-block: 7px; }
+.tz-table .tz-zero { color: var(--chevron); }
+.tz-table a { color: var(--primary); text-decoration: none; }
+.tz-table a.tz-cell-link { color: inherit; display: block; }
+.tz-num { font-variant-numeric: tabular-nums; }
+
+.tz-kpi { display: flex; align-items: center; gap: 10px; padding: 14px 16px; color: var(--ink); text-decoration: none; }
+a.tz-kpi:hover { background: var(--ground); }
+.tz-kpi-value { display: block; font-size: 20px; line-height: 24px; font-weight: 600; }
+.tz-kpi-label { display: block; font-size: 13px; color: var(--ink-muted); }
+
+/* tab-like links / toggle buttons */
+.tz-pills { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.tz-pill { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 14px; border: 0; border-radius: var(--radius-pill); background: var(--surface-100); color: var(--ink); font: inherit; font-size: 14px; text-decoration: none; cursor: pointer; white-space: nowrap; }
+.tz-pill:hover { background: var(--fill); }
+.tz-pill:is([aria-current="page"], [aria-selected="true"], [aria-pressed="true"]) { background: var(--primary); color: var(--on-primary); font-weight: 600; }
+.tz-pill .tz-pill-count { font-size: 12px; opacity: .75; }
+
+.tz-step { width: 22px; height: 22px; flex: none; border-radius: var(--radius-pill); background: var(--primary); color: var(--on-primary); display: grid; place-items: center; font-size: 12px; font-weight: 700; }
+
+.tz-search { display: flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 10px; border-radius: var(--radius-control); background: var(--fill); color: var(--ink-muted); }
+.tz-search input { flex: 1; min-width: 0; border: 0; background: transparent; font: inherit; font-size: 15px; color: var(--ink); outline: none; }
+.tz-search input::placeholder { color: var(--ink-tab); }
+.tz-search:focus-within { outline: 2px solid var(--primary); outline-offset: 1px; }
+
+.tz-screen input[type="checkbox"], .tz-screen input[type="radio"] { accent-color: var(--primary); width: 18px; height: 18px; margin: 0; flex: none; }
+textarea.tz-input { padding-block: 10px; min-height: 64px; resize: vertical; }
+
+.tz-stepper { display: inline-flex; align-items: center; gap: 4px; }
+.tz-stepper button { width: 26px; height: 26px; display: grid; place-items: center; border: 0; border-radius: var(--radius-tile); background: var(--fill); color: var(--primary); cursor: pointer; }
+.tz-stepper output { min-width: 20px; text-align: center; font-weight: 600; }
+
+.tz-dialog { width: min(760px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); padding: 0; border: 0; border-radius: var(--radius-sheet); background: var(--surface-100); color: var(--ink); }
+.tz-dialog::backdrop { background: color-mix(in srgb, var(--ink) 35%, transparent); }
+
+.tz-alert { padding: 10px 14px; border-radius: var(--radius-control); font-size: 14px; white-space: pre-line; }
+.tz-alert-error { background: var(--danger-soft); color: var(--danger); }
+.tz-alert-ok { background: var(--status-ok-soft); color: var(--status-ok); }
+
+@media print {
+  .tz-no-print { display: none !important; }
+  .tz-screen { background: var(--surface-100); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .tz-btn, .tz-row, .tz-tab, .tz-seg-item { transition: none; }
   .tz-btn:active, .tz-seg-item:active { transform: none; }

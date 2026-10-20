@@ -1,5 +1,5 @@
 "use client";
-import { useActionState, useEffect, useRef } from "react";
+import { startTransition, useActionState, useEffect, useRef } from "react";
 import { Button } from "@gdud/ui";
 import type { ActionResult } from "@/lib/action-result";
 
@@ -27,7 +27,17 @@ export function ActionForm({
   }, [state]);
 
   return (
-    <form ref={ref} action={formAction} className={className ?? "grid gap-3 p-4"}>
+    <form
+      ref={ref}
+      // submitted through a transition (not action=) so a failed attempt keeps what the user typed;
+      // the fields are cleared only on success (effect above)
+      onSubmit={(e) => {
+        e.preventDefault();
+        const fd = new FormData(e.currentTarget);
+        startTransition(() => formAction(fd));
+      }}
+      className={className ?? "grid gap-3 p-4"}
+    >
       {children}
       <Button variant={variant} disabled={pending} small={variant === "plain" || variant === "danger"}>
         {pending ? "שומר…" : submitLabel}

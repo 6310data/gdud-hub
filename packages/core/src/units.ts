@@ -63,3 +63,27 @@ export function sortAsTree<T extends UnitNode>(units: readonly T[]): Array<T & {
   walk(null, 0);
   return out;
 }
+
+/** Nearest unit of `kind` at or above `unitId` (e.g. the company of a platoon). */
+export function ancestorOfKind<T extends Pick<UnitNode, "id" | "parentId" | "kind">>(
+  unitId: string | null | undefined,
+  kind: UnitKind,
+  byId: ReadonlyMap<string, T>,
+): T | undefined {
+  const seen = new Set<string>();
+  let cur = unitId ? byId.get(unitId) : undefined;
+  while (cur && !seen.has(cur.id)) {
+    if (cur.kind === kind) return cur;
+    seen.add(cur.id);
+    cur = cur.parentId ? byId.get(cur.parentId) : undefined;
+  }
+  return undefined;
+}
+
+/** Company and platoon a soldier belongs to, from their (lowest known) unit. */
+export function placement<T extends Pick<UnitNode, "id" | "parentId" | "kind">>(
+  unitId: string | null | undefined,
+  byId: ReadonlyMap<string, T>,
+): { company: T | undefined; platoon: T | undefined } {
+  return { company: ancestorOfKind(unitId, "company", byId), platoon: ancestorOfKind(unitId, "platoon", byId) };
+}
