@@ -8,6 +8,7 @@ import {
   lineTotals,
   matches,
   normalizeSerial,
+  parseKitText,
   parseSerialList,
   pct,
   searchKey,
@@ -86,6 +87,16 @@ describe("kit", () => {
     const input = [{ name: "א", qty: 1 }, { name: "א", qty: 1 }];
     cleanKit(input);
     expect(input).toEqual([{ name: "א", qty: 1 }, { name: "א", qty: 1 }]);
+  });
+
+  it("parseKitText reads the kit column back (inverse of kitToString)", () => {
+    expect(parseKitText("3 תופים, רצועה\nרצועה ,  ")).toEqual([
+      { name: "תופים", qty: 3 },
+      { name: "רצועה", qty: 2 },
+    ]);
+    expect(parseKitText("")).toEqual([]);
+    const kit = [{ name: "תוף", qty: 3 }, { name: "ערכת כולבו", qty: 1 }];
+    expect(parseKitText(kitToString(kit))).toEqual(kit);
   });
 });
 

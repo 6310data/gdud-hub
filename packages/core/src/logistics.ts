@@ -134,6 +134,20 @@ export function cleanKit(kit: readonly KitLine[]): KitLine[] {
   return out;
 }
 
+/** "3 תופים, רצועה" → lines (the inverse of kitToString; the format of the old 'ציוד משלים' column). */
+export function parseKitText(text: string): KitLine[] {
+  return cleanKit(
+    text
+      .split(/[,،\n]+/)
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => {
+        const m = /^(\d{1,2})\s+(.+)$/.exec(part);
+        return m ? { qty: Number(m[1]), name: m[2]! } : { qty: 1, name: part };
+      }),
+  );
+}
+
 /* ── stock counts ────────────────────────────────────────────────────────── */
 
 export interface StockCounts {

@@ -19,3 +19,6 @@ supabase/.temp/
 .DS_Store
 Thumbs.db
 .vercel
+
+# sheet exports for one-off imports hold personal data — never commit them
+*.csv

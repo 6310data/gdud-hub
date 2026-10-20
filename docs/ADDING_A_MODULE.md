@@ -20,4 +20,14 @@ Example: porting the logistics app.
 
 6. **Data import** — a one-off script in `packages/db/scripts/` that reads the old Google Sheet and fills the new tables (people first, then module data). Run locally with `MIGRATION_DATABASE_URL`.
 
+   **Logistics import** (`packages/db/scripts/import-logistics.ts`) — clear it with ביטחון מידע first (docs/SECURITY.md): it loads real names and personal numbers.
+   1. Create the companies under the battalion in `/admin/units` (the import creates missing platoons, never companies).
+   2. In the old spreadsheet, for each of `Dropdowns`, `תקן ציוד משלים`, `טבלת צ`, `אלפון גדודי`, `גדודי`, `אפסון`: open the tab → File → Download → CSV. Put the files in one folder **outside the repo** (`*.csv` is git-ignored anyway). The default names (`<spreadsheet> - <tab>.csv`) are fine; a missing tab is skipped.
+   3. Dry run — prints counts and every row it can't map (unknown company, unknown status, serial held by someone else, bad date…), writes nothing:
+      `pnpm --filter @gdud/db exec tsx scripts/import-logistics.ts <folder> --dry-run`
+   4. Fix the sheet (or add the missing companies) and repeat until the skipped list is what you expect, then run without `--dry-run`. It runs in one transaction and is safe to re-run — existing serials, open assignments, storage rows and people (matched by personal number, then full name) are skipped.
+   5. Delete the CSV folder.
+
+   Mapping: `טבלת צ` status חתום / נשקייה תקין → `ok`, תקול → `broken`, חטיבה → `brigade` (who holds a serial comes from `גדודי`, one open assignment per row, kit text "3 מחסניות, רצועה" parsed into lines); an `אפסון` row with an out-date is imported as released. A serial or item that appears only in `גדודי` / `טבלת צ` is created and listed as a warning.
+
 7. **Reference code** — put the old app's code in `references/<module>/` so behaviour can be compared during the port.
