@@ -1,0 +1,21 @@
+node_modules/
+.next/
+out/
+dist/
+.turbo/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+
+# env — never commit real secrets
+.env
+.env.*
+!.env.example
+
+# supabase local
+supabase/.branches/
+supabase/.temp/
+
+.DS_Store
+Thumbs.db
+.vercel

@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "generate": "drizzle-kit generate",
-    "migrate": "drizzle-kit migrate",
+    "migrate": "tsx scripts/migrate.ts",
     "studio": "drizzle-kit studio",
     "bootstrap-admin": "tsx scripts/bootstrap-admin.ts"
   },
