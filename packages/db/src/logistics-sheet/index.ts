@@ -4,3 +4,4 @@
  */
 export * from "./sheet";
 export * from "./csv";
+export * from "./xlsx";
