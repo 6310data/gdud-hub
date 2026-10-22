@@ -2,6 +2,7 @@
  * The shared logistics sheet core (src/logistics-sheet): reading an xlsx download, diffing it
  * against the app, and applying the selected lines — against the real migrations on PGlite.
  */
+import { count, eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import writeXlsxFile, { type SheetData } from "write-excel-file/node";
 import type { Tx } from "../src/index";
@@ -18,7 +19,7 @@ import {
 import * as schema from "../src/schema/index";
 import { createTestDb, type PgliteDb, type TestIds } from "./pglite";
 
-const { people, logisticsItems, logisticsKitItems, logisticsSerials, logisticsAssignments } = schema;
+const { people, logisticsItems, logisticsKitItems, logisticsSerials, logisticsAssignments, logisticsStorage } = schema;
 
 /** Data rows numbered from 2 (row 1 is the header). */
 const rows = (...cells: string[][]): SheetRow[] => cells.map((c, i) => ({ row: i + 2, cells: c }));
@@ -221,5 +222,139 @@ describe("diffLogistics: catalogue and serials", () => {
     const sheet = SERIALS.map((r) => (r[2] === "7710432" ? ["נשק", "M4 קצר", "7710432", "נשקייה תקול"] : r));
     const { lines } = await diff({ serials: rows(...sheet), kit: rows() }, ["kit"]);
     expect(lines.filter((l) => l.sheet === "serials")).toEqual([]);
+  });
+});
+
+/** A גדודי row: company, platoon, name, personal number, item, serial, notes, kit text. */
+const signed = (name: string, pid: string, serial: string, kit = "") => ["פלס\"ר", "", name, pid, "M4 קצר", serial, "", kit];
+/** An אפסון row: company, name, personal number, item, serial, in date, out date. */
+const stored = (name: string, pid: string, item: string, serial: string, inDate: string, outDate = "") => ["פלס\"ר", name, pid, item, serial, inDate, outDate];
+
+describe("diffLogistics: assignments and storage", () => {
+  let s: Seeded;
+  const diff = (sheets: Sheets, tabs: SheetKey[]) => diffLogistics(s.db as unknown as Tx, sheets, tabs);
+
+  beforeAll(async () => {
+    s = await seed();
+    const [serial] = await s.db.select().from(logisticsSerials).where(eq(logisticsSerials.serial, "7710433"));
+    await s.db.insert(logisticsStorage).values([
+      { personId: s.dani, serialId: serial!.id, itemName: "M4 קצר", storedAt: new Date(2026, 8, 1) },
+      { personId: s.ron, itemName: "קסדה", storedAt: new Date(2026, 7, 15, 10, 30), releasedAt: new Date(2026, 7, 20) },
+    ]);
+  });
+
+  it("the same holder with a differently formatted personal number → identical", async () => {
+    const { lines, identical } = await diff({ assignments: rows(signed("דני כהן", "12-34567", "7710433")) }, ["assignments"]);
+    expect(lines).toEqual([]);
+    expect(identical.assignments).toBe(1);
+  });
+
+  it("another holder → assignment.transfer", async () => {
+    const { lines } = await diff({ assignments: rows(signed("רון לוי", "7654321", "7710433")) }, ["assignments"]);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({
+      id: "assignments:assignment.transfer:7710433",
+      group: "change",
+      before: "דני כהן",
+      after: "רון לוי",
+      personName: "רון לוי",
+      defaultOn: true,
+    });
+  });
+
+  it("a serial nobody holds → assignment.add; a kit difference → assignment.kit", async () => {
+    const { lines } = await diff(
+      { assignments: rows(signed("רון לוי", "7654321", "7710432"), signed("דני כהן", "1234567", "7710433", "3 מחסניות")) },
+      ["assignments"],
+    );
+    expect(byId(lines, "assignments:assignment.add:7710432")).toMatchObject({ group: "new", defaultOn: true, personName: "רון לוי" });
+    expect(byId(lines, "assignments:assignment.add:7710432")!.op).toEqual({
+      t: "assignment.add",
+      serial: "7710432",
+      personId: s.ron,
+      notes: null,
+      kit: [],
+    });
+    expect(byId(lines, "assignments:assignment.kit:7710433")).toMatchObject({ group: "change", before: "", after: "3 מחסניות" });
+  });
+
+  it("a soldier the app doesn't have → error; no soldier is created", async () => {
+    const before = (await s.db.select({ n: count() }).from(people))[0]!.n;
+    const { lines } = await diff(
+      { assignments: rows(signed("דני כהן", "1234567", "7710433"), signed("שרה מזרחי", "5555555", "7710432")) },
+      ["assignments"],
+    );
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({ group: "error", row: 3, personName: "שרה מזרחי", message: "החייל לא קיים באפליקציה — יש להוסיף אותו בדוח 1" });
+    expect((await s.db.select({ n: count() }).from(people))[0]!.n).toBe(before);
+  });
+
+  it("the same צ׳ for two soldiers → the later row is an error", async () => {
+    const { lines } = await diff(
+      { assignments: rows(signed("דני כהן", "1234567", "7710433"), signed("רון לוי", "7654321", "77104-33")) },
+      ["assignments"],
+    );
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({ group: "error", row: 3, message: "הצ׳ מופיע פעמיים (גם בשורה 2)" });
+  });
+
+  it("an open assignment the sheet doesn't list → assignment.return, unticked", async () => {
+    const { lines } = await diff({ assignments: rows(signed("רון לוי", "7654321", "7710432")) }, ["assignments"]);
+    expect(byId(lines, "assignments:assignment.return:7710433")).toMatchObject({
+      group: "appOnly",
+      row: null,
+      selectable: true,
+      defaultOn: false,
+      personName: "דני כהן",
+    });
+  });
+
+  it("a serial only in גדודי is created on the fly; the assignment depends on it", async () => {
+    const { lines } = await diff({ assignments: rows(signed("רון לוי", "7654321", "8000009")) }, ["assignments"]);
+    const serial = byId(lines, "assignments:serial.add:8000009");
+    expect(serial).toMatchObject({ group: "new", message: "צ׳ לא היה בטבלת צ" });
+    expect(byId(lines, "assignments:assignment.add:8000009")!.dependsOn).toEqual([serial!.id]);
+  });
+
+  it("storage: an out-date releases an open row; reopening a released row is an error", async () => {
+    const { lines } = await diff(
+      {
+        storage: rows(
+          stored("דני כהן", "1234567", "M4 קצר", "7710433", "01/09/2026", "20/09/2026"),
+          stored("רון לוי", "7654321", "קסדה", "0", "15/08/2026 10:30"),
+        ),
+      },
+      ["storage"],
+    );
+    expect(lines).toHaveLength(2);
+    expect(lines.find((l) => l.row === 2)).toMatchObject({ group: "change", kind: "storage.release", before: "באפסון" });
+    expect(lines.find((l) => l.row === 2)!.op).toMatchObject({ t: "storage.release", releasedAt: new Date(2026, 8, 20).toISOString() });
+    expect(lines.find((l) => l.row === 3)).toMatchObject({ group: "error", message: "שוחרר באפליקציה – לא ניתן להחזיר לאפסון" });
+  });
+
+  it("storage: a new row → storage.add; an open app row the sheet doesn't list → release, unticked", async () => {
+    const { lines } = await diff({ storage: rows(stored("רון לוי", "7654321", "קסדה", "", "15/08/2026 10:30", "20/08/2026"), stored("רון לוי", "7654321", "אפוד", "", "01/10/2026")) }, ["storage"]);
+    expect(lines.filter((l) => l.group === "new")).toHaveLength(1);
+    expect(lines.find((l) => l.group === "new")!.op).toEqual({
+      t: "storage.add",
+      personId: s.ron,
+      serial: null,
+      itemName: "אפוד",
+      storedAt: new Date(2026, 9, 1).toISOString(),
+      releasedAt: null,
+    });
+    expect(lines.find((l) => l.group === "appOnly")).toMatchObject({ kind: "storage.release", defaultOn: false, serial: "7710433", personName: "דני כהן" });
+  });
+
+  it("the fingerprint is stable and changes when the app changes", async () => {
+    const sheets: Sheets = { assignments: rows(signed("רון לוי", "7654321", "7710432")), serials: rows(...SERIALS) };
+    const tabs: SheetKey[] = ["serials", "assignments"];
+    const a = await diff(sheets, tabs);
+    const b = await diff(sheets, tabs);
+    expect(a.fingerprint).toMatch(/^[0-9a-f]{64}$/);
+    expect(b.fingerprint).toBe(a.fingerprint);
+    const [serial] = await s.db.select().from(logisticsSerials).where(eq(logisticsSerials.serial, "7710432"));
+    await s.db.insert(logisticsAssignments).values({ serialId: serial!.id, personId: s.dani });
+    expect((await diff(sheets, tabs)).fingerprint).not.toBe(a.fingerprint);
   });
 });

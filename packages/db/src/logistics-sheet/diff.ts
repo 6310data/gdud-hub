@@ -5,10 +5,11 @@
  * Soldiers are never created or edited here: דוח 1 owns them. A row for a soldier the app
  * doesn't have becomes an error line.
  */
-import { CONDITION_LABEL, normalizeSerial } from "@gdud/core";
+import { createHash } from "node:crypto";
+import { cleanKit, CONDITION_LABEL, kitToString, normalizeSerial, parseKitText } from "@gdud/core";
 import type { Tx } from "../index";
-import { cell, nameKey, statusToCondition, type SheetKey, type SheetRow, type Sheets } from "./sheet";
-import { loadState, type PersonRef, type State } from "./state";
+import { cell, nameKey, parseSheetDate, statusToCondition, type SheetKey, type SheetRow, type Sheets } from "./sheet";
+import { loadState, type PersonRef, type State, type StorageRef } from "./state";
 import type { ChangeLine, ChangeOp, LineGroup, SheetDiff } from "./types";
 
 export const ITEM_NAME_MAX = 80;
@@ -320,6 +321,252 @@ class Differ {
       this.push("kit", null, "appOnly", { t: "kit.remove", kitItemId: k.id }, { key, item: itemName, before: k.name });
     }
   }
+
+  /**
+   * The serial a new row needs: in the app (no dependency), created earlier in this diff, or
+   * created now from this row (a צ׳ that is only in 'גדודי').
+   */
+  private serialFor(serial: string, itemName: string, at: { sheet: SheetKey; row: number }, f: ErrorFields): Needs {
+    if (this.st.serialsBySerial.has(serial)) return { dependsOn: [] };
+    const planned = this.plannedSerials.get(serial);
+    if (planned) return { dependsOn: [planned.lineId] };
+    if (serial.length > SERIAL_MAX) return { error: `צ׳ ${serial} ארוך מדי` };
+    const needs = this.item(itemName, at, { category: null, message: MSG.itemNotInDropdowns });
+    if ("error" in needs) return needs;
+    const op: ChangeOp = { t: "serial.add", serial, itemName, category: null, condition: "ok" };
+    const lineId = this.push(at.sheet, at.row, "new", op, { key: serial, ...f, message: MSG.serialNotInTable, dependsOn: needs.dependsOn });
+    this.plannedSerials.set(serial, { lineId, itemName });
+    return { dependsOn: [lineId] };
+  }
+
+  /** 'גדודי': company, platoon, name, personal number, item, serial, notes, kit text → open assignments. */
+  assignments(rows: readonly SheetRow[]) {
+    const seen = new Map<string, number>();
+    for (const r of rows) {
+      const serial = normalizeSerial(cell(r, 6));
+      const itemName = cell(r, 5);
+      const f = { item: itemName || null, serial: serial || null, personName: nameKey(cell(r, 3)) || null };
+      if (!serial) {
+        this.error("assignments", r.row, "חסר צ׳ – אי אפשר להחתים פריט בלי צ׳", f);
+        continue;
+      }
+      const first = seen.get(serial);
+      if (first) {
+        this.error("assignments", r.row, `הצ׳ מופיע פעמיים (גם בשורה ${first})`, f);
+        continue;
+      }
+      seen.set(serial, r.row);
+      const res = this.person(cell(r, 3), cell(r, 4));
+      if ("error" in res) {
+        this.error("assignments", r.row, res.error, f);
+        continue;
+      }
+      const { person } = res;
+      const notes = cell(r, 7) || null;
+      const kit = parseKitText(cell(r, 8));
+      const app = this.st.serialsBySerial.get(serial);
+      const open = app ? this.st.openAssignments.get(app.id) : undefined;
+      const lf = { key: serial, item: app ? this.itemName(app.itemId) : itemName || null, serial, personName: person.fullName };
+
+      if (!open) {
+        const needs = this.serialFor(serial, itemName, { sheet: "assignments", row: r.row }, f);
+        if ("error" in needs) {
+          this.error("assignments", r.row, needs.error, f);
+          continue;
+        }
+        this.push("assignments", r.row, "new", { t: "assignment.add", serial, personId: person.id, notes, kit }, {
+          ...lf,
+          after: person.fullName,
+          dependsOn: needs.dependsOn,
+        });
+      } else if (open.personId !== person.id) {
+        const op: ChangeOp = { t: "assignment.transfer", assignmentId: open.id, serial, personId: person.id, notes, kit };
+        this.push("assignments", r.row, "change", op, { ...lf, before: this.holderName(open.personId), after: person.fullName });
+      } else if (kitToString(cleanKit(open.kit)) !== kitToString(kit)) {
+        this.push("assignments", r.row, "change", { t: "assignment.kit", assignmentId: open.id, kit }, {
+          ...lf,
+          before: kitToString(cleanKit(open.kit)),
+          after: kitToString(kit),
+        });
+      } else this.same("assignments");
+    }
+
+    for (const open of this.st.openAssignments.values()) {
+      const s = this.st.serialsById.get(open.serialId);
+      if (!s || seen.has(s.serial)) continue;
+      const holder = this.holderName(open.personId);
+      this.push("assignments", null, "appOnly", { t: "assignment.return", assignmentId: open.id }, {
+        key: s.serial,
+        item: this.itemName(s.itemId),
+        serial: s.serial,
+        personName: holder,
+        before: holder,
+      });
+    }
+  }
+
+  private holderName(personId: string): string {
+    return this.st.peopleById.get(personId)?.fullName ?? "חייל אחר";
+  }
+
+  /** 'אפסון': company, name, personal number, item, serial, in date, out date (filled = released). */
+  storage(rows: readonly SheetRow[]) {
+    const parsed: StorageRow[] = [];
+    const seen = new Map<string, number>();
+    for (const r of rows) {
+      const rec = this.storageRow(r);
+      if (!rec) continue;
+      const first = seen.get(rec.key);
+      if (first) {
+        this.error("storage", r.row, `השורה מופיעה פעמיים (גם בשורה ${first})`, rec.f);
+        continue;
+      }
+      seen.set(rec.key, r.row);
+      parsed.push(rec);
+    }
+
+    const appByKey = new Map<string, StorageRef>();
+    for (const s of this.st.storage) {
+      const serial = s.serialId ? (this.st.serialsById.get(s.serialId)?.serial ?? "") : "";
+      appByKey.set(storageKey(s.personId, serial, s.itemName, s.storedAt), s);
+    }
+    const matched = new Set<string>();
+    /** serial → what keeps it in storage: an app row (and the line releasing it, if any) or an earlier sheet row */
+    const openBySerial = new Map<string, { releasedBy: string | null }>();
+    for (const s of this.st.storage) {
+      const serial = s.serialId ? this.st.serialsById.get(s.serialId)?.serial : undefined;
+      if (serial && !s.releasedAt) openBySerial.set(serial, { releasedBy: null });
+    }
+
+    // rows the app already has
+    for (const rec of parsed) {
+      const app = appByKey.get(rec.key);
+      if (!app) continue;
+      matched.add(app.id);
+      const lf = { key: rec.key, ...rec.f, personName: rec.person.fullName };
+      if (!app.releasedAt) {
+        if (!rec.releasedAt) {
+          this.same("storage");
+          continue;
+        }
+        const id = this.push("storage", rec.row, "change", { t: "storage.release", storageId: app.id, releasedAt: rec.releasedAt.toISOString() }, {
+          ...lf,
+          before: "באפסון",
+          after: `שוחרר ${fmtDate(rec.releasedAt)}`,
+        });
+        if (rec.serial) openBySerial.set(rec.serial, { releasedBy: id });
+      } else if (!rec.releasedAt) {
+        this.error("storage", rec.row, "שוחרר באפליקציה – לא ניתן להחזיר לאפסון", rec.f);
+      } else if (app.releasedAt.getTime() !== rec.releasedAt.getTime()) {
+        this.push("storage", rec.row, "change", { t: "storage.release", storageId: app.id, releasedAt: rec.releasedAt.toISOString() }, {
+          ...lf,
+          before: `שוחרר ${fmtDate(app.releasedAt)}`,
+          after: `שוחרר ${fmtDate(rec.releasedAt)}`,
+        });
+      } else this.same("storage");
+    }
+
+    // rows the app doesn't have
+    for (const rec of parsed) {
+      if (appByKey.has(rec.key)) continue;
+      const dependsOn = [...rec.dependsOn];
+      if (rec.serial && !rec.releasedAt) {
+        const holder = openBySerial.get(rec.serial);
+        if (holder && !holder.releasedBy) {
+          this.error("storage", rec.row, `צ׳ ${rec.serial} כבר באפסון`, rec.f);
+          continue;
+        }
+        if (holder?.releasedBy) dependsOn.push(holder.releasedBy);
+        openBySerial.set(rec.serial, { releasedBy: null });
+      }
+      const op: ChangeOp = {
+        t: "storage.add",
+        personId: rec.person.id,
+        serial: rec.serial || null,
+        itemName: rec.itemName,
+        storedAt: rec.storedAt.toISOString(),
+        releasedAt: rec.releasedAt?.toISOString() ?? null,
+      };
+      this.push("storage", rec.row, "new", op, {
+        key: rec.key,
+        ...rec.f,
+        personName: rec.person.fullName,
+        after: rec.releasedAt ? `שוחרר ${fmtDate(rec.releasedAt)}` : `באפסון מ-${fmtDate(rec.storedAt)}`,
+        dependsOn,
+      });
+    }
+
+    for (const s of this.st.storage) {
+      if (s.releasedAt || matched.has(s.id)) continue;
+      const serial = s.serialId ? (this.st.serialsById.get(s.serialId)?.serial ?? null) : null;
+      this.push("storage", null, "appOnly", { t: "storage.release", storageId: s.id, releasedAt: new Date().toISOString() }, {
+        key: storageKey(s.personId, serial ?? "", s.itemName, s.storedAt),
+        item: s.itemName,
+        serial,
+        personName: this.holderName(s.personId),
+        before: `באפסון מ-${fmtDate(s.storedAt)}`,
+      });
+    }
+  }
+
+  /** One אפסון row, validated; an error line (and undefined) when it can't be read. */
+  private storageRow(r: SheetRow): StorageRow | undefined {
+    const raw = normalizeSerial(cell(r, 5));
+    const serial = raw === "0" ? "" : raw; // '0' marked an item without a serial
+    const ref = serial ? this.st.serialsBySerial.get(serial) : undefined;
+    const planned = serial && !ref ? this.plannedSerials.get(serial) : undefined;
+    const itemName = cell(r, 4) || (ref ? this.itemName(ref.itemId) : planned?.itemName) || "";
+    const f = { item: itemName || null, serial: serial || null, personName: nameKey(cell(r, 2)) || null };
+    const fail = (message: string) => void this.error("storage", r.row, message, f);
+    if (serial && !ref && !planned) return fail(`צ׳ ${serial} לא קיים בטבלת צ`);
+    if (!itemName) return fail("חסר פריט");
+    const storedAt = parseSheetDate(cell(r, 6));
+    if (!storedAt) return fail(cell(r, 6) ? `תאריך אפסון לא תקין "${cell(r, 6)}"` : "חסר תאריך אפסון");
+    const out = cell(r, 7);
+    const releasedAt = out ? parseSheetDate(out) : null;
+    if (releasedAt === undefined) return fail(`תאריך הוצאה לא תקין "${out}"`);
+    const res = this.person(cell(r, 2), cell(r, 3));
+    if ("error" in res) return fail(res.error);
+    return {
+      row: r.row,
+      key: storageKey(res.person.id, serial, itemName, storedAt),
+      person: res.person,
+      serial,
+      itemName,
+      storedAt,
+      releasedAt,
+      dependsOn: planned ? [planned.lineId] : [],
+      f,
+    };
+  }
+}
+
+interface StorageRow {
+  row: number;
+  key: string;
+  person: PersonRef;
+  /** "" = no serial */
+  serial: string;
+  itemName: string;
+  storedAt: Date;
+  releasedAt: Date | null;
+  dependsOn: string[];
+  f: ErrorFields;
+}
+
+function storageKey(personId: string, serial: string, itemName: string, storedAt: Date): string {
+  return `${personId}|${serial}|${itemName}|${storedAt.getTime()}`;
+}
+
+const pad = (n: number) => String(n).padStart(2, "0");
+const fmtDate = (d: Date) => `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+
+/** sha256 over what the preview showed: changes when the app (or the file) changes the lines. */
+function fingerprint(lines: readonly ChangeLine[]): string {
+  const shown = [...lines]
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    .map((l) => [l.id, l.before, l.after, l.message]);
+  return createHash("sha256").update(JSON.stringify(shown)).digest("hex");
 }
 
 /**
@@ -334,5 +581,7 @@ export async function diffLogistics(tx: Tx, sheets: Sheets, tabs: readonly Sheet
   if (chosen("dropdowns")) d.dropdowns(sheets.dropdowns!);
   if (chosen("serials")) d.serials(sheets.serials!);
   if (chosen("kit")) d.kit(sheets.kit!);
-  return { lines: d.lines, identical: d.identical, fingerprint: "" };
+  if (chosen("assignments")) d.assignments(sheets.assignments!);
+  if (chosen("storage")) d.storage(sheets.storage!);
+  return { lines: d.lines, identical: d.identical, fingerprint: fingerprint(d.lines) };
 }
