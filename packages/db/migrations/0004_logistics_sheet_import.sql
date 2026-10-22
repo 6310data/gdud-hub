@@ -1,0 +1,1 @@
+ALTER TYPE "public"."logistics_event_kind" ADD VALUE 'sheet_import';

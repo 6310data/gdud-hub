@@ -2,16 +2,20 @@
  * The shared logistics sheet core (src/logistics-sheet): reading an xlsx download, diffing it
  * against the app, and applying the selected lines — against the real migrations on PGlite.
  */
+import { randomUUID } from "node:crypto";
 import { count, eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import writeXlsxFile, { type SheetData } from "write-excel-file/node";
-import type { Tx } from "../src/index";
+import { runAsUser, type JwtClaims, type Tx } from "../src/index";
 import {
+  applyLogistics,
   cellText,
   diffLogistics,
   readXlsx,
   SheetFileError,
+  summarizeImport,
   type ChangeLine,
+  type SheetDiff,
   type SheetKey,
   type SheetRow,
   type Sheets,
@@ -19,7 +23,8 @@ import {
 import * as schema from "../src/schema/index";
 import { createTestDb, type PgliteDb, type TestIds } from "./pglite";
 
-const { people, logisticsItems, logisticsKitItems, logisticsSerials, logisticsAssignments, logisticsStorage } = schema;
+const { people, appUsers, memberships, logisticsItems, logisticsKitItems, logisticsSerials, logisticsAssignments, logisticsStorage, logisticsEvents } =
+  schema;
 
 /** Data rows numbered from 2 (row 1 is the header). */
 const rows = (...cells: string[][]): SheetRow[] => cells.map((c, i) => ({ row: i + 2, cells: c }));
@@ -356,5 +361,103 @@ describe("diffLogistics: assignments and storage", () => {
     const [serial] = await s.db.select().from(logisticsSerials).where(eq(logisticsSerials.serial, "7710432"));
     await s.db.insert(logisticsAssignments).values({ serialId: serial!.id, personId: s.dani });
     expect((await diff(sheets, tabs)).fingerprint).not.toBe(a.fingerprint);
+  });
+});
+
+describe("applyLogistics", () => {
+  let s: Seeded;
+  const admin = { sub: randomUUID(), email: "log-admin@example.com" };
+  const companyAdmin = { sub: randomUUID(), email: "plsr-admin@example.com" };
+  const claims = (u: { sub: string; email: string }): JwtClaims => ({
+    ...u,
+    app_metadata: { provider: "google" },
+    user_metadata: { email_verified: true },
+  });
+  const defaults = (d: SheetDiff) => d.lines.filter((l) => l.defaultOn).map((l) => l.id);
+  /** diff + apply in one transaction as `u`, like the Server Action */
+  const importAs = (u: typeof admin, sheets: Sheets, tabs: SheetKey[], pick: (d: SheetDiff) => string[] = defaults) =>
+    runAsUser(s.db as never, claims(u), async (tx) => {
+      const diff = await diffLogistics(tx, sheets, tabs);
+      return { diff, result: await applyLogistics(tx, diff, new Set(pick(diff))) };
+    });
+  const serialRow = async (serial: string) => (await s.db.select().from(logisticsSerials).where(eq(logisticsSerials.serial, serial)))[0];
+  const assignmentsOf = async (serial: string) => {
+    const row = await serialRow(serial);
+    return s.db.select().from(logisticsAssignments).where(eq(logisticsAssignments.serialId, row!.id));
+  };
+
+  const sheets: Sheets = {
+    serials: rows(
+      ...SERIALS.map((r) => (r[2] === "7710432" ? ["נשק", "M4 קצר", "7710432", "נשקייה תקול"] : r)),
+      ["נשק", "נגב", "8000001", "נשקייה תקין"],
+    ),
+    assignments: rows(signed("רון לוי", "7654321", "7710433")),
+  };
+  const tabs: SheetKey[] = ["serials", "assignments"];
+
+  beforeAll(async () => {
+    s = await seed();
+    const users = await s.db
+      .insert(appUsers)
+      .values([
+        { email: admin.email, authUserId: admin.sub },
+        { email: companyAdmin.email, authUserId: companyAdmin.sub },
+      ])
+      .returning();
+    await s.db.insert(memberships).values([
+      { userId: users[0]!.id, module: "logistics", role: "admin", unitId: null },
+      { userId: users[1]!.id, module: "logistics", role: "admin", unitId: s.ids.plsr },
+    ]);
+  });
+
+  it("applies every default line as a battalion logistics admin", async () => {
+    const { result } = await importAs(admin, sheets, tabs);
+    expect(result).toEqual({ applied: { new: 2, change: 2, appOnly: 0, error: 0 }, blocked: [] });
+    const history = await assignmentsOf("7710433");
+    expect(history.find((a) => a.personId === s.dani)!.returnedAt).not.toBeNull();
+    expect(history.find((a) => a.personId === s.ron)!.returnedAt).toBeNull();
+    expect((await serialRow("7710432"))!.condition).toBe("broken");
+    const [negev] = await s.db.select().from(logisticsItems).where(eq(logisticsItems.name, "נגב"));
+    expect((await serialRow("8000001"))!.itemId).toBe(negev!.id);
+  });
+
+  it("re-importing the same sheet right after finds nothing new or changed", async () => {
+    const diff = await runAsUser(s.db as never, claims(admin), (tx) => diffLogistics(tx, sheets, tabs));
+    expect(diff.lines.filter((l) => l.group === "new" || l.group === "change")).toEqual([]);
+  });
+
+  it("a line whose dependency is unticked is blocked, not applied", async () => {
+    const more: Sheets = { serials: rows(["נשק", "מאג", "8000002", "נשקייה תקין"]) };
+    const { result } = await importAs(admin, more, ["serials"], (d) => d.lines.filter((l) => l.kind === "serial.add").map((l) => l.id));
+    expect(result.blocked).toEqual([{ id: "serials:serial.add:8000002", reason: "תלוי בשורה שלא סומנה" }]);
+    expect(await serialRow("8000002")).toBeUndefined();
+  });
+
+  it("an app-only assignment is returned only when ticked", async () => {
+    const other: Sheets = { assignments: rows(signed("דני כהן", "1234567", "7710432")) };
+    await importAs(admin, other, ["assignments"]);
+    expect((await assignmentsOf("7710433")).filter((a) => !a.returnedAt)).toHaveLength(1);
+    const { result } = await importAs(admin, other, ["assignments"], (d) => d.lines.map((l) => l.id));
+    expect(result.applied.appOnly).toBe(1);
+    expect((await assignmentsOf("7710433")).filter((a) => !a.returnedAt)).toHaveLength(0);
+  });
+
+  it("a company-scoped logistics admin can't apply catalogue changes (RLS)", async () => {
+    await expect(importAs(companyAdmin, { serials: rows(["נשק", "M4 קצר", "8000003", ""]) }, ["serials"])).rejects.toThrow();
+    expect(await serialRow("8000003")).toBeUndefined();
+  });
+
+  it("summarizes the import without cell values", () => {
+    const result = { applied: { new: 7, change: 6, appOnly: 1, error: 0 }, blocked: [] };
+    expect(summarizeImport("לוגיסטיקה.xlsx", ["serials", "assignments"], result, 3)).toBe(
+      "לוגיסטיקה.xlsx · לשוניות: טבלת צ, גדודי · חדשים 7 · שינויים 6 · הוסרו 1 · לא סומנו 3",
+    );
+  });
+
+  it("a battalion logistics admin can log a sheet_import event with no soldier", async () => {
+    const rowsIn = await runAsUser(s.db as never, claims(admin), (tx) =>
+      tx.insert(logisticsEvents).values({ kind: "sheet_import", details: "x" }).returning(),
+    );
+    expect(rowsIn).toHaveLength(1);
   });
 });
