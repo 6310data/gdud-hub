@@ -40,7 +40,57 @@ export function statusToCondition(status: string): Condition | undefined {
   return undefined;
 }
 
-/** Sheet display dates: dd/MM/yyyy [HH:mm[:ss]] (also . or - separators) or yyyy-MM-dd [HH:mm[:ss]]. Local time. */
+/**
+ * The sheet is kept in Israel, so its dates are Israel wall time — whatever zone the server runs
+ * in (Vercel: UTC; a developer's laptop: Israel). Every date the import reads or shows goes
+ * through this zone, so the same sheet gives the same rows everywhere.
+ */
+export const SHEET_TIME_ZONE = "Asia/Jerusalem";
+
+const wallClock = new Intl.DateTimeFormat("en-US", {
+  timeZone: SHEET_TIME_ZONE,
+  hourCycle: "h23",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+});
+
+/** Israel wall-clock fields of an instant (month 1–12). */
+function wallParts(d: Date): [number, number, number, number, number, number] {
+  const p = Object.fromEntries(wallClock.formatToParts(d).map((x) => [x.type, Number(x.value)]));
+  return [p.year!, p.month!, p.day!, p.hour!, p.minute!, p.second!];
+}
+
+/** The instant at which Israel's clock shows this time (month 1–12). */
+export function sheetTime(y: number, mo: number, d: number, h = 0, mi = 0, s = 0): Date {
+  const wanted = Date.UTC(y, mo - 1, d, h, mi, s);
+  let t = wanted;
+  // two rounds settle the zone offset, including on DST change days
+  for (let i = 0; i < 2; i++) {
+    const [wy, wmo, wd, wh, wmi, ws] = wallParts(new Date(t));
+    t += wanted - Date.UTC(wy, wmo - 1, wd, wh, wmi, ws);
+  }
+  return new Date(t);
+}
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+/** The Israel calendar day of an instant, "yyyy-MM-dd" — how אפסון rows are matched. */
+export function sheetDay(d: Date): string {
+  const [y, mo, day] = wallParts(d);
+  return `${y}-${pad2(mo)}-${pad2(day)}`;
+}
+
+/** dd/MM/yyyy in Israel time, as the sheet shows dates. */
+export function formatSheetDate(d: Date): string {
+  const [y, mo, day] = wallParts(d);
+  return `${pad2(day)}/${pad2(mo)}/${y}`;
+}
+
+/** Sheet display dates: dd/MM/yyyy [HH:mm[:ss]] (also . or - separators) or yyyy-MM-dd [HH:mm[:ss]]. Israel time. */
 export function parseSheetDate(text: string): Date | undefined {
   const t = text.trim();
   const dmy = /^(\d{1,2})[./-](\d{1,2})[./-](\d{4})(?:[ T,]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/.exec(t);
@@ -48,8 +98,7 @@ export function parseSheetDate(text: string): Date | undefined {
   const parts = dmy ? [dmy[3], dmy[2], dmy[1], dmy[4], dmy[5], dmy[6]] : ymd ? ymd.slice(1, 7) : undefined;
   if (!parts) return undefined;
   const [y, mo, d, h, mi, s] = parts.map((p) => Number(p ?? 0)) as [number, number, number, number, number, number];
-  const date = new Date(y, mo - 1, d, h, mi, s);
-  const valid =
-    date.getFullYear() === y && date.getMonth() === mo - 1 && date.getDate() === d && h < 24 && mi < 60 && s < 60;
-  return valid ? date : undefined;
+  const day = new Date(Date.UTC(y, mo - 1, d));
+  const valid = day.getUTCFullYear() === y && day.getUTCMonth() === mo - 1 && day.getUTCDate() === d && h < 24 && mi < 60 && s < 60;
+  return valid ? sheetTime(y, mo, d, h, mi, s) : undefined;
 }

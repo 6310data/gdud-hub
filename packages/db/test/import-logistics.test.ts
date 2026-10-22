@@ -115,9 +115,10 @@ describe("parsing helpers", () => {
     ]);
   });
 
-  it("reads sheet dates day-first, rejects impossible ones", () => {
-    expect(parseSheetDate("15/08/2026 10:30")).toEqual(new Date(2026, 7, 15, 10, 30));
-    expect(parseSheetDate("2026-08-15")).toEqual(new Date(2026, 7, 15));
+  it("reads sheet dates day-first as Israel time, rejects impossible ones", () => {
+    expect(parseSheetDate("15/08/2026 10:30")).toEqual(new Date("2026-08-15T10:30:00+03:00"));
+    expect(parseSheetDate("2026-08-15")).toEqual(new Date("2026-08-15T00:00:00+03:00"));
+    expect(parseSheetDate("15/01/2026")).toEqual(new Date("2026-01-15T00:00:00+02:00")); // winter time
     expect(parseSheetDate("31/02/2026")).toBeUndefined();
     expect(parseSheetDate("אתמול")).toBeUndefined();
   });
@@ -181,7 +182,7 @@ describe("importLogistics (CLI)", () => {
   it("imports storage rows; a filled out-date means released", async () => {
     const rows = await db.select().from(logisticsStorage);
     const helmet = rows.find((r) => r.itemName === "קסדה");
-    expect(helmet).toMatchObject({ serialId: null, storedAt: new Date(2026, 7, 15, 10, 30), releasedAt: new Date(2026, 7, 20) });
+    expect(helmet).toMatchObject({ serialId: null, storedAt: new Date("2026-08-15T10:30:00+03:00"), releasedAt: new Date("2026-08-20T00:00:00+03:00") });
     expect(rows.filter((r) => r.serialId && !r.releasedAt)).toHaveLength(2);
   });
 

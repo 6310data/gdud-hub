@@ -21,6 +21,7 @@ import {
   type Sheets,
 } from "../src/logistics-sheet/index";
 import * as schema from "../src/schema/index";
+import { carryTicks, checkUploadFile, MAX_FILE_BYTES } from "../src/logistics-sheet/preview";
 import { createTestDb, type PgliteDb, type TestIds } from "./pglite";
 
 const { people, appUsers, memberships, logisticsItems, logisticsKitItems, logisticsSerials, logisticsAssignments, logisticsStorage, logisticsEvents } =
@@ -243,8 +244,8 @@ describe("diffLogistics: assignments and storage", () => {
     s = await seed();
     const [serial] = await s.db.select().from(logisticsSerials).where(eq(logisticsSerials.serial, "7710433"));
     await s.db.insert(logisticsStorage).values([
-      { personId: s.dani, serialId: serial!.id, itemName: "M4 קצר", storedAt: new Date(2026, 8, 1) },
-      { personId: s.ron, itemName: "קסדה", storedAt: new Date(2026, 7, 15, 10, 30), releasedAt: new Date(2026, 7, 20) },
+      { personId: s.dani, serialId: serial!.id, itemName: "M4 קצר", storedAt: new Date("2026-09-01T00:00:00+03:00") },
+      { personId: s.ron, itemName: "קסדה", storedAt: new Date("2026-08-15T10:30:00+03:00"), releasedAt: new Date("2026-08-20T00:00:00+03:00") },
     ]);
   });
 
@@ -333,7 +334,7 @@ describe("diffLogistics: assignments and storage", () => {
     );
     expect(lines).toHaveLength(2);
     expect(lines.find((l) => l.row === 2)).toMatchObject({ group: "change", kind: "storage.release", before: "באפסון" });
-    expect(lines.find((l) => l.row === 2)!.op).toMatchObject({ t: "storage.release", releasedAt: new Date(2026, 8, 20).toISOString() });
+    expect(lines.find((l) => l.row === 2)!.op).toMatchObject({ t: "storage.release", releasedAt: new Date("2026-09-20T00:00:00+03:00").toISOString() });
     expect(lines.find((l) => l.row === 3)).toMatchObject({ group: "error", message: "שוחרר באפליקציה – לא ניתן להחזיר לאפסון" });
   });
 
@@ -345,7 +346,7 @@ describe("diffLogistics: assignments and storage", () => {
       personId: s.ron,
       serial: null,
       itemName: "אפוד",
-      storedAt: new Date(2026, 9, 1).toISOString(),
+      storedAt: new Date("2026-10-01T00:00:00+03:00").toISOString(),
       releasedAt: null,
     });
     expect(lines.find((l) => l.group === "appOnly")).toMatchObject({ kind: "storage.release", defaultOn: false, serial: "7710433", personName: "דני כהן" });
@@ -459,5 +460,142 @@ describe("applyLogistics", () => {
       tx.insert(logisticsEvents).values({ kind: "sheet_import", details: "x" }).returning(),
     );
     expect(rowsIn).toHaveLength(1);
+  });
+});
+
+/* ── review fixes ─────────────────────────────────────────────────────────── */
+
+describe("diffLogistics: אפסון dates", () => {
+  let s: Seeded;
+  const diff = (sheets: Sheets, tabs: SheetKey[]) => diffLogistics(s.db as unknown as Tx, sheets, tabs);
+  const applyDefaults = (sheets: Sheets, tabs: SheetKey[]) =>
+    s.db.transaction(async (t) => {
+      const tx = t as unknown as Tx;
+      const d = await diffLogistics(tx, sheets, tabs);
+      return applyLogistics(tx, d, new Set(d.lines.filter((l) => l.defaultOn).map((l) => l.id)));
+    });
+
+  beforeAll(async () => {
+    s = await seed();
+  });
+
+  it("a row stored in the app during the day matches the sheet's date", async () => {
+    await s.db.insert(logisticsStorage).values({ personId: s.dani, itemName: "אפוד", storedAt: new Date("2026-09-01T10:15:00+03:00") });
+    const { lines, identical } = await diff({ storage: rows(stored("דני כהן", "1234567", "אפוד", "", "01/09/2026")) }, ["storage"]);
+    expect(lines).toEqual([]);
+    expect(identical.storage).toBe(1);
+  });
+
+  it("two identical rows (same soldier, item and day) match two app rows, not a duplicate error", async () => {
+    await s.db.insert(logisticsStorage).values({ personId: s.ron, itemName: "מחסנית", storedAt: new Date("2026-09-03T09:00:00+03:00") });
+    const sheet = { storage: rows(...[1, 2].map(() => stored("רון לוי", "7654321", "מחסנית", "", "03/09/2026"))) };
+    const before = await diff(sheet, ["storage"]);
+    expect(before.lines.filter((l) => l.personName === "רון לוי").map((l) => l.group)).toEqual(["new"]);
+    await applyDefaults(sheet, ["storage"]);
+    expect((await diff(sheet, ["storage"])).lines.filter((l) => l.personName === "רון לוי")).toEqual([]);
+  });
+
+  it("an import gives the same result whatever the server's time zone", async () => {
+    const sheet = {
+      storage: rows(
+        stored("דני כהן", "1234567", "M4 קצר", "7710432", "01/09/2026", "05/09/2026"),
+        stored("דני כהן", "1234567", "קסדה", "", "02/09/2026"),
+        stored("דני כהן", "1234567", "אפוד", "", "01/09/2026"),
+      ),
+    };
+    const prev = process.env.TZ;
+    try {
+      process.env.TZ = "Asia/Jerusalem";
+      await applyDefaults(sheet, ["storage"]);
+      process.env.TZ = "UTC";
+      const after = await diff(sheet, ["storage"]);
+      expect(after.lines.filter((l) => l.personName === "דני כהן")).toEqual([]);
+    } finally {
+      if (prev === undefined) delete process.env.TZ;
+      else process.env.TZ = prev;
+    }
+  });
+});
+
+describe("diffLogistics: a serial the sheet still uses is never offered for deletion", () => {
+  let s: Seeded;
+  const diff = (sheets: Sheets, tabs: SheetKey[]) => diffLogistics(s.db as unknown as Tx, sheets, tabs);
+  const withoutUnused = SERIALS.filter((r) => r[2] !== "9990001");
+
+  beforeAll(async () => {
+    s = await seed();
+  });
+
+  it("listed in גדודי", async () => {
+    const { lines } = await diff(
+      { serials: rows(...withoutUnused), assignments: rows(signed("דני כהן", "1234567", "7710433"), signed("רון לוי", "7654321", "99900-01")) },
+      ["serials", "assignments"],
+    );
+    expect(byId(lines, "serials:serial.delete:9990001")).toMatchObject({
+      selectable: false,
+      op: null,
+      message: "מופיע בגיליון (גדודי / אפסון) – לא ניתן למחוק",
+    });
+    expect(byId(lines, "assignments:assignment.add:9990001")).toMatchObject({ group: "new" });
+  });
+
+  it("listed in אפסון", async () => {
+    const { lines } = await diff(
+      { serials: rows(...withoutUnused), storage: rows(stored("רון לוי", "7654321", "M4 קצר", "9990001", "01/09/2026")) },
+      ["serials", "storage"],
+    );
+    expect(byId(lines, "serials:serial.delete:9990001")).toMatchObject({ selectable: false, op: null });
+  });
+});
+
+describe("re-importing right after applying, every tab", () => {
+  let s: Seeded;
+  const sheets: Sheets = {
+    dropdowns: rows(["", "", "נשק", "רובה", "111", "M4 קצר"], ["", "", "נשק", "מקלע", "", "נגב"]),
+    serials: rows(...SERIALS, ["נשק", "נגב", "8000001", "נשקייה תקול"]),
+    kit: rows(["M4 קצר", "מחסנית", "3"], ["נגב", "רצועה", ""]),
+    assignments: rows(signed("רון לוי", "7654321", "7710433", "3 מחסניות"), signed("דני כהן", "1234567", "8000001")),
+    storage: rows(
+      stored("רון לוי", "7654321", "M4 קצר", "7710433", "01/09/2026"),
+      stored("דני כהן", "1234567", "קסדה", "0", "15/08/2026 10:30", "20/08/2026"),
+    ),
+  };
+  const tabs: SheetKey[] = ["dropdowns", "serials", "kit", "assignments", "storage"];
+
+  beforeAll(async () => {
+    s = await seed();
+  });
+
+  it("finds nothing new or changed after applying every selectable line", async () => {
+    await s.db.insert(logisticsKitItems).values({ itemId: s.item, name: "ישן" });
+    const first = await s.db.transaction(async (t) => {
+      const tx = t as unknown as Tx;
+      const d = await diffLogistics(tx, sheets, tabs);
+      return applyLogistics(tx, d, new Set(d.lines.filter((l) => l.selectable).map((l) => l.id)));
+    });
+    expect(first.blocked).toEqual([]);
+    expect(first.applied.new).toBeGreaterThan(5);
+    const again = await diffLogistics(s.db as unknown as Tx, sheets, tabs);
+    expect(again.lines.filter((l) => l.group !== "appOnly" || l.selectable)).toEqual([]);
+  });
+});
+
+describe("preview helpers", () => {
+  const line = (id: string, defaultOn: boolean, selectable = true) => ({ id, defaultOn, selectable });
+
+  it("a re-preview keeps the admin's ticks for lines it still has; new lines get their default", () => {
+    const prev = { lines: [line("a", true), line("b", true), line("c", false)], selected: new Set(["a", "c"]) };
+    const next = [line("a", true), line("b", true), line("c", false), line("d", true), line("e", false, false)];
+    expect([...carryTicks(prev, next)].sort()).toEqual(["a", "c", "d"]);
+    expect([...carryTicks(null, next)].sort()).toEqual(["a", "b", "d"]);
+  });
+
+  it("checks an upload before it is sent or parsed", () => {
+    const type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    expect(checkUploadFile({ name: "לוגיסטיקה.xlsx", type, size: 1000 })).toBeNull();
+    expect(checkUploadFile({ name: "לוגיסטיקה.XLSX", type: "", size: 1000 })).toBeNull();
+    expect(checkUploadFile({ name: "a.xlsx", type, size: 0 })).toBe("בחרו קובץ");
+    expect(checkUploadFile({ name: "a.csv", type: "text/csv", size: 10 })).toBe("יש להעלות קובץ Excel ‏(.xlsx)");
+    expect(checkUploadFile({ name: "a.xlsx", type, size: MAX_FILE_BYTES + 1 })).toBe("הקובץ גדול מדי (עד 4MB)");
   });
 });

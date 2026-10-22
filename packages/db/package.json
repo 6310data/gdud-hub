@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./schema": "./src/schema/index.ts",
-    "./logistics-sheet": "./src/logistics-sheet/index.ts"
+    "./logistics-sheet": "./src/logistics-sheet/index.ts",
+    "./logistics-sheet/preview": "./src/logistics-sheet/preview.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

@@ -6,13 +6,24 @@
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import type { ApplyResult, PreviewLine, SheetKey, XlsxTab } from "@gdud/db/logistics-sheet";
+import { carryTicks, checkUploadFile } from "@gdud/db/logistics-sheet/preview";
 import { Button } from "@gdud/ui";
 import { applySheetImport, inspectSheetFile, previewSheetImport, type PreviewData } from "../_actions/sheet-import";
+import type { ActionOutcome } from "@/lib/action-result";
 import { ChangeTable } from "./change-table";
 import { STALE_PREVIEW } from "./messages";
 
 type Step = "upload" | "tabs" | "preview" | "result";
 const DEFAULT_TABS: readonly SheetKey[] = ["serials", "assignments", "storage"];
+
+/** An action call that never throws: a rejected request (too large, network) becomes a Hebrew error. */
+async function safe<T>(call: () => Promise<ActionOutcome<T>>): Promise<ActionOutcome<T>> {
+  try {
+    return await call();
+  } catch {
+    return { error: "הבקשה לא הגיעה לשרת – בדקו את החיבור ואת גודל הקובץ (עד 4MB) ונסו שוב" };
+  }
+}
 
 const count = (lines: readonly PreviewLine[], pred: (l: PreviewLine) => boolean) => lines.filter(pred).length;
 
@@ -41,10 +52,12 @@ export function ImportFlow() {
   function pickFile(f: File | null) {
     setError(undefined);
     if (!f) return;
+    const problem = checkUploadFile(f);
+    if (problem) return setError(problem);
     start(async () => {
       const fd = new FormData();
       fd.append("file", f);
-      const r = await inspectSheetFile(fd);
+      const r = await safe(() => inspectSheetFile(fd));
       if (!r.ok) return setError(r.error);
       setFile(f);
       setTabs(r.data.tabs);
@@ -56,10 +69,11 @@ export function ImportFlow() {
   function showPreview() {
     setError(undefined);
     start(async () => {
-      const r = await previewSheetImport(form({ tabs: chosenTabs }));
+      const r = await safe(() => previewSheetImport(form({ tabs: chosenTabs })));
       if (!r.ok) return setError(r.error);
       setPreview(r.data);
-      setSelected(new Set(r.data.lines.filter((l) => l.defaultOn).map((l) => l.id)));
+      // "הצג שוב" keeps what the admin unticked; only lines that are new get their default
+      setSelected(carryTicks(preview ? { lines: preview.lines, selected } : null, r.data.lines));
       setActive(chosenTabs.find((k) => r.data.lines.some((l) => l.sheet === k)) ?? chosenTabs[0] ?? null);
       setStep("preview");
     });
@@ -69,7 +83,7 @@ export function ImportFlow() {
     if (!preview) return;
     setError(undefined);
     start(async () => {
-      const r = await applySheetImport(form({ tabs: chosenTabs, selected: [...selected], fingerprint: [preview.fingerprint] }));
+      const r = await safe(() => applySheetImport(form({ tabs: chosenTabs, selected: [...selected], fingerprint: [preview.fingerprint] })));
       if (!r.ok) return setError(r.error);
       setResult(r.data);
       setStep("result");
@@ -181,7 +195,10 @@ function UploadStep({ pending, onFile }: { pending: boolean; onFile(f: File | nu
           type="file"
           accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           disabled={pending}
-          onChange={(e) => onFile(e.target.files?.[0] ?? null)}
+          onChange={(e) => {
+            onFile(e.target.files?.[0] ?? null);
+            e.target.value = ""; // choosing the same file again fires onChange again
+          }}
         />
       </label>
       {pending ? <span className="tz-footnote">קורא את הקובץ…</span> : null}

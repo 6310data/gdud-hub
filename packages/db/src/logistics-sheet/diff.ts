@@ -8,20 +8,23 @@
 import { createHash } from "node:crypto";
 import { cleanKit, CONDITION_LABEL, kitToString, normalizeSerial, parseKitText } from "@gdud/core";
 import type { Tx } from "../index";
-import { cell, nameKey, parseSheetDate, statusToCondition, type SheetKey, type SheetRow, type Sheets } from "./sheet";
+import { MSG } from "./preview";
+import {
+  cell,
+  formatSheetDate,
+  nameKey,
+  parseSheetDate,
+  sheetDay,
+  statusToCondition,
+  type SheetKey,
+  type SheetRow,
+  type Sheets,
+} from "./sheet";
 import { loadState, type PersonRef, type State, type StorageRef } from "./state";
 import type { ChangeLine, ChangeOp, LineGroup, SheetDiff } from "./types";
 
 export const ITEM_NAME_MAX = 80;
 export const SERIAL_MAX = 40;
-
-export const MSG = {
-  noSoldier: "החייל לא קיים באפליקציה — יש להוסיף אותו בדוח 1",
-  itemDiffers: "סוג הפריט שונה מהאפליקציה — לתיקון ידני",
-  inUse: "בשימוש – לא ניתן למחוק",
-  itemNotInDropdowns: "פריט לא היה ב-Dropdowns",
-  serialNotInTable: "צ׳ לא היה בטבלת צ",
-} as const;
 
 const dash = (v: string | null) => v ?? "—";
 const catalogueText = (c: string | null, s: string | null, k: string | null) => `${dash(c)} / ${dash(s)} / ${dash(k)}`;
@@ -209,8 +212,8 @@ class Differ {
     }
   }
 
-  /** 'טבלת צ': category, item, serial, status. */
-  serials(rows: readonly SheetRow[]) {
+  /** 'טבלת צ': category, item, serial, status. `inOtherTabs` = serials the chosen גדודי / אפסון rows name. */
+  serials(rows: readonly SheetRow[], inOtherTabs: ReadonlySet<string>) {
     const seen = new Map<string, number>();
     for (const r of rows) {
       const serial = normalizeSerial(cell(r, 3));
@@ -272,7 +275,9 @@ class Differ {
     for (const s of this.st.serialsBySerial.values()) {
       if (seen.has(s.serial)) continue;
       const f = { key: s.serial, item: this.itemName(s.itemId), serial: s.serial };
+      // a serial that another chosen tab still lists would be signed / stored and deleted in one go
       if (this.st.usedSerials.has(s.id)) this.info("serials", "serial.delete", { ...f, message: MSG.inUse });
+      else if (inOtherTabs.has(s.serial)) this.info("serials", "serial.delete", { ...f, message: MSG.inSheet });
       else this.push("serials", null, "appOnly", { t: "serial.delete", serialId: s.id }, f);
     }
   }
@@ -411,24 +416,30 @@ class Differ {
 
   /** 'אפסון': company, name, personal number, item, serial, in date, out date (filled = released). */
   storage(rows: readonly SheetRow[]) {
+    // Rows match on soldier + צ׳ + item + Israel day (app rows carry a time of day, the sheet
+    // usually doesn't). Identical rows (two magazines stored the same day) are told apart by
+    // their order: the n-th sheet row matches the n-th app row.
+    const sheetCount = new Map<string, number>();
     const parsed: StorageRow[] = [];
-    const seen = new Map<string, number>();
     for (const r of rows) {
       const rec = this.storageRow(r);
       if (!rec) continue;
-      const first = seen.get(rec.key);
-      if (first) {
-        this.error("storage", r.row, `השורה מופיעה פעמיים (גם בשורה ${first})`, rec.f);
-        continue;
-      }
-      seen.set(rec.key, r.row);
-      parsed.push(rec);
+      const n = (sheetCount.get(rec.key) ?? 0) + 1;
+      sheetCount.set(rec.key, n);
+      parsed.push({ ...rec, key: `${rec.key}#${n}` });
     }
 
+    const appCount = new Map<string, number>();
     const appByKey = new Map<string, StorageRef>();
-    for (const s of this.st.storage) {
+    const appKey = new Map<string, string>(); // storage id → key
+    const byTime = [...this.st.storage].sort((a, b) => a.storedAt.getTime() - b.storedAt.getTime() || (a.id < b.id ? -1 : 1));
+    for (const s of byTime) {
       const serial = s.serialId ? (this.st.serialsById.get(s.serialId)?.serial ?? "") : "";
-      appByKey.set(storageKey(s.personId, serial, s.itemName, s.storedAt), s);
+      const base = storageKey(s.personId, serial, s.itemName, s.storedAt);
+      const n = (appCount.get(base) ?? 0) + 1;
+      appCount.set(base, n);
+      appByKey.set(`${base}#${n}`, s);
+      appKey.set(s.id, `${base}#${n}`);
     }
     const matched = new Set<string>();
     /** serial → what keeps it in storage: an app row (and the line releasing it, if any) or an earlier sheet row */
@@ -457,7 +468,7 @@ class Differ {
         if (rec.serial) openBySerial.set(rec.serial, { releasedBy: id });
       } else if (!rec.releasedAt) {
         this.error("storage", rec.row, "שוחרר באפליקציה – לא ניתן להחזיר לאפסון", rec.f);
-      } else if (app.releasedAt.getTime() !== rec.releasedAt.getTime()) {
+      } else if (sheetDay(app.releasedAt) !== sheetDay(rec.releasedAt)) {
         this.push("storage", rec.row, "change", { t: "storage.release", storageId: app.id, releasedAt: rec.releasedAt.toISOString() }, {
           ...lf,
           before: `שוחרר ${fmtDate(app.releasedAt)}`,
@@ -500,7 +511,7 @@ class Differ {
       if (s.releasedAt || matched.has(s.id)) continue;
       const serial = s.serialId ? (this.st.serialsById.get(s.serialId)?.serial ?? null) : null;
       this.push("storage", null, "appOnly", { t: "storage.release", storageId: s.id, releasedAt: new Date().toISOString() }, {
-        key: storageKey(s.personId, serial ?? "", s.itemName, s.storedAt),
+        key: appKey.get(s.id)!,
         item: s.itemName,
         serial,
         personName: this.holderName(s.personId),
@@ -555,11 +566,10 @@ interface StorageRow {
 }
 
 function storageKey(personId: string, serial: string, itemName: string, storedAt: Date): string {
-  return `${personId}|${serial}|${itemName}|${storedAt.getTime()}`;
+  return `${personId}|${serial}|${itemName}|${sheetDay(storedAt)}`;
 }
 
-const pad = (n: number) => String(n).padStart(2, "0");
-const fmtDate = (d: Date) => `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+const fmtDate = formatSheetDate;
 
 /** sha256 over what the preview showed: changes when the app (or the file) changes the lines. */
 function fingerprint(lines: readonly ChangeLine[]): string {
@@ -579,7 +589,13 @@ export async function diffLogistics(tx: Tx, sheets: Sheets, tabs: readonly Sheet
   const chosen = (k: SheetKey) => tabs.includes(k) && sheets[k] !== undefined;
   // catalogue before serials before kit: a later tab may need an item / serial created by an earlier one
   if (chosen("dropdowns")) d.dropdowns(sheets.dropdowns!);
-  if (chosen("serials")) d.serials(sheets.serials!);
+  if (chosen("serials")) {
+    const inOtherTabs = new Set([
+      ...(chosen("assignments") ? sheets.assignments!.map((r) => normalizeSerial(cell(r, 6))) : []),
+      ...(chosen("storage") ? sheets.storage!.map((r) => normalizeSerial(cell(r, 5))) : []),
+    ]);
+    d.serials(sheets.serials!, inOtherTabs);
+  }
   if (chosen("kit")) d.kit(sheets.kit!);
   if (chosen("assignments")) d.assignments(sheets.assignments!);
   if (chosen("storage")) d.storage(sheets.storage!);

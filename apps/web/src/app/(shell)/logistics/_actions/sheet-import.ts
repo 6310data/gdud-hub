@@ -9,6 +9,7 @@ import { z } from "zod";
 import { withUser } from "@gdud/db";
 import {
   applyLogistics,
+  checkUploadFile,
   diffLogistics,
   readXlsx,
   SHEET_KEYS,
@@ -25,8 +26,6 @@ import { dbErrorMessage, pgCode, UserError, type ActionOutcome } from "@/lib/act
 import { STALE_PREVIEW } from "../import/messages";
 import { firstIssue, logEvents, logisticsCtx, NO_PERMISSION, revalidateLogistics } from "./common";
 
-const MAX_FILE_BYTES = 4 * 1024 * 1024;
-const XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 const MAX_SELECTED = 5000;
 
 const tabsSchema = z
@@ -54,10 +53,9 @@ async function importCtx() {
 /** The uploaded workbook, checked by type and size before parsing; parsed in memory and dropped. */
 async function readUpload(form: FormData): Promise<{ fileName: string; book: XlsxBook }> {
   const file = form.get("file");
-  if (!(file instanceof File) || file.size === 0) throw new UserError("בחרו קובץ");
-  const isXlsx = /\.xlsx$/i.test(file.name) && (file.type === "" || file.type === XLSX_TYPE);
-  if (!isXlsx) throw new UserError("יש להעלות קובץ Excel ‏(.xlsx)");
-  if (file.size > MAX_FILE_BYTES) throw new UserError("הקובץ גדול מדי (עד 4MB)");
+  if (!(file instanceof File)) throw new UserError("בחרו קובץ");
+  const problem = checkUploadFile(file);
+  if (problem) throw new UserError(problem);
   try {
     return { fileName: file.name, book: await readXlsx(new Uint8Array(await file.arrayBuffer())) };
   } catch (e) {

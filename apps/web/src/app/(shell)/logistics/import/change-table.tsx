@@ -5,6 +5,7 @@
  */
 import type { CSSProperties, ReactNode } from "react";
 import type { LineGroup, LineKind, PreviewLine } from "@gdud/db/logistics-sheet";
+import { MSG } from "@gdud/db/logistics-sheet/preview";
 import { Chip, Serial } from "@gdud/ui";
 
 const SECTIONS: { group: LineGroup; title: string; hint: string }[] = [
@@ -27,8 +28,8 @@ const KIND_LABEL: Partial<Record<LineKind, string>> = {
 const GROUP_LABEL: Record<LineGroup, string> = { new: "חדש", change: "שינוי", appOnly: "רק באפליקציה", error: "שגיאה" };
 const DANGER_CHIP: CSSProperties = { background: "var(--danger-soft)", color: "var(--danger)" };
 
-/** An error message that names a soldier missing from the app: those rows are grouped per soldier. */
-export const NO_SOLDIER = "החייל לא קיים באפליקציה — יש להוסיף אותו בדוח 1";
+/** Rows for a soldier missing from the app are grouped per soldier. */
+const NO_SOLDIER = MSG.noSoldier;
 
 export interface ChangeTableProps {
   lines: PreviewLine[];
