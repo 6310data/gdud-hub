@@ -5,3 +5,5 @@
 export * from "./sheet";
 export * from "./csv";
 export * from "./xlsx";
+export * from "./types";
+export { diffLogistics } from "./diff";
