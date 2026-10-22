@@ -22,6 +22,12 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   transpilePackages: ["@gdud/ui", "@gdud/core", "@gdud/auth", "@gdud/db"],
+  experimental: {
+    serverActions: {
+      // the דוח 1 sheet import uploads the round's xlsx (≈2 MB); Vercel rejects bodies over 4.5 MB
+      bodySizeLimit: "4mb",
+    },
+  },
   turbopack: {
     root: path.resolve(process.cwd(), "../.."),
   },

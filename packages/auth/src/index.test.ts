@@ -6,6 +6,7 @@ const parents = new Map<string, string | null>([
   ["bat", null],
   ["plsr", "bat"],
   ["plsr-1", "plsr"],
+  ["plsr-2", "plsr"],
   ["plnt", "bat"],
 ]);
 
@@ -55,6 +56,13 @@ describe("can()", () => {
   it("super admin can do everything", () => {
     const su = user([], true);
     expect(can(su, "kesher", ["admin"], "plnt", parents)).toBe(true);
+  });
+
+  it("a doch1 platoon commander covers only their platoon", () => {
+    const u = user([{ module: "doch1", role: "platoon_commander", unitId: "plsr-1" }]);
+    expect(can(u, "doch1", ["platoon_commander"], "plsr-1", parents)).toBe(true);
+    expect(can(u, "doch1", ["platoon_commander"], "plsr-2", parents)).toBe(false);
+    expect(can(u, "doch1", ["platoon_commander"], "plsr", parents)).toBe(false);
   });
 
   it("no user → no access", () => {

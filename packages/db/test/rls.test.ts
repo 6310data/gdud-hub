@@ -7,7 +7,8 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
-import { eq, sql } from "drizzle-orm";
+import { addDays, israelToday } from "@gdud/core";
+import { and, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -137,8 +138,11 @@ describe("people", () => {
     expect(r.map((p) => p.fullName).sort()).toEqual(["חייל מחלקה 1", "חייל פלסר"].sort());
   });
 
-  it("company user cannot add people (no core role)", async () => {
-    await rejects(as(clerk, (tx) => tx.insert(people).values({ unitId: ids.plsr, fullName: "x" })));
+  it("a doch1 company user adds people only in their own company (since 0005_doch1_security)", async () => {
+    await rejects(as(clerk, (tx) => tx.insert(people).values({ unitId: ids.plnt, fullName: "x" })));
+    await rejects(as(stranger, (tx) => tx.insert(people).values({ unitId: ids.plsr, fullName: "x" })));
+    const ok = await as(clerk, (tx) => tx.insert(people).values({ unitId: ids.plsr1, fullName: "חדש מדוח 1" }).returning());
+    expect(ok).toHaveLength(1);
   });
 
   it("editor adds people in own company, not in another", async () => {
@@ -562,5 +566,239 @@ describe("logistics", () => {
   it("logistics changes are audited with the acting user", async () => {
     const rows = await db.select().from(auditLog).where(eq(auditLog.tableName, "logistics_assignments"));
     expect(rows.some((r) => r.actorUserId === plsrAdmin.appId)).toBe(true);
+  });
+});
+
+describe("doch1", () => {
+  const {
+    doch1Rounds: rounds,
+    doch1Statuses: statuses,
+    doch1Members: members,
+    doch1Days: days,
+    doch1PushSubscriptions: pushSubs,
+    doch1RoundCompanies: roundCompanies,
+    doch1ReminderRequests: reminderRequests,
+    doch1BrigadeLog: brigadeLog,
+  } = schema;
+
+  const d1Admin: TestUser = { authId: randomUUID(), email: "d1-admin@example.com" };
+  const plsrClerk: TestUser = { authId: randomUUID(), email: "d1-plsr-clerk@example.com" };
+  const plsr1Cmdr: TestUser = { authId: randomUUID(), email: "d1-plsr1-mm@example.com" };
+  const plntClerk: TestUser = { authId: randomUUID(), email: "d1-plnt-clerk@example.com" };
+  const d1Viewer: TestUser = { authId: randomUUID(), email: "d1-viewer@example.com" };
+  const doch1Users = [d1Admin, plsrClerk, plsr1Cmdr, plntClerk, d1Viewer];
+
+  const today = israelToday(new Date());
+  let roundId = "";
+  const st = { A: "", Z: "" };
+  const p = { plsrSoldier: "", plsr1Soldier: "", plntSoldier: "" };
+
+  /** First SQLSTATE found on the error or its causes (same walk as pgCode in apps/web/src/lib/action-result.ts). */
+  const pgCodeOf = (err: unknown): string | undefined => {
+    let e: unknown = err;
+    for (let i = 0; i < 4 && e && typeof e === "object"; i++) {
+      const code = (e as { code?: unknown }).code;
+      if (typeof code === "string") return code;
+      e = (e as { cause?: unknown }).cause;
+    }
+    return undefined;
+  };
+
+  const setDay = (u: TestUser, personId: string, day: string, statusId: string) =>
+    as(u, (tx) =>
+      tx
+        .insert(days)
+        .values({ roundId, personId, day, statusId })
+        .onConflictDoUpdate({ target: [days.personId, days.day], set: { statusId } }),
+    );
+
+  beforeAll(async () => {
+    const rows = await db
+      .insert(appUsers)
+      .values(doch1Users.map((u) => ({ email: u.email, authUserId: u.authId })))
+      .returning();
+    for (const u of doch1Users) u.appId = rows.find((r) => r.email === u.email)!.id;
+    await db.insert(memberships).values([
+      { userId: d1Admin.appId!, module: "doch1", role: "admin", unitId: null },
+      { userId: plsrClerk.appId!, module: "doch1", role: "company_user", unitId: ids.plsr },
+      { userId: plsr1Cmdr.appId!, module: "doch1", role: "platoon_commander", unitId: ids.plsr1 },
+      { userId: plntClerk.appId!, module: "doch1", role: "company_user", unitId: ids.plnt },
+      { userId: d1Viewer.appId!, module: "doch1", role: "viewer", unitId: null },
+    ]);
+
+    const [round] = await db
+      .insert(rounds)
+      .values({ name: "סבב בדיקה", startsOn: addDays(today, -30), endsOn: addDays(today, 30), lockAt: "23:59:59", active: true })
+      .returning();
+    roundId = round!.id;
+    await db.insert(roundCompanies).values([
+      { roundId, unitId: ids.plsr },
+      { roundId, unitId: ids.plnt },
+    ]);
+    const ss = await db
+      .insert(statuses)
+      .values([
+        { roundId, name: "א", color: "#e07b2e", displayGroup: "א", sheetValue: "א", countsInSadak: true },
+        { roundId, name: "ז", color: "#7a8699", displayGroup: "ז", sheetValue: "0", offDuty: true },
+      ])
+      .returning();
+    st.A = ss[0]!.id;
+    st.Z = ss[1]!.id;
+    const ppl = await db.select().from(people);
+    p.plsrSoldier = ppl.find((x) => x.fullName === "חייל פלסר")!.id;
+    p.plsr1Soldier = ppl.find((x) => x.fullName === "חייל מחלקה 1")!.id;
+    p.plntSoldier = ppl.find((x) => x.fullName === "חייל פלנט")!.id;
+    await db.insert(members).values(Object.values(p).map((personId) => ({ roundId, personId })));
+  });
+
+  it("platoon commander writes only their platoon", async () => {
+    await setDay(plsr1Cmdr, p.plsr1Soldier, today, st.A);
+    await rejects(setDay(plsr1Cmdr, p.plsrSoldier, today, st.A)); // company level, outside the platoon
+  });
+
+  it("platoon commander reads only their platoon's days and members", async () => {
+    await setDay(plsrClerk, p.plsrSoldier, today, st.A);
+    const seen = await as(plsr1Cmdr, (tx) => tx.select().from(days));
+    expect(seen.map((r) => r.personId)).toEqual([p.plsr1Soldier]);
+    expect((await as(plsr1Cmdr, (tx) => tx.select().from(members))).map((m) => m.personId)).toEqual([p.plsr1Soldier]);
+  });
+
+  it("company user covers the company's platoons, not another company", async () => {
+    await setDay(plsrClerk, p.plsr1Soldier, today, st.Z);
+    await rejects(setDay(plsrClerk, p.plntSoldier, today, st.A));
+    expect(await as(plntClerk, (tx) => tx.select().from(days).where(eq(days.personId, p.plsr1Soldier)))).toHaveLength(0);
+  });
+
+  it("two saves of the same soldier and day: last one wins", async () => {
+    await setDay(plsr1Cmdr, p.plsr1Soldier, today, st.A);
+    await setDay(plsrClerk, p.plsr1Soldier, today, st.Z);
+    const [row] = await db.select().from(days).where(and(eq(days.personId, p.plsr1Soldier), eq(days.day, today)));
+    expect(row!.statusId).toBe(st.Z);
+    expect(row!.updatedBy).toBe(plsrClerk.appId);
+  });
+
+  it("updated_by is always the acting user", async () => {
+    await as(plsrClerk, (tx) =>
+      tx
+        .update(days)
+        .set({ statusId: st.A, updatedBy: d1Admin.appId! })
+        .where(and(eq(days.personId, p.plsr1Soldier), eq(days.day, today))),
+    );
+    const [row] = await db.select().from(days).where(and(eq(days.personId, p.plsr1Soldier), eq(days.day, today)));
+    expect(row!.updatedBy).toBe(plsrClerk.appId);
+  });
+
+  it("after the lock only the battalion admin can change today", async () => {
+    await db.update(rounds).set({ lockAt: "00:00:00" }).where(eq(rounds.id, roundId));
+    expect(await setDay(plsrClerk, p.plsr1Soldier, today, st.A).then(() => "ok", pgCodeOf)).toBe("GD001");
+    const del = as(plsrClerk, (tx) => tx.delete(days).where(and(eq(days.personId, p.plsr1Soldier), eq(days.day, today))));
+    expect(await del.then(() => "ok", pgCodeOf)).toBe("GD001");
+    await setDay(d1Admin, p.plsr1Soldier, today, st.A);
+    await setDay(plsrClerk, p.plsr1Soldier, addDays(today, 1), st.A); // tomorrow stays open
+    await db.update(rounds).set({ lockAt: "23:59:59" }).where(eq(rounds.id, roundId));
+  });
+
+  it("past days are admin-only; days outside the round are rejected", async () => {
+    expect(await setDay(plsrClerk, p.plsr1Soldier, addDays(today, -1), st.A).then(() => "ok", pgCodeOf)).toBe("GD001");
+    await setDay(d1Admin, p.plsr1Soldier, addDays(today, -1), st.A);
+    expect(await setDay(d1Admin, p.plsr1Soldier, addDays(today, 31), st.A).then(() => "ok", pgCodeOf)).toBe("GD002");
+  });
+
+  it("a day cannot point at another round's status", async () => {
+    const [other] = await db.insert(rounds).values({ name: "סבב אחר", startsOn: today, endsOn: today }).returning();
+    const [foreign] = await db
+      .insert(statuses)
+      .values({ roundId: other!.id, name: "א", color: "#000000", displayGroup: "א", sheetValue: "א" })
+      .returning();
+    await rejects(setDay(d1Admin, p.plsr1Soldier, addDays(today, 2), foreign!.id));
+  });
+
+  it("viewer reads but cannot write", async () => {
+    expect((await as(d1Viewer, (tx) => tx.select().from(days))).length).toBeGreaterThan(0);
+    await rejects(setDay(d1Viewer, p.plsr1Soldier, addDays(today, 1), st.A));
+  });
+
+  it("users without a doch1 membership see nothing", async () => {
+    expect(await as(stranger, (tx) => tx.select().from(days))).toHaveLength(0);
+    expect(await as(coreAdmin, (tx) => tx.select().from(statuses))).toHaveLength(0);
+  });
+
+  it("only battalion admins change settings", async () => {
+    expect(await as(plsrClerk, (tx) => tx.update(statuses).set({ color: "#000000" }).where(eq(statuses.id, st.A)).returning())).toHaveLength(0);
+    expect(await as(d1Admin, (tx) => tx.update(statuses).set({ color: "#000000" }).where(eq(statuses.id, st.A)).returning())).toHaveLength(1);
+    await rejects(as(plsrClerk, (tx) => tx.insert(rounds).values({ name: "x", startsOn: today, endsOn: today })));
+    const rc = await as(plsrClerk, (tx) =>
+      tx.update(roundCompanies).set({ appFrom: today }).where(eq(roundCompanies.unitId, ids.plsr)).returning(),
+    );
+    expect(rc).toHaveLength(0);
+  });
+
+  it("company users update member fields in their company; only admins add or remove members", async () => {
+    const ok = await as(plsrClerk, (tx) =>
+      tx.update(members).set({ notes: "הערה" }).where(eq(members.personId, p.plsr1Soldier)).returning(),
+    );
+    expect(ok).toHaveLength(1);
+    const other = await as(plsrClerk, (tx) =>
+      tx.update(members).set({ notes: "x" }).where(eq(members.personId, p.plntSoldier)).returning(),
+    );
+    expect(other).toHaveLength(0);
+    const cmdr = await as(plsr1Cmdr, (tx) =>
+      tx.update(members).set({ notes: "x" }).where(eq(members.personId, p.plsr1Soldier)).returning(),
+    );
+    expect(cmdr).toHaveLength(0);
+    expect(await as(plsrClerk, (tx) => tx.delete(members).where(eq(members.personId, p.plsr1Soldier)).returning())).toHaveLength(0);
+  });
+
+  it("a company user takes a soldier out of the report (released / deferred); a platoon commander cannot", async () => {
+    const set = (u: TestUser, inReport: boolean) =>
+      as(u, (tx) => tx.update(members).set({ inReport }).where(eq(members.personId, p.plsr1Soldier)).returning());
+    expect(await set(plsr1Cmdr, false)).toHaveLength(0);
+    expect(await set(plsrClerk, false)).toHaveLength(1);
+    expect(await set(plsrClerk, true)).toHaveLength(1);
+    expect(await as(plntClerk, (tx) => tx.update(members).set({ inReport: false }).where(eq(members.personId, p.plsrSoldier)).returning())).toHaveLength(0);
+  });
+
+  it("push subscriptions are private to their owner", async () => {
+    await as(plsrClerk, (tx) => tx.insert(pushSubs).values({ endpoint: "https://push.example/1", p256dh: "k", auth: "a" }));
+    expect(await as(plntClerk, (tx) => tx.select().from(pushSubs))).toHaveLength(0);
+    expect(await as(plsrClerk, (tx) => tx.select().from(pushSubs))).toHaveLength(1);
+    await rejects(
+      as(plntClerk, (tx) =>
+        tx.insert(pushSubs).values({ userId: plsrClerk.appId!, endpoint: "https://push.example/2", p256dh: "k", auth: "a" }),
+      ),
+    );
+    await rejects(as(plsrClerk, (tx) => tx.insert(pushSubs).values({ endpoint: "http://push.example/3", p256dh: "k", auth: "a" })));
+    expect(await as(plntClerk, (tx) => tx.delete(pushSubs).returning())).toHaveLength(0);
+  });
+
+  it("reminder requests and brigade log: battalion admin, in their own name", async () => {
+    await as(d1Admin, (tx) => tx.insert(reminderRequests).values({ roundId, unitId: ids.plsr }));
+    await rejects(as(plsrClerk, (tx) => tx.insert(reminderRequests).values({ roundId, unitId: ids.plsr })));
+    await rejects(
+      as(d1Admin, (tx) => tx.insert(brigadeLog).values({ roundId, day: today, partial: false, content: "x", sentBy: plsrClerk.appId! })),
+    );
+    const [log] = await as(d1Admin, (tx) => tx.insert(brigadeLog).values({ roundId, day: today, partial: true, content: "x" }).returning());
+    expect(log!.sentBy).toBe(d1Admin.appId);
+    expect(await as(plsrClerk, (tx) => tx.select().from(brigadeLog))).toHaveLength(0);
+  });
+
+  it("doch1 company user can edit their soldiers in people; not another company's", async () => {
+    const ok = await as(plsrClerk, (tx) =>
+      tx.update(people).set({ phone: "0500000000" }).where(eq(people.id, p.plsr1Soldier)).returning(),
+    );
+    expect(ok).toHaveLength(1);
+    const other = await as(plsrClerk, (tx) =>
+      tx.update(people).set({ phone: "0500000000" }).where(eq(people.id, p.plntSoldier)).returning(),
+    );
+    expect(other).toHaveLength(0);
+    const cmdr = await as(plsr1Cmdr, (tx) =>
+      tx.update(people).set({ phone: "0500000001" }).where(eq(people.id, p.plsr1Soldier)).returning(),
+    );
+    expect(cmdr).toHaveLength(0);
+  });
+
+  it("writes are audited with the acting user", async () => {
+    const rows = await db.select().from(auditLog).where(eq(auditLog.tableName, "doch1_days"));
+    expect(rows.some((r) => r.actorUserId === plsrClerk.appId)).toBe(true);
   });
 });

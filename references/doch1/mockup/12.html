@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl"><head>
+<meta charset="utf-8">
+<title>עריכת צוות כוננות</title>
+<script src="b4754f4b-ed45-43c2-94ac-d8bf77b413e8"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+</helmet>
+<div class="app phone" dir="rtl">
+  <div class="nav-chrome" style="height: 52px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 0 6px;">
+    <a class="tz-btn tz-btn-plain" href="StandbyMobile.dc.html" style="justify-self: start; min-height: 40px; font-size: 17px;">ביטול</a>
+    <span class="headline">חפ״ק · פלסר</span>
+    <a class="tz-btn tz-btn-plain" href="StandbyMobile.dc.html" style="justify-self: end; min-height: 40px; font-size: 17px; font-weight: 600;">שמירה</a>
+  </div>
+
+  <div class="phone-scroll" style="padding-top: 66px; padding-bottom: 40px;">
+
+    <div style="margin: 0 16px; padding: 12px 14px; border-radius: 12px; display: flex; align-items: center; gap: 12px; background: {{readyBg}};">
+      <span class="tz-tile" style="background: {{readyTile}}; width: 34px; height: 34px;">[i]</span>
+      <span style="flex: 1; display: flex; flex-direction: column;"><span style="font-size: 16px; font-weight: 600; color: {{readyFg}};">{{readyTitle}}</span><span class="footnote">{{readySub}}</span></span>
+    </div>
+
+    <h2 class="tz-section-header" style="padding-top: 20px;">רכב</h2>
+    <div class="tz-group" style="margin: 0 16px;">
+      <div class="tz-row"><span class="tz-row-body"><label for="veh" class="tz-row-title">צ׳ רכב</label><input id="veh" value="701102" inputmode="numeric" style="width: 130px; height: 34px; border: 0; border-radius: 9px; background: #e8ecf1; padding: 0 10px; font: 600 16px var(--font-mono); direction: ltr; text-align: left; color: #0f1b2d;"></span></div>
+      <div class="tz-row"><span class="tz-row-body" style="flex-wrap: wrap;"><span class="tz-row-title">מצב הרכב</span>
+        <span class="tz-seg" role="tablist" aria-label="מצב הרכב" style="width: 210px;">
+          <sc-for list="{{vehStates}}" as="v" hint-placeholder-count="3">
+            <button class="tz-seg-item" role="tab" aria-selected="{{v.sel}}" sc-camel-on-click="{{v.pick}}">{{v.label}}</button>
+          </sc-for>
+        </span></span></div>
+      <div class="tz-row"><span class="tz-row-body"><span class="tz-row-title">מוצב</span><span class="tz-row-value">מוצב 131</span>[i]</span></div>
+    </div>
+
+    <h2 class="tz-section-header" style="padding-top: 20px;">חיילים בצוות · {{readyCount}}</h2>
+    <div class="tz-group" style="margin: 0 16px;">
+      <sc-for list="{{members}}" as="m" hint-placeholder-count="3">
+        <div class="tz-row" style="background: {{m.bg}};">
+          <span class="tz-avatar">{{m.ini}}</span>
+          <span class="tz-row-body" style="gap: 6px;">
+            <span class="tz-row-title">{{m.name}}<span class="tz-row-sub">{{m.role}}</span></span>
+            <button class="{{m.chip}} chipbtn" sc-camel-on-click="{{m.editStatus}}" aria-label="{{m.statusLabel}}">{{m.st}}</button>
+            <sc-if value="{{m.away}}" hint-placeholder-val="{{false}}">
+              <button class="tz-btn tz-btn-plain" sc-camel-on-click="{{m.swap}}" style="min-height: 36px; padding: 0 4px; font-size: 15px; font-weight: 600;">החלפה</button>
+            </sc-if>
+          </span>
+        </div>
+      </sc-for>
+      <button class="tz-row" style="width: 100%; border: 0; padding-block: 0; padding-inline-end: 0; font: inherit; cursor: pointer; text-align: start;"><span class="tz-row-body"><span class="tz-row-title" style="color: #1e3a5f;">הוספת חייל לצוות</span></span></button>
+    </div>
+    <p class="footnote" style="margin: 0; padding: 6px 32px 0;">תפקידי חובה לחפ״ק: מ״פ או סמ״פ, קשר. גודל: 3. שינוי בסטטוס כאן מעדכן גם את דוח 1 של היום.</p>
+
+    <h2 class="tz-section-header" style="padding-top: 20px;">הכוננות</h2>
+    <div class="tz-group" style="margin: 0 16px;">
+      <div class="tz-row"><span class="tz-row-body"><span class="tz-row-title">צוות פעיל<span class="tz-row-sub">צוות מושבת לא נספר בכוננות הגדודית</span></span><button role="switch" aria-checked="true" aria-label="צוות פעיל" style="width: 51px; height: 31px; border: 0; padding: 2px; border-radius: 999px; background: #1e3a5f; display: flex; justify-content: flex-end; flex: none; cursor: pointer;"><span style="width: 27px; height: 27px; border-radius: 999px; background: #fff; box-shadow: 0 2px 4px rgba(15,27,45,0.2);"></span></button></span></div>
+      <div class="tz-row"><span class="tz-row-body"><span class="tz-row-title">יומן שינויים</span><span class="tz-row-value">היום 07:40</span>[i]</span></div>
+    </div>
+  </div>
+
+  <sc-if value="{{toast}}" hint-placeholder-val="{{false}}">
+    <div role="status" style="position: absolute; left: 16px; right: 16px; bottom: 28px; z-index: 7; display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 14px; background: rgba(15,27,45,0.92); color: #fff; -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);">
+      <span style="flex: 1; font-size: 15px;">{{toastText}}</span>
+      <button class="tz-btn tz-btn-plain" sc-camel-on-click="{{undo}}" style="min-height: 32px; color: #9fc0ff; font-weight: 600;">ביטול</button>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{sheetOpen}}" hint-placeholder-val="{{false}}">
+    <div>
+      <button class="scrim" aria-label="סגירה" sc-camel-on-click="{{close}}" style="border: 0; padding: 0; cursor: default;"></button>
+      <div class="sheet" role="dialog" aria-label="{{sheetTitle}}">
+        <div class="grabber"></div>
+        <div style="display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 0 8px 4px;">
+          <button class="tz-btn tz-btn-plain" sc-camel-on-click="{{close}}" style="justify-self: start; min-height: 40px;">ביטול</button>
+          <span class="headline">{{sheetTitle}}</span>
+          <span></span>
+        </div>
+        <p class="footnote" style="margin: 0; text-align: center; padding-bottom: 12px;">{{sheetSub}}</p>
+        <sc-if value="{{swapMode}}" hint-placeholder-val="{{true}}">
+          <div class="tz-group" style="margin: 0 16px;">
+            <sc-for list="{{candidates}}" as="c" hint-placeholder-count="4">
+              <button class="tz-row" sc-camel-on-click="{{c.pick}}" disabled="{{c.disabled}}" style="width: 100%; border: 0; padding-block: 0; padding-inline-end: 0; font: inherit; text-align: start; cursor: pointer; opacity: {{c.op}};">
+                <span class="tz-avatar">{{c.ini}}</span>
+                <span class="tz-row-body"><span class="tz-row-title">{{c.name}}<span class="tz-row-sub">{{c.note}}</span></span><span class="{{c.chip}}">{{c.st}}</span></span>
+              </button>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{statusMode}}" hint-placeholder-val="{{false}}">
+          <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 0 16px;">
+            <sc-for list="{{statusOpts}}" as="o" hint-placeholder-count="6">
+              <button class="{{o.cls}}" sc-camel-on-click="{{o.pick}}"><span style="width: 14px; height: 14px; border-radius: 999px; background: {{o.color}};"></span>{{o.label}}</button>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{&quot;$preview&quot;:{&quot;width&quot;:390,&quot;height&quot;:844}}">
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      veh: 'תקין', sheet: null, toast: null, prev: null,
+      members: [
+        { name: 'חיים אור', role: 'סמ״פ', st: 'עזה' },
+        { name: 'טל שחר', role: 'נגביסט', st: 'עזה' },
+        { name: 'יובל ברק', role: 'טילן', st: 'יוצא לרענון' }
+      ]
+    };
+  }
+  renderVals() {
+    var self = this;
+    var COLOR = { 'עזה': '#e07b2e', 'מיוערת': '#1a7a43', 'יוצא לרענון': '#a99ff0', 'רענון': '#6a5bd6', 'קורס': '#7a8699', 'גימלים': '#7a8699' };
+    var CHIP = { 'עזה': 'tz-chip st-gaza', 'מיוערת': 'tz-chip st-forest', 'יוצא לרענון': 'tz-chip st-leaving', 'רענון': 'tz-chip st-leave', 'קורס': 'tz-chip st-other', 'גימלים': 'tz-chip st-other' };
+    var isAway = function (st) { return !(st === 'עזה' || st === 'מיוערת'); };
+    var ms = this.state.members;
+    var ready = ms.filter(function (m) { return !isAway(m.st); }).length;
+    var vehOk = this.state.veh === 'תקין';
+    var full = ready === ms.length && vehOk;
+    var ini = function (n) { return n.split(' ').map(function (s) { return s[0]; }).join(''); };
+    var members = ms.map(function (m, i) {
+      var away = isAway(m.st);
+      return {
+        name: m.name, role: m.role, st: m.st, chip: CHIP[m.st], ini: ini(m.name), away: away, bg: away ? '#fff6ee' : '#ffffff',
+        statusLabel: 'שינוי סטטוס של ' + m.name,
+        swap: function () { self.setState({ sheet: { mode: 'swap', i: i } }); },
+        editStatus: function () { self.setState({ sheet: { mode: 'status', i: i } }); }
+      };
+    });
+    var vehStates = ['תקין', 'בטיפול', 'תקול'].map(function (v) {
+      return { label: v, sel: self.state.veh === v ? 'true' : 'false', pick: function () { self.setState({ veh: v }); } };
+    });
+    var sh = this.state.sheet;
+    var target = sh ? ms[sh.i] : null;
+    var POOL = [
+      { name: 'רועי חדד', role: 'טילן', st: 'עזה', note: 'טילן · מחלקה 3 · לא בכוננות' },
+      { name: 'מתן אלמוג', role: 'צלף', st: 'עזה', note: 'צלף · מחלקה 3 · לא בכוננות' },
+      { name: 'יונתן אבוטבול', role: 'מ״מ', st: 'עזה', note: 'מ״מ · מחלקה 1 · לא בכוננות' },
+      { name: 'עמית פרץ', role: 'לוחם', st: 'רענון', note: 'לוחם · מחלקה 2 · ברענון היום' }
+    ];
+    var used = ms.map(function (m) { return m.name; });
+    var candidates = POOL.filter(function (c) { return used.indexOf(c.name) < 0; }).map(function (c) {
+      var unavailable = isAway(c.st);
+      return {
+        name: c.name, note: c.note, st: c.st, chip: CHIP[c.st], ini: ini(c.name), disabled: unavailable, op: unavailable ? 0.45 : 1,
+        pick: function () {
+          if (unavailable) return;
+          var n = ms.slice(); var old = n[sh.i]; n[sh.i] = { name: c.name, role: c.role, st: c.st };
+          self.setState({ members: n, sheet: null, prev: ms, toast: old.name + ' הוחלף ב' + c.name });
+        }
+      };
+    });
+    var statusOpts = ['עזה', 'מיוערת', 'יוצא לרענון', 'רענון', 'קורס', 'גימלים'].map(function (k) {
+      var on = target && target.st === k;
+      return {
+        label: k, color: COLOR[k], cls: on ? 'opt on' : 'opt',
+        pick: function () { var n = ms.slice(); n[sh.i] = Object.assign({}, n[sh.i], { st: k }); self.setState({ members: n, sheet: null, prev: ms, toast: 'הסטטוס של ' + n[sh.i].name + ' עודכן ל' + k }); }
+      };
+    });
+    return {
+      members: members, vehStates: vehStates, readyCount: ready + '/' + ms.length + ' זמינים',
+      readyTitle: full ? 'הצוות שלם וכשיר' : (ready < ms.length ? ('חסר ' + (ms.length - ready) + ' בצוות היום') : 'הרכב לא כשיר'),
+      readySub: 'צ׳ 701102 · ' + this.state.veh + ' · ' + ready + ' מתוך ' + ms.length + ' זמינים',
+      readyBg: full ? '#e3f4ea' : '#fceedf', readyFg: full ? '#1a7a43' : '#a64a08', readyTile: full ? '#2e9a5c' : '#d2691e',
+      sheetOpen: !!sh, swapMode: !!sh && sh.mode === 'swap', statusMode: !!sh && sh.mode === 'status',
+      sheetTitle: sh ? (sh.mode === 'swap' ? 'מחליף ל' + target.name : target.name) : '',
+      sheetSub: sh ? (sh.mode === 'swap' ? 'זמינים היום בפלסר, אותו תפקיד קודם' : 'סטטוס להיום') : '',
+      candidates: candidates, statusOpts: statusOpts,
+      close: function () { self.setState({ sheet: null }); },
+      toast: !!this.state.toast, toastText: this.state.toast || '',
+      undo: function () { if (self.state.prev) self.setState({ members: self.state.prev, prev: null, toast: null }); }
+    };
+  }
+}
+</script>
+
+
+</body></html>

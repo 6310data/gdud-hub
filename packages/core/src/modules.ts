@@ -51,10 +51,11 @@ export const MODULES = [
     description: "מצבה יומית, שבצ״ק וכוננות",
     href: "/doch1",
     icon: "list",
-    status: "planned",
+    status: "live",
     roles: [
       { id: "admin", label: "מנהל גדודי", description: "כל הפלוגות, דוחות והגדרות" },
       { id: "company_user", label: "משתמש פלוגה", description: "דוח 1, שבצ״ק וכוננות של הפלוגה שלו" },
+      { id: "platoon_commander", label: "מפקד מחלקה", description: "דוח 1 של המחלקה שלו: היום והימים הבאים" },
       { id: "viewer", label: "צפייה", description: "סקירה ודוחות לקריאה בלבד" },
     ],
   },
