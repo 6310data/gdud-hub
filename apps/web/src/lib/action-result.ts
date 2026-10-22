@@ -11,7 +11,8 @@ export function dbErrorMessage(err: unknown): string {
   return "הפעולה נכשלה. נסו שוב.";
 }
 
-function pgCode(err: unknown): string | undefined {
+/** The Postgres error code of `err` or of one of its causes. */
+export function pgCode(err: unknown): string | undefined {
   let e: unknown = err;
   for (let i = 0; i < 4 && e && typeof e === "object"; i++) {
     const code = (e as { code?: unknown }).code;
