@@ -3,6 +3,7 @@ import { inArmory, pct, sumCounts } from "@gdud/core";
 import { desc, schema, withUser } from "@gdud/db";
 import { Icon, StockBar } from "@gdud/ui";
 import { companiesOf, groupBy, loadHoldings, loadPeople, loadStock, loadStorage } from "@/lib/logistics/data";
+import { logisticsAccess } from "@/lib/logistics/access";
 import { fmtCount, fmtWhen } from "@/lib/logistics/format";
 import { requireModule } from "@/lib/session";
 import { EventsTable } from "./_components/events-table";
@@ -84,6 +85,17 @@ export default async function LogisticsOverview() {
               />
             ) : null}
           </Panel>
+
+          {logisticsAccess(s).isStockAdmin ? (
+            <Panel title="הגיליון">
+              <AttentionRow
+                href="/logistics/import"
+                tile={<SmallTile color="var(--primary)" icon="refresh" size={28} />}
+                title="ייבוא מהגיליון"
+                sub="עדכון האפליקציה מקובץ ה-Excel של הגיליון, עם תצוגה מקדימה"
+              />
+            </Panel>
+          ) : null}
 
           <Panel title="פלוגות" action={<span className="text-xs text-ink-muted">פריטים מוחתמים</span>}>
             {companies.map((c) => (

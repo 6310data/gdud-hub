@@ -22,6 +22,7 @@ import {
   type XlsxTab,
 } from "@gdud/db/logistics-sheet";
 import { dbErrorMessage, pgCode, UserError, type ActionOutcome } from "@/lib/action-result";
+import { STALE_PREVIEW } from "../import/messages";
 import { firstIssue, logEvents, logisticsCtx, NO_PERMISSION, revalidateLogistics } from "./common";
 
 const MAX_FILE_BYTES = 4 * 1024 * 1024;
@@ -125,7 +126,7 @@ export async function applySheetImport(form: FormData): Promise<ActionOutcome<Ap
     const { fileName, book } = await readUpload(form);
     result = await withUser(ctx.s.claims, async (tx) => {
       const diff = await diffLogistics(tx, book.sheets, tabs);
-      if (diff.fingerprint !== fingerprint) throw new UserError("האפליקציה השתנתה מאז התצוגה המקדימה — הציגו שוב");
+      if (diff.fingerprint !== fingerprint) throw new UserError(STALE_PREVIEW);
       const applied = await applyLogistics(tx, diff, selected);
       const unticked = diff.lines.filter((l) => l.defaultOn && !selected.has(l.id)).length;
       await logEvents(tx, ctx.actorName, [{ kind: "sheet_import", details: summarizeImport(fileName, tabs, applied, unticked) }]);
