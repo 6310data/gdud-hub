@@ -5,27 +5,14 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { PGlite } from "@electric-sql/pglite";
 import { count, eq } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
-import { drizzle } from "drizzle-orm/pglite";
-import { migrate } from "drizzle-orm/pglite/migrator";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import {
-  formatReport,
-  importLogistics,
-  parseCsv,
-  parseSheetDate,
-  readSheets,
-  statusToCondition,
-  type ImportReport,
-  type Sheets,
-} from "../scripts/logistics-import";
+import { formatReport, importLogistics, readSheets, type ImportReport } from "../scripts/logistics-import";
+import { parseCsv, parseSheetDate, statusToCondition, type Sheets } from "../src/logistics-sheet/index";
 import * as schema from "../src/schema/index";
-import { SUPABASE_SHIM_SQL } from "./supabase-shim";
+import { createTestDb, type PgliteDb, type TestIds } from "./pglite";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
 const { units, people, logisticsItems, logisticsKitItems, logisticsSerials, logisticsAssignments, logisticsStorage } = schema;
 
 /** Fake exports, named the way Google Sheets names a CSV download. */
@@ -70,11 +57,10 @@ const CSV: Record<string, string> = {
   ].join("\n"),
 };
 
-let pg: PGlite;
-let db: ReturnType<typeof drizzle<typeof schema>>;
+let db: PgliteDb;
+let ids: TestIds;
 let folder: string;
 let sheets: Sheets;
-const ids = { bat: "", plsr: "", plsr1: "", plnt: "" };
 
 const run = (dryRun: boolean) => importLogistics(db as never, sheets, { dryRun });
 const total = async (table: PgTable) => (await db.select({ n: count() }).from(table))[0]!.n;
@@ -90,22 +76,8 @@ const tableCounts = async () => ({
 const messages = (r: ImportReport, list: "skipped" | "warnings") => r[list].map((i) => `${i.sheet}:${i.row}`);
 
 beforeAll(async () => {
-  pg = new PGlite();
-  await pg.exec(SUPABASE_SHIM_SQL);
-  db = drizzle(pg, { schema });
-  await migrate(db, { migrationsFolder: path.join(here, "../migrations") });
-
-  const [bat] = await db.insert(units).values({ kind: "battalion", name: "גדוד" }).returning();
-  const [plsr, plnt] = await db
-    .insert(units)
-    .values([
-      { parentId: bat!.id, kind: "company", name: "פלס״ר", code: "plsr" },
-      { parentId: bat!.id, kind: "company", name: "פלנ״ט", code: "plnt" },
-    ])
-    .returning();
-  const [plsr1] = await db.insert(units).values({ parentId: plsr!.id, kind: "platoon", name: "מחלקה 1" }).returning();
-  Object.assign(ids, { bat: bat!.id, plsr: plsr!.id, plsr1: plsr1!.id, plnt: plnt!.id });
-  await db.insert(people).values({ unitId: plsr1!.id, fullName: "דני כהן", personalNumber: "1234567" });
+  ({ db, ids } = await createTestDb());
+  await db.insert(people).values({ unitId: ids.plsr1, fullName: "דני כהן", personalNumber: "1234567" });
   await db.insert(logisticsItems).values({ name: "M4 קצר" });
 
   folder = mkdtempSync(path.join(tmpdir(), "logistics-import-"));

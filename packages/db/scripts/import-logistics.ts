@@ -12,7 +12,8 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "../src/schema/index";
 import { loadRootEnv } from "./env";
-import { formatReport, importLogistics, readSheets, SHEET_NAMES } from "./logistics-import";
+import { SHEET_NAMES } from "../src/logistics-sheet/index";
+import { formatReport, importLogistics, readSheets } from "./logistics-import";
 
 loadRootEnv();
 

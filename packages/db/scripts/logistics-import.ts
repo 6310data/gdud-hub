@@ -12,28 +12,23 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { normalizeSerial, parseKitText, searchKey, type Condition, type KitLine } from "@gdud/core";
 import type { Db, Tx } from "../src/index";
+import {
+  cell,
+  nameKey,
+  parseCsv,
+  parseSheetDate,
+  SHEET_NAMES,
+  statusToCondition,
+  toSheetRows,
+  type SheetKey,
+  type SheetRow,
+  type Sheets,
+} from "../src/logistics-sheet/index";
 import * as schema from "../src/schema/index";
 
 const { units, people } = schema;
 const { logisticsItems: items, logisticsKitItems: kitItems, logisticsSerials: serials } = schema;
 const { logisticsAssignments: assignments, logisticsStorage: storage } = schema;
-
-export const SHEET_NAMES = {
-  dropdowns: "Dropdowns",
-  kit: "תקן ציוד משלים",
-  serials: "טבלת צ",
-  people: "אלפון גדודי",
-  assignments: "גדודי",
-  storage: "אפסון",
-} as const;
-export type SheetKey = keyof typeof SHEET_NAMES;
-
-/** A data row: its row number in the sheet (the header is row 1) and the raw cells. */
-export interface SheetRow {
-  row: number;
-  cells: string[];
-}
-export type Sheets = Partial<Record<SheetKey, SheetRow[]>>;
 
 export interface ImportIssue {
   sheet: string;
@@ -61,44 +56,7 @@ const ITEM_NAME_MAX = 80;
 const SERIAL_MAX = 40;
 const INSERT_CHUNK = 500;
 
-/* ── CSV ─────────────────────────────────────────────────────────────────── */
-
-/** RFC 4180 CSV (what Google Sheets exports): quoted cells, "" escapes, CRLF/LF, optional BOM. */
-export function parseCsv(text: string): string[][] {
-  const src = text.replace(/^﻿/, "");
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let cell = "";
-  let quoted = false;
-  for (let i = 0; i < src.length; i++) {
-    const c = src[i]!;
-    if (quoted) {
-      if (c !== '"') cell += c;
-      else if (src[i + 1] === '"') cell += src[++i];
-      else quoted = false;
-    } else if (c === '"' && cell === "") quoted = true; // a quote inside a cell (פלנ"ט) is literal
-    else if (c === ",") {
-      row.push(cell);
-      cell = "";
-    } else if (c === "\n" || c === "\r") {
-      if (c === "\r" && src[i + 1] === "\n") i++;
-      row.push(cell);
-      rows.push(row);
-      row = [];
-      cell = "";
-    } else cell += c;
-  }
-  if (cell || row.length) rows.push([...row, cell]);
-  return rows;
-}
-
-/** CSV text of one sheet → its data rows (header dropped, blank rows dropped, row numbers kept). */
-export function toSheetRows(csv: string): SheetRow[] {
-  return parseCsv(csv)
-    .slice(1)
-    .map((cells, i) => ({ row: i + 2, cells }))
-    .filter((r) => r.cells.some((c) => c.trim()));
-}
+/* ── CSV folder ──────────────────────────────────────────────────────────── */
 
 /**
  * Finds each sheet's CSV in `folder`. Google Sheets names a download
@@ -120,43 +78,12 @@ export function readSheets(folder: string): { sheets: Sheets; found: Partial<Rec
       continue;
     }
     found[key] = file;
-    sheets[key] = toSheetRows(readFileSync(path.join(folder, file), "utf8"));
+    sheets[key] = toSheetRows(parseCsv(readFileSync(path.join(folder, file), "utf8")));
   }
   return { sheets, found, missing };
 }
 
 /* ── cell helpers ────────────────────────────────────────────────────────── */
-
-/** Trimmed cell (1-based column, as in Code.gs); a failed VLOOKUP ("#N/A") counts as empty. */
-function cell(r: SheetRow, col: number): string {
-  const v = (r.cells[col - 1] ?? "").trim();
-  return v === "#N/A" ? "" : v;
-}
-
-const nameKey = (s: string) => s.replace(/\s+/g, " ").trim();
-
-/** 'טבלת צ' status → condition. "חתום" is derived from 'גדודי' now, so it maps to the armory state. */
-export function statusToCondition(status: string): Condition | undefined {
-  const s = nameKey(status);
-  if (s === "" || s === "חתום" || s.includes("תקין")) return "ok";
-  if (s.includes("תקול")) return "broken";
-  if (s.includes("חטיבה")) return "brigade";
-  return undefined;
-}
-
-/** Sheet display dates: dd/MM/yyyy [HH:mm[:ss]] (also . or - separators) or yyyy-MM-dd [HH:mm[:ss]]. Local time. */
-export function parseSheetDate(text: string): Date | undefined {
-  const t = text.trim();
-  const dmy = /^(\d{1,2})[./-](\d{1,2})[./-](\d{4})(?:[ T,]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/.exec(t);
-  const ymd = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/.exec(t);
-  const parts = dmy ? [dmy[3], dmy[2], dmy[1], dmy[4], dmy[5], dmy[6]] : ymd ? ymd.slice(1, 7) : undefined;
-  if (!parts) return undefined;
-  const [y, mo, d, h, mi, s] = parts.map((p) => Number(p ?? 0)) as [number, number, number, number, number, number];
-  const date = new Date(y, mo - 1, d, h, mi, s);
-  const valid =
-    date.getFullYear() === y && date.getMonth() === mo - 1 && date.getDate() === d && h < 24 && mi < 60 && s < 60;
-  return valid ? date : undefined;
-}
 
 function chunks<T>(list: readonly T[], size: number): T[][] {
   const out: T[][] = [];
