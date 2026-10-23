@@ -22,3 +22,5 @@ Thumbs.db
 
 # sheet exports for one-off imports hold personal data — never commit them
 *.csv
+# sheet exports (xlsx) hold personal data — never commit them
+*.xlsx

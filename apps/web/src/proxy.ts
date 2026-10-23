@@ -9,7 +9,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/auth/callback"];
+// sw.js and the manifest are fetched by the browser itself; the cron endpoint checks its own secret
+const PUBLIC_PATHS = ["/login", "/auth/callback", "/sw.js", "/manifest.webmanifest", "/api/doch1/cron"];
 
 function buildCsp(nonce: string, supabaseUrl: string) {
   const isDev = process.env.NODE_ENV === "development";
@@ -27,6 +28,8 @@ function buildCsp(nonce: string, supabaseUrl: string) {
     `base-uri 'self'`,
     `form-action 'self'`,
     `frame-ancestors 'none'`,
+    `worker-src 'self'`,
+    `manifest-src 'self'`,
     ...(isDev ? [] : ["upgrade-insecure-requests"]),
   ].join("; ");
 }

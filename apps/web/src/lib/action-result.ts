@@ -7,6 +7,9 @@ export function dbErrorMessage(err: unknown): string {
   if (code === "42501") return "אין לך הרשאה לפעולה הזו.";
   if (code === "23503") return "הפריט מקושר לנתונים אחרים ולא ניתן לשנות אותו.";
   if (code === "23514") return "אחד השדות לא בפורמט הנכון.";
+  // raised by the doch1_days_guard trigger (0005_doch1_security.sql)
+  if (code === "GD001") return "היום כבר ננעל לעריכה. רק מנהל גדודי יכול לשנות אותו.";
+  if (code === "GD002") return "התאריך מחוץ לסבב.";
   console.error(err);
   return "הפעולה נכשלה. נסו שוב.";
 }

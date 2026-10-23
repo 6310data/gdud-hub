@@ -1,0 +1,28 @@
+# דוח 1 – אפליקציית מצבה: החלטות עיצוב (מוקאפ, 19.10.2026)
+
+Mockup canvas: https://claude.ai/artifact/AtgfHDem9miGK4skpVemrV (Tzelem design system, RTL, Apple-style)
+Source sheet: "דוח 1 - סבב שביעי" (Google Sheet — link kept outside the repo)
+
+## Roles
+- מנהל גדודי – all companies, reports, settings; can edit a day after lock.
+- משתמש פלוגה – own company only: דוח 1, לוח נוכחות, שבצ״ק, standby teams + vehicles + their status.
+- צפייה בלבד – read-only overview and reports.
+- Standby permissions (confirmed): battalion-level teams (עתודת גדוד, פינוי, חפ״ק מג״ד/סמג״ד) – admin + holding company; company teams (חפ״ק, כרמל, עתודה) – company user.
+
+## Screens
+Desktop: סקירה גדודית · לוח נוכחות ותכנון (soldiers × days, future = plan) · שבצ״ק וכוננות (team cards + quick view replacing גדודי BT:BW) · דוחות (דוח 1 by מסגרת×מיקום with critical roles, 15א by outpost, 10א מחנה מיוערת, מט״בים, בקרת נתונים) · הגדרות.
+Phone: סקירה (admin) · דוח 1 של היום (fill from yesterday, status sheet) · עדכון קבוצתי (range + status) · כרטיס חייל · דוח לחטיבה (WhatsApp/PDF/Excel, partial-report warning) · שבצ״ק וכוננות · עריכת צוות כוננות (vehicle צ׳ + state, swap soldier, soldier status, undo) · הגדרות.
+
+## Data mapping from the sheet
+- Status per soldier per day ← company tabs / גדודי date columns.
+- Standby team + vehicle צ׳ ← each company's שבצ״ק (כוננות, צ כלי, מיקום) = גדודי BT:BW (מיקום בשבצ״ק, כוננות, צ׳, פעילות).
+- Reports ← דוחות tab sections; attached forces (שריון 9מ, גששים, צמה) included.
+
+## Settings (admin)
+גדוד וסבב (name, color, round dates, report reminder/lock/send times) · פלוגות ומסגרות (name, color, code, active; פלתצ inactive) · סטטוסים ומיקומים (color, group, default location, counts-in-סד״כ / across-border / needs-outpost flags; locations מוצב 131/123, מיוערת, בחוץ) · גיוס והתייצבות (date, hour, place, status + expected-arrival lists) · כוננות ורכבים (types, level, size, required roles, vehicle registry) · משתמשים והרשאות.
+
+## Status palette (app-level)
+עזה orange #e07b2e · מיוערת green #1a7a43 · רענון purple #6a5bd6 · יוצא לרענון light purple #a99ff0 · other grey #b7c0cc · חסר דיווח red #c4321f.
+
+## Open / assumed
+Standby sizes & required roles, company colors, report times (09:00/10:00/10:15) are placeholders to confirm. Soldier names in the mockup are invented.
