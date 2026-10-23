@@ -1,31 +1,19 @@
 /**
- * The logistics sheet import (scripts/logistics-import.ts), run against the real migrations
- * on an in-memory Postgres (PGlite) with a small, made-up set of CSV exports.
+ * The developer CLI import (scripts/logistics-import.ts → the shared diff + apply), run against
+ * the real migrations on an in-memory Postgres (PGlite) with a small, made-up set of CSV exports.
+ * It applies new rows only and never creates soldiers or units.
  */
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { PGlite } from "@electric-sql/pglite";
 import { count, eq } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
-import { drizzle } from "drizzle-orm/pglite";
-import { migrate } from "drizzle-orm/pglite/migrator";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import {
-  formatReport,
-  importLogistics,
-  parseCsv,
-  parseSheetDate,
-  readSheets,
-  statusToCondition,
-  type ImportReport,
-  type Sheets,
-} from "../scripts/logistics-import";
+import { formatDiff, importLogistics, readSheets } from "../scripts/logistics-import";
+import { parseCsv, parseSheetDate, statusToCondition, type Sheets } from "../src/logistics-sheet/index";
 import * as schema from "../src/schema/index";
-import { SUPABASE_SHIM_SQL } from "./supabase-shim";
+import { createTestDb, type PgliteDb, type TestIds } from "./pglite";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
 const { units, people, logisticsItems, logisticsKitItems, logisticsSerials, logisticsAssignments, logisticsStorage } = schema;
 
 /** Fake exports, named the way Google Sheets names a CSV download. */
@@ -59,6 +47,7 @@ const CSV: Record<string, string> = {
     'פלנ"ט,מחלקה 2,רון לוי,7654321,מפרו,999,,',
     'פלנ"ט,#N/A,רון לוי,7654321,M4 קצר,6620417,,',
     'פלס"ר,,,,M4 קצר,,,',
+    'פלנ"ט,,שרה מזרחי,5555555,M4 קצר,100,,',
   ].join("\n"),
   "אפסון": [
     "פלוגה,שם מלא,מספר אישי,פריט,צ,תאריך אפסון,תאריך הוצאה מאפסון",
@@ -70,11 +59,10 @@ const CSV: Record<string, string> = {
   ].join("\n"),
 };
 
-let pg: PGlite;
-let db: ReturnType<typeof drizzle<typeof schema>>;
+let db: PgliteDb;
+let ids: TestIds;
 let folder: string;
 let sheets: Sheets;
-const ids = { bat: "", plsr: "", plsr1: "", plnt: "" };
 
 const run = (dryRun: boolean) => importLogistics(db as never, sheets, { dryRun });
 const total = async (table: PgTable) => (await db.select({ n: count() }).from(table))[0]!.n;
@@ -87,25 +75,13 @@ const tableCounts = async () => ({
   assignments: await total(logisticsAssignments),
   storage: await total(logisticsStorage),
 });
-const messages = (r: ImportReport, list: "skipped" | "warnings") => r[list].map((i) => `${i.sheet}:${i.row}`);
 
 beforeAll(async () => {
-  pg = new PGlite();
-  await pg.exec(SUPABASE_SHIM_SQL);
-  db = drizzle(pg, { schema });
-  await migrate(db, { migrationsFolder: path.join(here, "../migrations") });
-
-  const [bat] = await db.insert(units).values({ kind: "battalion", name: "גדוד" }).returning();
-  const [plsr, plnt] = await db
-    .insert(units)
-    .values([
-      { parentId: bat!.id, kind: "company", name: "פלס״ר", code: "plsr" },
-      { parentId: bat!.id, kind: "company", name: "פלנ״ט", code: "plnt" },
-    ])
-    .returning();
-  const [plsr1] = await db.insert(units).values({ parentId: plsr!.id, kind: "platoon", name: "מחלקה 1" }).returning();
-  Object.assign(ids, { bat: bat!.id, plsr: plsr!.id, plsr1: plsr1!.id, plnt: plnt!.id });
-  await db.insert(people).values({ unitId: plsr1!.id, fullName: "דני כהן", personalNumber: "1234567" });
+  ({ db, ids } = await createTestDb());
+  await db.insert(people).values([
+    { unitId: ids.plsr1, fullName: "דני כהן", personalNumber: "1234567" },
+    { unitId: ids.plnt, fullName: "רון לוי", personalNumber: "7654321" },
+  ]);
   await db.insert(logisticsItems).values({ name: "M4 קצר" });
 
   folder = mkdtempSync(path.join(tmpdir(), "logistics-import-"));
@@ -139,9 +115,10 @@ describe("parsing helpers", () => {
     ]);
   });
 
-  it("reads sheet dates day-first, rejects impossible ones", () => {
-    expect(parseSheetDate("15/08/2026 10:30")).toEqual(new Date(2026, 7, 15, 10, 30));
-    expect(parseSheetDate("2026-08-15")).toEqual(new Date(2026, 7, 15));
+  it("reads sheet dates day-first as Israel time, rejects impossible ones", () => {
+    expect(parseSheetDate("15/08/2026 10:30")).toEqual(new Date("2026-08-15T10:30:00+03:00"));
+    expect(parseSheetDate("2026-08-15")).toEqual(new Date("2026-08-15T00:00:00+03:00"));
+    expect(parseSheetDate("15/01/2026")).toEqual(new Date("2026-01-15T00:00:00+02:00")); // winter time
     expect(parseSheetDate("31/02/2026")).toBeUndefined();
     expect(parseSheetDate("אתמול")).toBeUndefined();
   });
@@ -154,45 +131,41 @@ describe("parsing helpers", () => {
   });
 });
 
-describe("importLogistics", () => {
-  it("--dry-run reports what it would do and writes nothing", async () => {
+describe("importLogistics (CLI)", () => {
+  it("--dry-run prints the full diff and writes nothing", async () => {
     const before = await tableCounts();
-    const report = await run(true);
+    const { diff, result } = await run(true);
     expect(await tableCounts()).toEqual(before);
-    expect(report.dryRun).toBe(true);
-    expect(report.counts.serials.created).toBe(6);
-    expect(report.skipped.length).toBeGreaterThan(0);
-    expect(formatReport(report)).toContain("DRY RUN");
+    expect(result).toBeNull();
+    expect(diff.lines.filter((l) => l.kind === "serial.add")).toHaveLength(6);
+    expect(formatDiff(diff, result)).toContain("DRY RUN");
   });
 
-  it("imports the sheets", async () => {
-    const report = await run(false);
-    expect(report.counts).toEqual({
-      platoons: { created: 1, existing: 0 },
-      people: { created: 1, existing: 1 },
-      items: { created: 3, existing: 1 },
-      kitItems: { created: 2, existing: 0 },
-      serials: { created: 6, existing: 0 },
-      assignments: { created: 2, existing: 0 },
-      storage: { created: 3, existing: 0 },
+  it("applies the new rows for soldiers the app has; never creates soldiers or units", async () => {
+    const before = await tableCounts();
+    const { diff, result } = await run(false);
+    expect(await tableCounts()).toEqual({
+      ...before,
+      items: before.items + 3,
+      kit: 2,
+      serials: 6,
+      assignments: 2,
+      storage: 3,
     });
-    expect(report.unknownCompanies.sort()).toEqual(["גדוד הקודם", "מפקדה"].sort());
-    expect(messages(report, "skipped").sort()).toEqual(
-      ["אלפון גדודי:4", "טבלת צ:7", "תקן ציוד משלים:4", "גדודי:4", "גדודי:5", "אפסון:5", "אפסון:6"].sort(),
-    );
-    expect(messages(report, "warnings").sort()).toEqual(["Dropdowns:4", "טבלת צ:6", "גדודי:3", "אפסון:4"].sort());
+    expect(result!.applied.change).toBe(0);
+    expect(result!.applied.appOnly).toBe(0);
+    const errors = diff.lines.filter((l) => l.group === "error").map((l) => `${l.sheet}:${l.row}`);
+    expect(errors.sort()).toEqual(["serials:7", "kit:4", "assignments:4", "assignments:5", "assignments:6", "storage:5", "storage:6"].sort());
+    expect(diff.lines.find((l) => l.sheet === "assignments" && l.row === 6)).toMatchObject({
+      personName: "שרה מזרחי",
+      message: "החייל לא קיים באפליקציה — יש להוסיף אותו בדוח 1",
+    });
+    expect(formatDiff(diff, result)).toContain("Import committed");
   });
 
-  it("maps statuses, people, platoons and kit text", async () => {
-    const conditions = Object.fromEntries(
-      (await db.select().from(logisticsSerials)).map((s) => [s.serial, s.condition]),
-    );
+  it("maps statuses and kit text", async () => {
+    const conditions = Object.fromEntries((await db.select().from(logisticsSerials)).map((s) => [s.serial, s.condition]));
     expect(conditions).toEqual({ "6620417": "ok", "100": "ok", "101": "broken", "200": "brigade", "300": "ok", "999": "ok" });
-
-    const [ron] = await db.select().from(people).where(eq(people.personalNumber, "7654321"));
-    expect(ron).toMatchObject({ fullName: "רון לוי", phone: "0502222222" });
-    const [platoon] = await db.select().from(units).where(eq(units.id, ron!.unitId));
-    expect(platoon).toMatchObject({ kind: "platoon", name: "מחלקה 2", parentId: ids.plnt });
 
     const [binoculars] = await db.select().from(logisticsItems).where(eq(logisticsItems.name, "משקפת"));
     expect(binoculars?.category).toBe("אופטיקה");
@@ -209,21 +182,27 @@ describe("importLogistics", () => {
   it("imports storage rows; a filled out-date means released", async () => {
     const rows = await db.select().from(logisticsStorage);
     const helmet = rows.find((r) => r.itemName === "קסדה");
-    expect(helmet).toMatchObject({ serialId: null, storedAt: new Date(2026, 7, 15, 10, 30), releasedAt: new Date(2026, 7, 20) });
+    expect(helmet).toMatchObject({ serialId: null, storedAt: new Date("2026-08-15T10:30:00+03:00"), releasedAt: new Date("2026-08-20T00:00:00+03:00") });
     expect(rows.filter((r) => r.serialId && !r.releasedAt)).toHaveLength(2);
   });
 
-  it("is idempotent: a second run creates nothing", async () => {
+  it("a second run applies nothing", async () => {
     const before = await tableCounts();
-    const report = await run(false);
+    const { diff, result } = await run(false);
     expect(await tableCounts()).toEqual(before);
-    for (const c of Object.values(report.counts)) expect(c.created).toBe(0);
-    expect(report.counts).toMatchObject({
-      people: { existing: 2 },
-      serials: { existing: 5 },
-      assignments: { existing: 2 },
-      storage: { existing: 3 },
-      kitItems: { existing: 2 },
-    });
+    expect(diff.lines.filter((l) => l.group === "new")).toEqual([]);
+    expect(result!.applied).toEqual({ new: 0, change: 0, appOnly: 0, error: 0 });
+  });
+
+  it("a condition change is listed by --dry-run but not applied by a normal run", async () => {
+    const changed: Sheets = {
+      ...sheets,
+      serials: sheets.serials!.map((r) => (r.cells[2] === "100" ? { ...r, cells: ["נשק", "M4 קצר", "100", "נשקייה תקול"] } : r)),
+    };
+    const dry = await importLogistics(db as never, changed, { dryRun: true });
+    expect(formatDiff(dry.diff, dry.result)).toMatch(/טבלת צ row 3: .*serial\.condition.*תקין → תקול/);
+    await importLogistics(db as never, changed, { dryRun: false });
+    const [s100] = await db.select().from(logisticsSerials).where(eq(logisticsSerials.serial, "100"));
+    expect(s100!.condition).toBe("ok");
   });
 });

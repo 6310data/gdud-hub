@@ -47,6 +47,7 @@ export const LOGISTICS_EVENT_KINDS = [
   "person_add",
   "person_update",
   "person_remove",
+  "sheet_import",
 ] as const;
 export type EventKind = (typeof LOGISTICS_EVENT_KINDS)[number];
 
@@ -66,6 +67,7 @@ export const EVENT_LABEL: Record<EventKind, string> = {
   person_add: "חייל חדש",
   person_update: "עדכון חייל",
   person_remove: "הסרת חייל",
+  sheet_import: "ייבוא מהגיליון",
 };
 
 /* ── serials ─────────────────────────────────────────────────────────────── */

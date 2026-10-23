@@ -1,18 +1,20 @@
 /**
- * One-off import of the old logistics Google Sheet (CSV exports, one file per sheet).
- * How to export the sheets and run it: docs/ADDING_A_MODULE.md → "Logistics import".
+ * Developer import of the logistics Google Sheet (CSV exports, one file per sheet). Applies new rows
+ * only; changes and app-only rows are printed (admins apply those in the app, /logistics/import).
+ * Never creates soldiers or units. How to export and run it: docs/ADDING_A_MODULE.md → "Logistics import".
  *
  *   pnpm --filter @gdud/db exec tsx scripts/import-logistics.ts <folder-of-csv-exports> [--dry-run]
  *
- * Uses MIGRATION_DATABASE_URL (bypasses RLS, like bootstrap-admin). Safe to re-run: existing rows are skipped.
+ * Uses MIGRATION_DATABASE_URL (bypasses RLS, like bootstrap-admin). Safe to re-run: only missing rows are added.
  * Real personal data: check with ביטחון מידע first (docs/SECURITY.md).
  */
 import { existsSync } from "node:fs";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "../src/schema/index";
+import { SHEET_NAMES } from "../src/logistics-sheet/index";
 import { loadRootEnv } from "./env";
-import { formatReport, importLogistics, readSheets, SHEET_NAMES } from "./logistics-import";
+import { formatDiff, importLogistics, readSheets } from "./logistics-import";
 
 loadRootEnv();
 
@@ -38,8 +40,8 @@ async function main() {
   if (!url) throw new Error("Set MIGRATION_DATABASE_URL (or DATABASE_URL)");
   const client = postgres(url, { prepare: false, max: 1 });
   try {
-    const report = await importLogistics(drizzle(client, { schema }), sheets, { dryRun });
-    console.log(`\n${formatReport(report)}`);
+    const { diff, result } = await importLogistics(drizzle(client, { schema }), sheets, { dryRun });
+    console.log(`\n${formatDiff(diff, result)}`);
   } finally {
     await client.end();
   }

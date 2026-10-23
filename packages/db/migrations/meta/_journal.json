@@ -43,6 +43,13 @@
       "when": 1792665021497,
       "tag": "0005_doch1_security",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792673129636,
+      "tag": "0006_logistics_sheet_import",
+      "breakpoints": true
     }
   ]
 }
