@@ -1,5 +1,5 @@
 {
-  "id": "62cb6252-9026-4a08-a2f1-736ee7100261",
+  "id": "fd2c936c-dd85-4fcf-a9ae-4860b71952bd",
   "prevId": "69e9d1b5-fe6f-433f-838f-4219711b69f2",
   "version": "7",
   "dialect": "postgresql",
@@ -1383,6 +1383,1214 @@
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": true
+    },
+    "public.doch1_brigade_log": {
+      "name": "doch1_brigade_log",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigserial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "round_id": {
+          "name": "round_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "day": {
+          "name": "day",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "partial": {
+          "name": "partial",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content": {
+          "name": "content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sent_by": {
+          "name": "sent_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "app.current_user_id()"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "doch1_brigade_log_round_day_idx": {
+          "name": "doch1_brigade_log_round_day_idx",
+          "columns": [
+            {
+              "expression": "round_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "day",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "doch1_brigade_log_round_id_doch1_rounds_id_fk": {
+          "name": "doch1_brigade_log_round_id_doch1_rounds_id_fk",
+          "tableFrom": "doch1_brigade_log",
+          "tableTo": "doch1_rounds",
+          "columnsFrom": [
+            "round_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "doch1_brigade_log_content_len": {
+          "name": "doch1_brigade_log_content_len",
+          "value": "length(\"doch1_brigade_log\".\"content\") <= 20000"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.doch1_days": {
+      "name": "doch1_days",
+      "schema": "",
+      "columns": {
+        "round_id": {
+          "name": "round_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "person_id": {
+          "name": "person_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "day": {
+          "name": "day",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status_id": {
+          "name": "status_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "app.current_user_id()"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "doch1_days_round_day_idx": {
+          "name": "doch1_days_round_day_idx",
+          "columns": [
+            {
+              "expression": "round_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "day",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "doch1_days_status_id_doch1_statuses_id_fk": {
+          "name": "doch1_days_status_id_doch1_statuses_id_fk",
+          "tableFrom": "doch1_days",
+          "tableTo": "doch1_statuses",
+          "columnsFrom": [
+            "status_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "doch1_days_member_fk": {
+          "name": "doch1_days_member_fk",
+          "tableFrom": "doch1_days",
+          "tableTo": "doch1_members",
+          "columnsFrom": [
+            "round_id",
+            "person_id"
+          ],
+          "columnsTo": [
+            "round_id",
+            "person_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "doch1_days_person_id_day_pk": {
+          "name": "doch1_days_person_id_day_pk",
+          "columns": [
+            "person_id",
+            "day"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.doch1_import_mappings": {
+      "name": "doch1_import_mappings",
+      "schema": "",
+      "columns": {
+        "round_id": {
+          "name": "round_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_key": {
+          "name": "source_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_id": {
+          "name": "target_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "doch1_import_mappings_round_id_doch1_rounds_id_fk": {
+          "name": "doch1_import_mappings_round_id_doch1_rounds_id_fk",
+          "tableFrom": "doch1_import_mappings",
+          "tableTo": "doch1_rounds",
+          "columnsFrom": [
+            "round_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "doch1_import_mappings_round_id_kind_source_key_pk": {
+          "name": "doch1_import_mappings_round_id_kind_source_key_pk",
+          "columns": [
+            "round_id",
+            "kind",
+            "source_key"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "doch1_import_mappings_kind": {
+          "name": "doch1_import_mappings_kind",
+          "value": "\"doch1_import_mappings\".\"kind\" in ('company', 'platoon', 'status')"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.doch1_members": {
+      "name": "doch1_members",
+      "schema": "",
+      "columns": {
+        "round_id": {
+          "name": "round_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "person_id": {
+          "name": "person_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "in_report": {
+          "name": "in_report",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "dmh_category": {
+          "name": "dmh_category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "arrival_forecast": {
+          "name": "arrival_forecast",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "call_up_on": {
+          "name": "call_up_on",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "enlistment_status": {
+          "name": "enlistment_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "has_disc": {
+          "name": "has_disc",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sheet_tab": {
+          "name": "sheet_tab",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sheet_row": {
+          "name": "sheet_row",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "doch1_members_person_idx": {
+          "name": "doch1_members_person_idx",
+          "columns": [
+            {
+              "expression": "person_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "doch1_members_round_id_doch1_rounds_id_fk": {
+          "name": "doch1_members_round_id_doch1_rounds_id_fk",
+          "tableFrom": "doch1_members",
+          "tableTo": "doch1_rounds",
+          "columnsFrom": [
+            "round_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "doch1_members_person_id_people_id_fk": {
+          "name": "doch1_members_person_id_people_id_fk",
+          "tableFrom": "doch1_members",
+          "tableTo": "people",
+          "columnsFrom": [
+            "person_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "doch1_members_round_id_person_id_pk": {
+          "name": "doch1_members_round_id_person_id_pk",
+          "columns": [
+            "round_id",
+            "person_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "doch1_members_sheet_row": {
+          "name": "doch1_members_sheet_row",
+          "value": "\"doch1_members\".\"sheet_row\" > 0"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.doch1_push_subscriptions": {
+      "name": "doch1_push_subscriptions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "app.current_user_id()"
+        },
+        "endpoint": {
+          "name": "endpoint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "p256dh": {
+          "name": "p256dh",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "auth": {
+          "name": "auth",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_agent": {
+          "name": "user_agent",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "doch1_push_subscriptions_user_idx": {
+          "name": "doch1_push_subscriptions_user_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "doch1_push_subscriptions_user_id_app_users_id_fk": {
+          "name": "doch1_push_subscriptions_user_id_app_users_id_fk",
+          "tableFrom": "doch1_push_subscriptions",
+          "tableTo": "app_users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "doch1_push_subscriptions_endpoint_unique": {
+          "name": "doch1_push_subscriptions_endpoint_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "endpoint"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "doch1_push_subscriptions_https": {
+          "name": "doch1_push_subscriptions_https",
+          "value": "\"doch1_push_subscriptions\".\"endpoint\" like 'https://%'"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.doch1_reminder_log": {
+      "name": "doch1_reminder_log",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigserial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "round_id": {
+          "name": "round_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "day": {
+          "name": "day",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "unit_id": {
+          "name": "unit_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "missing": {
+          "name": "missing",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "ok": {
+          "name": "ok",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "sent_at": {
+          "name": "sent_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "doch1_reminder_log_daily_once": {
+          "name": "doch1_reminder_log_daily_once",
+          "columns": [
+            {
+              "expression": "round_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "day",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"doch1_reminder_log\".\"kind\" = 'daily'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "doch1_reminder_log_round_id_doch1_rounds_id_fk": {
+          "name": "doch1_reminder_log_round_id_doch1_rounds_id_fk",
+          "tableFrom": "doch1_reminder_log",
+          "tableTo": "doch1_rounds",
+          "columnsFrom": [
+            "round_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "doch1_reminder_log_unit_id_units_id_fk": {
+          "name": "doch1_reminder_log_unit_id_units_id_fk",
+          "tableFrom": "doch1_reminder_log",
+          "tableTo": "units",
+          "columnsFrom": [
+            "unit_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "doch1_reminder_log_user_id_app_users_id_fk": {
+          "name": "doch1_reminder_log_user_id_app_users_id_fk",
+          "tableFrom": "doch1_reminder_log",
+          "tableTo": "app_users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "doch1_reminder_log_kind": {
+          "name": "doch1_reminder_log_kind",
+          "value": "\"doch1_reminder_log\".\"kind\" in ('daily', 'request')"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.doch1_reminder_requests": {
+      "name": "doch1_reminder_requests",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "round_id": {
+          "name": "round_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "unit_id": {
+          "name": "unit_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "requested_by": {
+          "name": "requested_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "app.current_user_id()"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "processed_at": {
+          "name": "processed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "doch1_reminder_requests_open_idx": {
+          "name": "doch1_reminder_requests_open_idx",
+          "columns": [
+            {
+              "expression": "processed_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "doch1_reminder_requests_round_id_doch1_rounds_id_fk": {
+          "name": "doch1_reminder_requests_round_id_doch1_rounds_id_fk",
+          "tableFrom": "doch1_reminder_requests",
+          "tableTo": "doch1_rounds",
+          "columnsFrom": [
+            "round_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "doch1_reminder_requests_unit_id_units_id_fk": {
+          "name": "doch1_reminder_requests_unit_id_units_id_fk",
+          "tableFrom": "doch1_reminder_requests",
+          "tableTo": "units",
+          "columnsFrom": [
+            "unit_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.doch1_round_companies": {
+      "name": "doch1_round_companies",
+      "schema": "",
+      "columns": {
+        "round_id": {
+          "name": "round_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "unit_id": {
+          "name": "unit_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "app_from": {
+          "name": "app_from",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "doch1_round_companies_round_id_doch1_rounds_id_fk": {
+          "name": "doch1_round_companies_round_id_doch1_rounds_id_fk",
+          "tableFrom": "doch1_round_companies",
+          "tableTo": "doch1_rounds",
+          "columnsFrom": [
+            "round_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "doch1_round_companies_unit_id_units_id_fk": {
+          "name": "doch1_round_companies_unit_id_units_id_fk",
+          "tableFrom": "doch1_round_companies",
+          "tableTo": "units",
+          "columnsFrom": [
+            "unit_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "doch1_round_companies_round_id_unit_id_pk": {
+          "name": "doch1_round_companies_round_id_unit_id_pk",
+          "columns": [
+            "round_id",
+            "unit_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.doch1_rounds": {
+      "name": "doch1_rounds",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "starts_on": {
+          "name": "starts_on",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ends_on": {
+          "name": "ends_on",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "call_up_on": {
+          "name": "call_up_on",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reminder_at": {
+          "name": "reminder_at",
+          "type": "time",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'09:00'"
+        },
+        "lock_at": {
+          "name": "lock_at",
+          "type": "time",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'10:00'"
+        },
+        "send_at": {
+          "name": "send_at",
+          "type": "time",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'10:15'"
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "doch1_rounds_one_active": {
+          "name": "doch1_rounds_one_active",
+          "columns": [
+            {
+              "expression": "active",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"doch1_rounds\".\"active\"",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "doch1_rounds_dates": {
+          "name": "doch1_rounds_dates",
+          "value": "\"doch1_rounds\".\"ends_on\" >= \"doch1_rounds\".\"starts_on\""
+        },
+        "doch1_rounds_name_len": {
+          "name": "doch1_rounds_name_len",
+          "value": "length(\"doch1_rounds\".\"name\") between 1 and 40"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.doch1_statuses": {
+      "name": "doch1_statuses",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "round_id": {
+          "name": "round_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "color": {
+          "name": "color",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "display_group": {
+          "name": "display_group",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sheet_value": {
+          "name": "sheet_value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "counts_in_sadak": {
+          "name": "counts_in_sadak",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "counts_as_present": {
+          "name": "counts_as_present",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "home_day": {
+          "name": "home_day",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "org_day": {
+          "name": "org_day",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "general_day": {
+          "name": "general_day",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "off_duty": {
+          "name": "off_duty",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "across_border": {
+          "name": "across_border",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "needs_outpost": {
+          "name": "needs_outpost",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "replaces_id": {
+          "name": "replaces_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "doch1_statuses_round_name": {
+          "name": "doch1_statuses_round_name",
+          "columns": [
+            {
+              "expression": "round_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"doch1_statuses\".\"active\"",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "doch1_statuses_round_sheet_value": {
+          "name": "doch1_statuses_round_sheet_value",
+          "columns": [
+            {
+              "expression": "round_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sheet_value",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"doch1_statuses\".\"active\"",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "doch1_statuses_round_id_doch1_rounds_id_fk": {
+          "name": "doch1_statuses_round_id_doch1_rounds_id_fk",
+          "tableFrom": "doch1_statuses",
+          "tableTo": "doch1_rounds",
+          "columnsFrom": [
+            "round_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "doch1_statuses_replaces_id_doch1_statuses_id_fk": {
+          "name": "doch1_statuses_replaces_id_doch1_statuses_id_fk",
+          "tableFrom": "doch1_statuses",
+          "tableTo": "doch1_statuses",
+          "columnsFrom": [
+            "replaces_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "doch1_statuses_color_format": {
+          "name": "doch1_statuses_color_format",
+          "value": "\"doch1_statuses\".\"color\" ~ '^#[0-9a-fA-F]{6}$'"
+        },
+        "doch1_statuses_sadak_or_off": {
+          "name": "doch1_statuses_sadak_or_off",
+          "value": "not (\"doch1_statuses\".\"counts_in_sadak\" and \"doch1_statuses\".\"off_duty\")"
+        },
+        "doch1_statuses_text_len": {
+          "name": "doch1_statuses_text_len",
+          "value": "length(\"doch1_statuses\".\"name\") between 1 and 30 and length(\"doch1_statuses\".\"display_group\") between 1 and 30 and length(\"doch1_statuses\".\"sheet_value\") between 1 and 30"
+        }
+      },
+      "isRLSEnabled": true
     }
   },
   "enums": {
@@ -1434,8 +2642,7 @@
         "holdings_form",
         "person_add",
         "person_update",
-        "person_remove",
-        "sheet_import"
+        "person_remove"
       ]
     },
     "public.logistics_form_kind": {

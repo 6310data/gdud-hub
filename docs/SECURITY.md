@@ -23,6 +23,10 @@ The app holds personal data about soldiers. Check with the unit's ביטחון �
 - Don't store a field (ת״ז, מס׳ אישי, address…) unless a feature actually needs it.
 - Redirect targets go through `safeNextPath()`.
 
+## Approvals
+
+- doch1 (דוח 1), 2026-10-22: ביטחון מידע approval for soldier names, personal numbers and phones, outposts, standby readiness and vehicle numbers carries over from the approved Google Sheet "דוח 1 - סבב שביעי". Recorded by the battalion admin.
+
 ## Accounts to protect (2-step verification on all)
 
 GitHub, Vercel, Supabase, the Google account(s) of super admins.

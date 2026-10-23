@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl"><head>
+<meta charset="utf-8">
+<title>עדכון קבוצתי</title>
+<script src="04e83cf4-2707-4c84-844c-8fed02045ce8"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+</helmet>
+<div class="app phone" dir="rtl" style="background: #0f1b2d;">
+
+  <!-- Parent screen, pushed back -->
+  <div aria-hidden="true" style="position: absolute; inset: 14px 0 0; transform: scale(0.93); transform-origin: top center; border-radius: 12px; overflow: hidden; background: #f2f4f7; filter: brightness(0.62);">
+    <div style="display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; height: 52px; padding: 0 8px; background: #f9fafc; border-bottom: 1px solid #0f1b2d14;">
+      <span class="tz-btn tz-btn-plain" style="justify-self: start; min-height: 40px;">ביטול</span>
+      <span class="headline">3 נבחרו</span>
+      <span class="tz-btn tz-btn-plain" style="justify-self: end; min-height: 40px;">בחירת מחלקה</span>
+    </div>
+    <h2 class="tz-section-header" style="padding-top: 16px;">מחלקה 1</h2>
+    <div class="tz-group" style="margin: 0 16px;">
+      <div class="tz-row"><span class="check on">[i]</span><span class="tz-row-body"><span class="tz-row-title">יונתן אבוטבול<span class="tz-row-sub">מ״מ</span></span><span class="tz-chip st-leave">רענון</span></span></div>
+      <div class="tz-row"><span class="check on">[i]</span><span class="tz-row-body"><span class="tz-row-title">דניאל כהן<span class="tz-row-sub">לוחם</span></span><span class="tz-chip st-leave">רענון</span></span></div>
+      <div class="tz-row"><span class="check on">[i]</span><span class="tz-row-body"><span class="tz-row-title">אלון רוזן<span class="tz-row-sub">נגביסט</span></span><span class="tz-chip st-leaving">יוצא לרענון</span></span></div>
+      <div class="tz-row"><span class="check"></span><span class="tz-row-body"><span class="tz-row-title">איתי שמש<span class="tz-row-sub">לוחם</span></span><span class="tz-chip st-gaza">עזה</span></span></div>
+    </div>
+  </div>
+
+  <!-- Sheet -->
+  <div class="sheet" role="dialog" aria-label="עדכון 3 חיילים" style="top: 150px; padding-bottom: 0; display: flex; flex-direction: column;">
+    <div class="grabber" style="margin-top: 0;"></div>
+    <div style="display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 0 8px 8px;">
+      <button class="tz-btn tz-btn-plain" style="justify-self: start; min-height: 40px;">ביטול</button>
+      <span class="headline">עדכון 3 חיילים</span>
+      <span></span>
+    </div>
+
+    <h2 class="tz-section-header" style="padding-top: 6px;">ימים</h2>
+    <div style="padding: 0 16px; display: flex; flex-direction: column; gap: 8px;">
+      <div class="tz-seg" role="tablist" aria-label="ימים">
+        <button class="tz-seg-item" role="tab" aria-selected="false">היום</button>
+        <button class="tz-seg-item" role="tab" aria-selected="false">מחר</button>
+        <button class="tz-seg-item" role="tab" aria-selected="true">טווח</button>
+      </div>
+      <div class="tz-group">
+        <div class="tz-row"><span class="tz-row-body"><span class="tz-row-title">מתאריך</span><span class="pill num" style="height: 30px; font-size: 15px;">ג׳ 20.10</span></span></div>
+        <div class="tz-row"><span class="tz-row-body"><span class="tz-row-title">עד תאריך</span><span class="pill num" style="height: 30px; font-size: 15px;">ו׳ 23.10</span></span></div>
+      </div>
+    </div>
+
+    <h2 class="tz-section-header" style="padding-top: 18px;">סטטוס</h2>
+    <div class="tz-group" style="margin: 0 16px;">
+      <div class="tz-row"><span class="tz-tile" style="background: #e07b2e;">[i]</span><span class="tz-row-body"><span class="tz-row-title" style="color: #1e3a5f; font-weight: 600;">עזה</span>[i]</span></div>
+      <div class="tz-row"><span class="tz-tile" style="background: #1a7a43;">[i]</span><span class="tz-row-body"><span class="tz-row-title">מיוערת</span></span></div>
+      <div class="tz-row"><span class="tz-tile" style="background: #6a5bd6;">[i]</span><span class="tz-row-body"><span class="tz-row-title">רענון</span></span></div>
+      <div class="tz-row"><span class="tz-tile" style="background: #7a8699;">[i]</span><span class="tz-row-body"><span class="tz-row-title">סטטוס אחר</span><span class="tz-row-value">התארגנות, גימלים, קורס…</span>[i]</span></div>
+    </div>
+    <p class="footnote" style="margin: 0; padding: 8px 32px 0;">יחליף 12 ימים מתוכננים. אפשר לבטל מההודעה שתופיע אחרי העדכון.</p>
+
+    <div style="flex: 1;"></div>
+    <div class="action-bar">
+      <button class="tz-btn tz-btn-filled" style="flex: 1;">עדכון 3 חיילים · עזה · 4 ימים</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{&quot;$preview&quot;:{&quot;width&quot;:390,&quot;height&quot;:844}}">
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+
+
+</body></html>

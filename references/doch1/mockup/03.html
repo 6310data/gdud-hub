@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl"><head>
+<meta charset="utf-8">
+<title>שבצ״ק וכוננות</title>
+<script src="7f64a457-b8db-46f2-a328-59bdfb480e78"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+</helmet>
+<div class="app" dir="rtl" style="min-height: 100vh; width: 100%; padding: 22px clamp(16px, 3vw, 40px) 48px; display: flex; flex-direction: column; gap: 20px;">
+
+  <header style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 16px;">
+    <div style="display: flex; flex-direction: column; gap: 4px;">
+      <a href="Main.dc.html" class="tz-btn tz-btn-plain" style="align-self: flex-start; min-height: 32px; padding: 0; font-size: 16px;">[i]סקירה גדודית</a>
+      <h1 class="large-title">שבצ״ק וכוננות</h1>
+      <span class="footnote">מחושב מהשבצ״ק של כל פלוגה ומדוח 1 של היום · 19.10 · 08:42</span>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+      <button class="tz-btn tz-btn-tinted" style="min-height: 40px; font-size: 15px;">[i]העתקת רשימת כוננות</button>
+    </div>
+  </header>
+
+  <section aria-label="מדדי כוננות" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px;">
+    <div class="card" style="display: flex; flex-direction: column; gap: 6px;"><span class="footnote">צוותי כוננות</span><span class="big num" style="text-align: right;">13</span><span class="footnote">ב-5 פלוגות, אחד משותף</span></div>
+    <div class="card" style="display: flex; flex-direction: column; gap: 6px;"><span class="footnote">חיילים בכוננות</span><span class="big num" style="text-align: right;">59</span><span class="footnote">לפי עמודת כוננות בשבצ״ק</span></div>
+    <div class="card" style="display: flex; flex-direction: column; gap: 6px;"><span class="footnote">רכבים משובצים</span><span class="big num" style="text-align: right;">13</span><span class="footnote">לפי צ׳ הרכב</span></div>
+    <div class="card" style="display: flex; flex-direction: column; gap: 6px;"><span class="footnote">זמינים עכשיו</span><span class="big num" style="text-align: right;">54</span><span class="footnote">בעזה או במיוערת היום</span></div>
+    <div class="card" style="display: flex; flex-direction: column; gap: 6px;"><span class="footnote">צוותים חסרי כוח</span><span class="big num" style="text-align: right; color: #a64a08;">4</span><span class="footnote">5 חיילים ברענון או בקורס</span></div>
+  </section>
+
+  <div role="group" aria-label="סינון" style="display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px;">
+    <sc-for list="{{pills}}" as="p" hint-placeholder-count="7">
+      <button class="{{p.cls}}" aria-pressed="{{p.sel}}" sc-camel-on-click="{{p.pick}}">{{p.label}}<span class="cnt num">{{p.cnt}}</span></button>
+    </sc-for>
+  </div>
+
+  <div style="display: flex; flex-wrap: wrap; gap: 22px; align-items: flex-start;">
+
+    <section aria-label="צוותי כוננות" style="flex: 999 1 640px; min-width: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 14px; align-items: start;">
+      <sc-for list="{{teams}}" as="t" hint-placeholder-count="6">
+        <article class="tz-group" style="display: flex; flex-direction: column;">
+          <div style="display: flex; align-items: center; gap: 12px; padding: 14px 16px 10px;">
+            <span class="tz-tile" style="background: {{t.tile}}; width: 36px; height: 36px; border-radius: 9px;">
+              [i]
+            </span>
+            <div style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
+              <span class="headline">{{t.name}}</span>
+              <span class="footnote">{{t.co}} · {{t.loc}}</span>
+            </div>
+            <span class="{{t.chip}}"><span class="num">{{t.ready}}</span></span>
+          </div>
+          <div style="display: flex; align-items: center; justify-content: space-between; margin: 0 16px; padding: 8px 12px; border-radius: 9px; background: #f2f4f7;">
+            <span class="footnote">רכב</span>
+            <span class="mono" style="font-size: 15px; font-weight: 600; color: #0f1b2d;">צ׳ {{t.veh}}</span>
+          </div>
+          <div style="padding: 6px 0 4px;">
+            <sc-for list="{{t.members}}" as="m" hint-placeholder-count="3">
+              <div style="display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 4px 16px; background: {{m.bg}};">
+                <span class="tz-avatar" style="width: 28px; height: 28px; font-size: 11px;">{{m.ini}}</span>
+                <span style="flex: 1; min-width: 0; font-size: 15px;">{{m.name}} <span class="footnote">· {{m.role}}</span></span>
+                <span class="{{m.chip}}">{{m.st}}</span>
+              </div>
+            </sc-for>
+          </div>
+          <sc-if value="{{t.gap}}" hint-placeholder-val="{{false}}">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 16px 12px; border-top: 1px solid #e1e6ec;">
+              <span class="footnote" style="color: #a64a08;">{{t.gapText}}</span>
+              <button class="tz-btn tz-btn-plain" style="min-height: 36px; font-size: 15px;">בחירת מחליף</button>
+            </div>
+          </sc-if>
+        </article>
+      </sc-for>
+    </section>
+
+    <aside style="flex: 1 1 330px; min-width: 0; display: flex; flex-direction: column; gap: 6px;">
+      <h2 class="tz-section-header" style="padding-inline: 16px;">מבט מהיר · מי על איזה רכב</h2>
+      <div class="tz-group">
+        <sc-for list="{{quick}}" as="q" hint-placeholder-count="13">
+          <div class="tz-row">
+            <span class="tz-row-body" style="min-height: 44px; padding: 8px 0;">
+              <span class="tz-row-title" style="font-size: 15px;">{{q.name}}<span class="tz-row-sub">{{q.co}}</span></span>
+              <span class="mono" style="font-size: 13px; color: #5a6678;">{{q.veh}}</span>
+              <span class="{{q.chip}}" style="min-width: 44px; justify-content: center;"><span class="num">{{q.ready}}</span></span>
+            </span>
+          </div>
+        </sc-for>
+      </div>
+      <p class="footnote" style="margin: 0; padding: 0 16px;">מחליף את העמודות BT:BW בגיליון הגדודי.</p>
+
+      <h2 class="tz-section-header" style="padding: 18px 16px 6px;">מיקומים בשבצ״ק</h2>
+      <div class="tz-group">
+        <div class="tz-row"><span class="tz-tile" style="background: #e07b2e;">[i]</span><span class="tz-row-body"><span class="tz-row-title">מוצב 131</span><span class="tz-row-value num">61</span></span></div>
+        <div class="tz-row"><span class="tz-tile" style="background: #e07b2e;">[i]</span><span class="tz-row-body"><span class="tz-row-title">מוצב 123</span><span class="tz-row-value num">57</span></span></div>
+        <div class="tz-row"><span class="tz-tile" style="background: #7a8699;">[i]</span><span class="tz-row-body"><span class="tz-row-title">בחוץ</span><span class="tz-row-value num">157</span></span></div>
+        <div class="tz-row"><span class="tz-tile" style="background: #c4321f;">[i]</span><span class="tz-row-body"><span class="tz-row-title">לא נמצאו בשבצ״ק<span class="tz-row-sub">פלסם 148 · אגם 43 · פלחהן 12 · מסייעת 1</span></span><span class="tz-row-value num" style="color: #c4321f; font-weight: 600;">204</span></span></div>
+      </div>
+    </aside>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:1500}}">
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { co: 'all' };
+  }
+  renderVals() {
+    var self = this;
+    var NAMES = ['אבי לוי', 'בן חזן', 'גל רז', 'דור אמסלם', 'הראל בוזגלו', 'זיו נחום', 'חן ביטון', 'טל עוזרי', 'יאיר דהן', 'כפיר מלכה', 'ליאור שושן', 'מיכאל אזולאי', 'נדב פרידמן', 'סהר יוסף', 'עומר ברגר', 'פז אוחיון', 'צח קרמר', 'קובי חיים', 'רז אלקיים', 'שי טננבאום', 'תום וקנין', 'אסף גבאי', 'ברק ממן', 'גיל סויסה', 'דביר צור', 'הדר אלון', 'ויקטור קפלן', 'זוהר רביבו', 'חגי שלום', 'טוביה גרין', 'ינון בר', 'כרמי אדרי', 'לביא שמעוני', 'מאור ששון', 'נריה גולד', 'סתיו ענבר', 'עדן פינטו', 'פלג נוי', 'צור אברהם', 'קורן בלום', 'רון הלוי', 'שגיא מור', 'תמיר לב', 'אלעד כץ', 'בועז נגר', 'גדי טל', 'דן שפירא', 'הלל בן שושן', 'ורד סלע', 'זאב חן', 'חיים אור', 'טל שחר', 'יובל ברק', 'כנען רם', 'לירון גלעד', 'מתן הדר', 'נוי אילן', 'סער ליבנה', 'עמרי זך'];
+    var G = 'עזה', F = 'מיוערת', Y = 'יוצא לרענון', C = 'קורס';
+    var T = [
+      { co: 'אגם', name: 'חפ״ק מג״ד 1', veh: '700598', loc: 'מיוערת', m: [['מג״ד', F], ['חובש', F], ['נהג', F]] },
+      { co: 'אגם', name: 'חפ״ק מג״ד 2', veh: '704136', loc: 'מיוערת', m: [['מפק״צ', F], ['נגביסט', F], ['ק. אג״ם', Y]] },
+      { co: 'אגם', name: 'חפ״ק סמג״ד 1', veh: '707570', loc: 'מיוערת', m: [['סמג״ד', F], ['חובש', Y], ['לוחם', C], ['קשר', F]] },
+      { co: 'אגם + מסייעת', name: 'פינוי א', veh: '559', loc: 'מוצב 123', m: [['פראמדיק', G], ['חובש', G], ['סמל', G], ['קלע', G]] },
+      { co: 'מסייעת', name: 'חפ״ק', veh: '241', loc: 'מיוערת', m: [['קשר', F], ['חובש', F], ['נהג', F], ['נהג', F]] },
+      { co: 'מסייעת', name: 'עתודה', veh: '116', loc: 'מיוערת', m: [['מ״כ', F], ['מ״כ', F], ['קטלן', F], ['קלע', F], ['נהג', F], ['לוחם', F], ['לוחם', F], ['לוחם', F]] },
+      { co: 'מסייעת', name: 'פינוי ב', veh: '155', loc: 'מיוערת', m: [['קלע', F], ['קטלן', F], ['נהג', F], ['לוחם', F]] },
+      { co: 'פלחהן', name: 'חפ״ק', veh: '702509', loc: 'מוצב 131', m: [['מ״פ', G], ['קשר', G], ['קשר', G]] },
+      { co: 'פלחהן', name: 'כרמל', veh: '700474', loc: 'מוצב 131', m: [['מפק״צ', G], ['מאגיסט', G], ['קלע', G], ['נגביסט', G], ['קלע', Y], ['לוחם', G]] },
+      { co: 'פלנט', name: 'חפ״ק', veh: '700955', loc: 'מוצב 123', m: [['סמ״פ', G], ['קשר', G], ['נהג', G]] },
+      { co: 'פלנט', name: 'כרמל', veh: '704110', loc: 'מוצב 123', m: [['מפק״צ', G], ['מ״כ', G], ['נגביסט', G], ['מאגיסט', G], ['מטול', G], ['סמל', G]] },
+      { co: 'פלסר', name: 'חפ״ק', veh: '701102', loc: 'מוצב 131', m: [['סמ״פ', G], ['נגביסט', G], ['טילן', Y]] },
+      { co: 'פלסר', name: 'עתודת גדוד', veh: '704137', loc: 'מוצב 131', m: [['מפק״צ', G], ['צלף', G], ['נגביסט', G], ['נגביסט', G], ['קלע', G], ['טילן', G], ['לוחם', G], ['לוחם', G]] }
+    ];
+    var CHIP = {};
+    CHIP[G] = 'tz-chip st-gaza'; CHIP[F] = 'tz-chip st-forest'; CHIP[Y] = 'tz-chip st-leaving'; CHIP[C] = 'tz-chip st-other';
+    var n = 0;
+    var built = T.map(function (t) {
+      var avail = t.m.filter(function (x) { return x[1] === G || x[1] === F; }).length;
+      var gap = avail < t.m.length;
+      var members = t.m.map(function (x) {
+        var name = NAMES[n++ % NAMES.length];
+        var away = !(x[1] === G || x[1] === F);
+        return { name: name, role: x[0], st: x[1], chip: CHIP[x[1]], bg: away ? '#fff6ee' : 'transparent', ini: name.split(' ').map(function (s) { return s[0]; }).join('') };
+      });
+      return {
+        co: t.co, name: t.name, veh: t.veh, loc: t.loc, members: members,
+        ready: avail + '/' + t.m.length,
+        chip: gap ? 'tz-chip st-gaza' : 'tz-chip st-forest',
+        tile: gap ? '#d2691e' : '#1e3a5f',
+        gap: gap, gapText: gap ? ('חסרים ' + (t.m.length - avail) + ' · הצוות לא שלם היום') : ''
+      };
+    });
+    var sel = this.state.co;
+    var match = function (t) {
+      if (sel === 'all') return true;
+      if (sel === 'gaps') return t.gap;
+      return t.co.indexOf(sel) >= 0;
+    };
+    var teams = built.filter(match);
+    var opts = [
+      { id: 'all', label: 'כל הגדוד' }, { id: 'gaps', label: 'חסרי כוח' },
+      { id: 'אגם', label: 'אגם' }, { id: 'מסייעת', label: 'מסייעת' }, { id: 'פלחהן', label: 'פלחהן' }, { id: 'פלנט', label: 'פלנט' }, { id: 'פלסר', label: 'פלסר' }
+    ];
+    var pills = opts.map(function (o) {
+      var cnt = built.filter(function (t) { return o.id === 'all' ? true : o.id === 'gaps' ? t.gap : t.co.indexOf(o.id) >= 0; }).length;
+      return { label: o.label, cnt: cnt, sel: sel === o.id ? 'true' : 'false', cls: sel === o.id ? 'pill on' : 'pill', pick: function () { self.setState({ co: o.id }); } };
+    });
+    var quick = built.map(function (t) { return { name: t.name, co: t.co + ' · ' + t.loc, veh: t.veh, ready: t.ready, chip: t.chip }; });
+    return { teams: teams, pills: pills, quick: quick };
+  }
+}
+</script>
+
+
+</body></html>

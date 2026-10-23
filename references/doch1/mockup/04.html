@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl"><head>
+<meta charset="utf-8">
+<title>דוחות</title>
+<script src="1702b5be-50e7-4825-9e66-3bbb76ae23cd"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+</helmet>
+<div class="app" dir="rtl" style="min-height: 100vh; width: 100%; padding: 22px clamp(16px, 3vw, 40px) 48px; display: flex; flex-direction: column; gap: 20px;">
+
+  <header style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 16px;">
+    <div style="display: flex; flex-direction: column; gap: 4px;">
+      <a href="Main.dc.html" class="tz-btn tz-btn-plain" style="align-self: flex-start; min-height: 32px; padding: 0; font-size: 16px;">[i]סקירה גדודית</a>
+      <h1 class="large-title">דוחות</h1>
+      <span class="footnote">נכון ל-19.10 · 08:42 · נבנים אוטומטית מדוח 1 ומהשבצ״ק, כולל כוחות מסופחים</span>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+      <span class="pill num" style="height: 40px; font-size: 15px;">[i]יום ב׳ 19.10</span>
+      <button class="tz-btn tz-btn-tinted" style="min-height: 40px; font-size: 15px;">ייצוא לאקסל</button>
+      <a class="tz-btn tz-btn-filled" href="BrigadeReport.dc.html" style="min-height: 40px; font-size: 15px;">שליחה לחטיבה</a>
+    </div>
+  </header>
+
+  <nav aria-label="קפיצה לדוח" style="display: flex; gap: 8px; overflow-x: auto;">
+    <a class="pill on" href="#r1" style="text-decoration: none;">דוח 1 · מסגרת ומיקום</a>
+    <a class="pill" href="#r2" style="text-decoration: none;">15א · עזה לפי מוצב</a>
+    <a class="pill" href="#r3" style="text-decoration: none;">10א · מחנה מיוערת</a>
+    <a class="pill" href="#r4" style="text-decoration: none;">מט״בים</a>
+    <a class="pill" href="#r5" style="text-decoration: none;">בקרת נתונים</a>
+  </nav>
+
+  <section aria-label="סיכום" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px;">
+    <div class="card" style="display: flex; flex-direction: column; gap: 6px;"><span class="footnote">שמ״פ גדוד</span><span class="big num" style="text-align: right;">493</span><span class="footnote">לפי דוח 1</span></div>
+    <div class="card" style="display: flex; flex-direction: column; gap: 6px;"><span class="footnote">כ״א מתפקד בגזרה</span><span class="big num" style="text-align: right;">264</span><span class="footnote">235 מילואים · 29 סדיר</span></div>
+    <div class="card" style="display: flex; flex-direction: column; gap: 6px;"><span class="footnote">מעבר לגבול</span><span class="big num" style="text-align: right; color: #a64a08;">134</span><span class="footnote">מוצב 131 ומוצב 123</span></div>
+    <div class="card" style="display: flex; flex-direction: column; gap: 6px;"><span class="footnote">מחנה מיוערת</span><span class="big num" style="text-align: right; color: #1a7a43;">136</span><span class="footnote">כולל שריון, צמה וגששים</span></div>
+    <div class="card" style="display: flex; flex-direction: column; gap: 6px;"><span class="footnote">מט״בים זמינים</span><span class="big num" style="text-align: right;">2<span style="font-size: 20px; color: #5a6678;">/7</span></span><span class="footnote">רופאים ופראמדיקים</span></div>
+  </section>
+
+  <!-- R1 -->
+  <section id="r1" style="display: flex; flex-direction: column; gap: 6px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 0 16px; flex-wrap: wrap;">
+      <h2 class="title2">דוח 1 · לפי מסגרת ומיקום</h2>
+      <span class="footnote">מקצועות קריטיים לפירוט · שורות ריקות מוסתרות</span>
+    </div>
+    <div class="tz-group" style="overflow-x: auto;">
+      <sc-raw-table class="tbl" style="min-width: 1100px;">
+        <sc-raw-thead>
+          <sc-raw-tr>
+            <sc-raw-th>מסגרת</sc-raw-th><sc-raw-th>מיקום</sc-raw-th>
+            <sc-raw-th>קצין</sc-raw-th><sc-raw-th>מפ״ז</sc-raw-th><sc-raw-th>לוחם</sc-raw-th><sc-raw-th>מט״ב</sc-raw-th><sc-raw-th>חובש</sc-raw-th><sc-raw-th>נהג</sc-raw-th><sc-raw-th>גששים</sc-raw-th><sc-raw-th>תצפ׳</sc-raw-th><sc-raw-th>יתר</sc-raw-th>
+            <sc-raw-th style="border-inline-start: 1px solid #e1e6ec;">סדיר</sc-raw-th><sc-raw-th>מילואים</sc-raw-th><sc-raw-th>סה״כ</sc-raw-th>
+            <sc-raw-th style="border-inline-start: 1px solid #e1e6ec;">מעבר לגבול</sc-raw-th>
+          </sc-raw-tr>
+        </sc-raw-thead>
+        <sc-raw-tbody>
+          <sc-for list="{{r1}}" as="r" hint-placeholder-count="12">
+            <sc-raw-tr>
+              <sc-raw-td style="font-weight: 600;">{{r.co}}</sc-raw-td>
+              <sc-raw-td><span class="{{r.locChip}}">{{r.loc}}</span></sc-raw-td>
+              <sc-for list="{{r.prof}}" as="v" hint-placeholder-count="9">
+                <sc-raw-td class="num" style="color: {{v.fg}};">{{v.n}}</sc-raw-td>
+              </sc-for>
+              <sc-raw-td class="num" style="border-inline-start: 1px solid #e1e6ec;">{{r.reg}}</sc-raw-td>
+              <sc-raw-td class="num">{{r.res}}</sc-raw-td>
+              <sc-raw-td class="num" style="font-weight: 600;">{{r.tot}}</sc-raw-td>
+              <sc-raw-td class="num" style="border-inline-start: 1px solid #e1e6ec; font-weight: 600; color: {{r.borderFg}};">{{r.border}}</sc-raw-td>
+            </sc-raw-tr>
+          </sc-for>
+        </sc-raw-tbody>
+        <sc-raw-tfoot>
+          <sc-raw-tr>
+            <sc-raw-td>סה״כ</sc-raw-td><sc-raw-td></sc-raw-td>
+            <sc-raw-td class="num">27</sc-raw-td><sc-raw-td class="num">17</sc-raw-td><sc-raw-td class="num">112</sc-raw-td><sc-raw-td class="num">2</sc-raw-td><sc-raw-td class="num">11</sc-raw-td><sc-raw-td class="num">16</sc-raw-td><sc-raw-td class="num">1</sc-raw-td><sc-raw-td class="num">0</sc-raw-td><sc-raw-td class="num">78</sc-raw-td>
+            <sc-raw-td class="num" style="border-inline-start: 1px solid #e1e6ec;">29</sc-raw-td><sc-raw-td class="num">235</sc-raw-td><sc-raw-td class="num">264</sc-raw-td>
+            <sc-raw-td class="num" style="border-inline-start: 1px solid #e1e6ec; color: #a64a08;">134</sc-raw-td>
+          </sc-raw-tr>
+        </sc-raw-tfoot>
+      </sc-raw-table>
+    </div>
+  </section>
+
+  <div style="display: flex; flex-wrap: wrap; gap: 22px; align-items: flex-start;">
+    <!-- R2 -->
+    <section id="r2" style="flex: 3 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 6px;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 0 16px;">
+        <h2 class="title2">15א · עזה לפי מוצב</h2>
+        <span class="footnote">סד״כ שמ״פ</span>
+      </div>
+      <div class="tz-group" style="overflow-x: auto;">
+        <sc-raw-table class="tbl" style="min-width: 480px;">
+          <sc-raw-thead><sc-raw-tr><sc-raw-th>פלוגה</sc-raw-th><sc-raw-th>מוצב 131</sc-raw-th><sc-raw-th>מוצב 123</sc-raw-th><sc-raw-th>סה״כ עזה</sc-raw-th><sc-raw-th>מיוערת</sc-raw-th><sc-raw-th>סה״כ</sc-raw-th></sc-raw-tr></sc-raw-thead>
+          <sc-raw-tbody>
+            <sc-for list="{{r2}}" as="r" hint-placeholder-count="9">
+              <sc-raw-tr style="background: {{r.bg}};">
+                <sc-raw-td style="font-weight: 600;">{{r.co}}</sc-raw-td>
+                <sc-raw-td class="num">{{r.a}}</sc-raw-td>
+                <sc-raw-td class="num">{{r.b}}</sc-raw-td>
+                <sc-raw-td><span class="num" style="font-weight: 600; color: #a64a08;">{{r.g}}</span><sc-if value="{{r.flag}}" hint-placeholder-val="{{false}}"><span class="tz-chip st-missing" style="margin-inline-start: 8px;">{{r.flagText}}</span></sc-if></sc-raw-td>
+                <sc-raw-td class="num" style="color: #1a7a43;">{{r.f}}</sc-raw-td>
+                <sc-raw-td class="num" style="font-weight: 600;">{{r.t}}</sc-raw-td>
+              </sc-raw-tr>
+            </sc-for>
+          </sc-raw-tbody>
+          <sc-raw-tfoot><sc-raw-tr><sc-raw-td>סה״כ</sc-raw-td><sc-raw-td class="num">68</sc-raw-td><sc-raw-td class="num">60</sc-raw-td><sc-raw-td class="num">132</sc-raw-td><sc-raw-td class="num">136</sc-raw-td><sc-raw-td class="num">268</sc-raw-td></sc-raw-tr></sc-raw-tfoot>
+        </sc-raw-table>
+      </div>
+      <p class="footnote" style="margin: 0; padding: 0 16px;">שורה מסומנת: דיווחו עזה בדוח 1 אבל אין להם מוצב בשבצ״ק.</p>
+    </section>
+
+    <!-- R3 -->
+    <section id="r3" style="flex: 2 1 360px; min-width: 0; display: flex; flex-direction: column; gap: 6px;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 0 16px;">
+        <h2 class="title2">10א · מחנה מיוערת</h2>
+        <span class="footnote num">136 בסה״כ</span>
+      </div>
+      <div class="tz-group">
+        <sc-for list="{{r3}}" as="r" hint-placeholder-count="7">
+          <div class="tz-row">
+            <span class="tz-row-body" style="gap: 12px;">
+              <span style="width: 112px; flex: none; font-size: 15px;">{{r.u}}</span>
+              <span style="flex: 1; height: 8px; border-radius: 999px; background: #e8ecf1; overflow: hidden;"><span style="display: block; height: 8px; border-radius: 999px; background: #1a7a43; width: {{r.w}};"></span></span>
+              <span class="num" style="width: 32px; text-align: left; font-weight: 600;">{{r.n}}</span>
+            </span>
+          </div>
+        </sc-for>
+      </div>
+      <p class="footnote" style="margin: 0; padding: 0 16px;">לכל יחידה במחנה מוצג גם המפקד האחראי, מתוך האלפון.</p>
+    </section>
+  </div>
+
+  <div style="display: flex; flex-wrap: wrap; gap: 22px; align-items: flex-start;">
+    <!-- R4 -->
+    <section id="r4" style="flex: 2 1 380px; min-width: 0; display: flex; flex-direction: column; gap: 6px;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 0 16px;">
+        <h2 class="title2">מט״בים</h2>
+        <span class="tz-chip st-gaza">2 זמינים מתוך 7</span>
+      </div>
+      <div class="tz-group">
+        <sc-for list="{{r4}}" as="r" hint-placeholder-count="7">
+          <a class="tz-row" href="Soldier.dc.html">
+            <span class="tz-avatar">{{r.ini}}</span>
+            <span class="tz-row-body">
+              <span class="tz-row-title">{{r.name}}<span class="tz-row-sub">{{r.role}} · {{r.unit}} · {{r.loc}}</span></span>
+              <span class="{{r.chip}}">{{r.st}}</span>
+              [i]
+            </span>
+          </a>
+        </sc-for>
+      </div>
+    </section>
+
+    <!-- R5 -->
+    <section id="r5" style="flex: 3 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 6px;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 0 16px;">
+        <h2 class="title2">בקרת נתונים</h2>
+        <span class="footnote">השוואה בין הגיליון הפלוגתי, הגדודי והשבצ״ק</span>
+      </div>
+      <div class="tz-group" style="overflow-x: auto;">
+        <sc-raw-table class="tbl" style="min-width: 640px;">
+          <sc-raw-thead><sc-raw-tr><sc-raw-th>פלוגה</sc-raw-th><sc-raw-th>שורות</sc-raw-th><sc-raw-th>לא בשמ״פ</sc-raw-th><sc-raw-th>חסרי דיווח</sc-raw-th><sc-raw-th>בשמ״פ</sc-raw-th><sc-raw-th>פער מול הדמ״ח</sc-raw-th><sc-raw-th>עזה ללא מוצב</sc-raw-th><sc-raw-th>מוצב בעזה ולא דווח עזה</sc-raw-th><sc-raw-th>בשבצ״ק</sc-raw-th></sc-raw-tr></sc-raw-thead>
+          <sc-raw-tbody>
+            <sc-for list="{{r5}}" as="r" hint-placeholder-count="6">
+              <sc-raw-tr>
+                <sc-raw-td style="font-weight: 600;">{{r.co}}</sc-raw-td>
+                <sc-raw-td class="num">{{r.rows}}</sc-raw-td>
+                <sc-raw-td class="num">{{r.out}}</sc-raw-td>
+                <sc-raw-td class="num">{{r.miss}}</sc-raw-td>
+                <sc-raw-td class="num" style="font-weight: 600;">{{r.inn}}</sc-raw-td>
+                <sc-raw-td><span class="{{r.dmChip}}">{{r.dm}}</span></sc-raw-td>
+                <sc-raw-td><span class="{{r.aChip}}"><span class="num">{{r.a}}</span></span></sc-raw-td>
+                <sc-raw-td><span class="{{r.bChip}}"><span class="num">{{r.b}}</span></span></sc-raw-td>
+                <sc-raw-td class="num" style="color: #5a6678;">{{r.shab}}</sc-raw-td>
+              </sc-raw-tr>
+            </sc-for>
+          </sc-raw-tbody>
+        </sc-raw-table>
+      </div>
+      <p class="footnote" style="margin: 0; padding: 0 16px;">כל ערך אדום פותח את רשימת החיילים שגורמים לפער.</p>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:1900}}">
+class Component extends DCLogic {
+  renderVals() {
+    var R1 = [
+      ['פלחהן', 'מוצב 131', 4, 0, 24, 0, 1, 0, 0, 0, 4, 0, 33, 33, 33],
+      ['פלסר', 'מוצב 131', 2, 1, 22, 0, 1, 0, 0, 0, 2, 0, 28, 28, 28],
+      ['פלנט', 'מוצב 123', 3, 6, 29, 0, 3, 1, 0, 0, 5, 0, 47, 47, 47],
+      ['מסייעת', 'מוצב 123', 0, 3, 3, 0, 0, 0, 0, 0, 1, 0, 7, 7, 7],
+      ['מסייעת', 'מיוערת', 0, 3, 15, 0, 2, 6, 0, 0, 5, 0, 31, 31, 0],
+      ['אגם', 'מוצב 123', 0, 0, 0, 1, 2, 0, 0, 0, 0, 0, 3, 3, 3],
+      ['אגם', 'מיוערת', 9, 0, 4, 1, 2, 0, 0, 0, 10, 0, 26, 26, 0],
+      ['פלסם', 'מיוערת', 5, 0, 0, 0, 0, 4, 0, 0, 51, 0, 60, 60, 0],
+      ['שריון 9מ', 'מוצב 123', 1, 1, 4, 0, 0, 2, 0, 0, 0, 8, 0, 8, 8],
+      ['שריון 9מ', 'מוצב 131', 1, 1, 4, 0, 0, 2, 0, 0, 0, 8, 0, 8, 8],
+      ['שריון 9מ', 'מיוערת', 2, 2, 7, 0, 0, 1, 0, 0, 0, 12, 0, 12, 0],
+      ['גששים', 'מיוערת', 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0]
+    ];
+    var r1 = R1.map(function (r) {
+      return {
+        co: r[0], loc: r[1], locChip: r[1] === 'מיוערת' ? 'tz-chip st-forest' : 'tz-chip st-gaza',
+        prof: r.slice(2, 11).map(function (n) { return { n: n, fg: n === 0 ? '#b7c0cc' : '#0f1b2d' }; }),
+        reg: r[11], res: r[12], tot: r[13], border: r[14], borderFg: r[14] > 0 ? '#a64a08' : '#b7c0cc'
+      };
+    });
+    var R2 = [
+      ['פלחהן', 33, 0, 33, 0, 33], ['פלסר', 27, 0, 31, 0, 31], ['פלנט', 0, 47, 47, 0, 47], ['מסייעת', 0, 2, 2, 31, 33],
+      ['אגם', 0, 3, 3, 26, 29], ['פלסם', 0, 0, 0, 60, 60], ['שריון 9מ', 8, 8, 16, 13, 29], ['גששים', 0, 0, 0, 1, 1], ['צמה', 0, 0, 0, 5, 5]
+    ];
+    var r2 = R2.map(function (r) {
+      var gap = r[3] - r[1] - r[2];
+      return { co: r[0], a: r[1], b: r[2], g: r[3], f: r[4], t: r[5], flag: gap > 0, flagText: gap + ' ללא מוצב', bg: gap > 0 ? '#fff8f6' : 'transparent' };
+    });
+    var R3 = [['חפ״קים + תאג״ד', 10], ['מכלול', 16], ['פלס״ם', 60], ['מסייעת', 31], ['שריון', 13], ['צמה', 5], ['גששים', 1]];
+    var r3 = R3.map(function (r) { return { u: r[0], n: r[1], w: Math.round(r[1] / 60 * 100) + '%' }; });
+    var CH = { 'עזה': 'tz-chip st-gaza', 'מיוערת': 'tz-chip st-forest', 'רענון': 'tz-chip st-leave', 'יוצא לרענון': 'tz-chip st-leaving', 'חסר': 'tz-chip st-missing' };
+    var R4 = [
+      ['אסף גבאי', 'רופא', 'חפ״קים + תאג״ד', 'לא בשבצ״ק', 'חסר'],
+      ['ברק ממן', 'רופא', 'מכלול', 'בחוץ', 'רענון'],
+      ['גיל סויסה', 'רופא', 'פלס״ם', 'בחוץ', 'יוצא לרענון'],
+      ['דביר צור', 'פראמדיק', 'מסייעת', 'לא בשבצ״ק', 'רענון'],
+      ['הדר אלון', 'פראמדיק', 'שריון', 'מוצב 123', 'עזה'],
+      ['ויקטור קפלן', 'רופא', 'צמה', 'בחוץ', 'רענון'],
+      ['זוהר רביבו', 'רופא', 'גששים', 'בחוץ', 'מיוערת']
+    ];
+    var r4 = R4.map(function (r) { return { name: r[0], role: r[1], unit: r[2], loc: r[3], st: r[4], chip: CH[r[4]], ini: r[0].split(' ').map(function (s) { return s[0]; }).join('') }; });
+    var R5 = [
+      ['פלחהן', 107, 26, 5, 76, 'לא', 0, 0, 18],
+      ['פלסר', 96, 30, 0, 66, 'כן', 4, 1, 31],
+      ['פלנט', 123, 36, 0, 87, 'לא', 0, 0, 22],
+      ['מסייעת', 94, 19, 0, 75, 'כן', 0, 5, 30],
+      ['אגם', 78, 13, 0, 65, 'לא', 0, 0, 19],
+      ['פלסם', 150, 27, 0, 123, 'לא', 0, 0, 1]
+    ];
+    var r5 = R5.map(function (r) {
+      return {
+        co: r[0], rows: r[1], out: r[2], miss: r[3], inn: r[4], dm: r[5], a: r[6], b: r[7], shab: r[8],
+        dmChip: r[5] === 'כן' ? 'tz-chip st-missing' : 'tz-chip st-forest',
+        aChip: r[6] > 0 ? 'tz-chip st-missing' : 'tz-chip st-other',
+        bChip: r[7] > 0 ? 'tz-chip st-missing' : 'tz-chip st-other'
+      };
+    });
+    return { r1: r1, r2: r2, r3: r3, r4: r4, r5: r5 };
+  }
+}
+</script>
+
+
+</body></html>

@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl"><head>
+<meta charset="utf-8">
+<title>הגדרות</title>
+<script src="ad7b2006-9a39-4b6e-a0ab-e17b4bd2e011"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+</helmet>
+<div class="app" dir="rtl" style="display: flex; flex-wrap: wrap; min-height: 100vh; width: 100%;">
+
+  <aside class="side" style="flex: 1 1 232px; max-width: 100%;">
+    <a href="Main.dc.html" class="tz-btn tz-btn-plain" style="align-self: flex-start; min-height: 36px; padding: 0 8px; font-size: 16px;">[i]סקירה גדודית</a>
+    <h1 class="large-title" style="padding: 6px 12px 14px;">הגדרות</h1>
+    <nav aria-label="אזורי הגדרות" style="display: flex; flex-direction: column; gap: 2px;">
+      <a class="side-link" href="#bat" aria-current="page"><span class="tz-tile" style="background: #1e3a5f; width: 26px; height: 26px;">[i]</span>גדוד וסבב</a>
+      <a class="side-link" href="#cos"><span class="tz-tile" style="background: #6a5bd6; width: 26px; height: 26px;">[i]</span>פלוגות ומסגרות</a>
+      <a class="side-link" href="#status"><span class="tz-tile" style="background: #e07b2e; width: 26px; height: 26px;">[i]</span>סטטוסים ומיקומים</a>
+      <a class="side-link" href="#enlist"><span class="tz-tile" style="background: #2e9a5c; width: 26px; height: 26px;">[i]</span>גיוס והתייצבות</a>
+      <a class="side-link" href="#standby"><span class="tz-tile" style="background: #d2691e; width: 26px; height: 26px;">[i]</span>כוננות ורכבים</a>
+      <a class="side-link" href="#users"><span class="tz-tile" style="background: #7a8699; width: 26px; height: 26px;">[i]</span>משתמשים והרשאות</a>
+    </nav>
+    <div style="flex: 1; min-height: 20px;"></div>
+    <p class="footnote" style="margin: 0; padding: 0 12px;">שינוי בהגדרות חל מהיום והלאה. ימים שכבר דווחו נשארים כמו שהם.</p>
+  </aside>
+
+  <main style="flex: 999 1 560px; min-width: 0; padding: 28px clamp(16px, 3vw, 40px) 64px; display: flex; flex-direction: column; gap: 30px; max-width: 1080px;">
+
+    <!-- Battalion & round -->
+    <section id="bat" style="display: flex; flex-direction: column; gap: 6px;">
+      <h2 class="title2" style="padding: 0 16px 4px;">גדוד וסבב</h2>
+      <div style="display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start;">
+        <div class="tz-group" style="flex: 2 1 420px; min-width: 0;">
+          <div class="tz-row"><span class="tz-row-body"><label for="bn" class="tz-row-title">שם הגדוד</label><input id="bn" class="fld" value="גדס״ר" style="width: 220px;"></span></div>
+          <div class="tz-row"><span class="tz-row-body"><label for="bn2" class="tz-row-title">שם מלא לדוחות</label><input id="bn2" class="fld" placeholder="[שם מלא כפי שמופיע בדוחות לחטיבה]" style="width: 300px;"></span></div>
+          <div class="tz-row"><span class="tz-row-body" style="flex-wrap: wrap;"><span class="tz-row-title">צבע הגדוד</span>
+            <span role="radiogroup" aria-label="צבע הגדוד" style="display: flex; gap: 8px;">
+              <sc-for list="{{batColors}}" as="c" hint-placeholder-count="6">
+                <button class="sw" role="radio" aria-checked="{{c.sel}}" aria-label="{{c.label}}" sc-camel-on-click="{{c.pick}}" style="background: {{c.hex}}; box-shadow: {{c.ring}};"></button>
+              </sc-for>
+            </span></span></div>
+          <div class="tz-row"><span class="tz-row-body"><label for="rn" class="tz-row-title">סבב נוכחי</label><input id="rn" class="fld" value="סבב 7" style="width: 140px;"></span></div>
+          <div class="tz-row"><span class="tz-row-body"><span class="tz-row-title">תחילת הסבב</span><span class="pill num" style="height: 34px; font-size: 15px;">א׳ 23.08.2026</span></span></div>
+          <div class="tz-row"><span class="tz-row-body"><span class="tz-row-title">סיום הסבב</span><span class="pill num" style="height: 34px; font-size: 15px;">ה׳ 10.12.2026</span></span></div>
+        </div>
+        <div class="card" style="flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 22px;">
+          <span class="footnote">כך זה ייראה</span>
+          <span style="width: 72px; height: 72px; border-radius: 18px; display: grid; place-items: center; color: #fff; font-size: 24px; font-weight: 700; background: {{batHex}}; box-shadow: 0 8px 20px #0f1b2d29;">ד1</span>
+          <span class="headline">דוח 1 · גדס״ר</span>
+          <span class="footnote">סבב 7 · 23.08–10.12 · 110 ימים</span>
+          <div style="width: 100%; height: 6px; border-radius: 999px; background: #e8ecf1; overflow: hidden;"><div style="width: 52%; height: 6px; background: {{batHex}};"></div></div>
+          <span class="footnote">יום 58 מתוך 110</span>
+        </div>
+      </div>
+      <h3 class="tz-section-header" style="padding-top: 16px;">דוח 1 היומי</h3>
+      <div class="tz-group">
+        <div class="tz-row"><span class="tz-row-body"><span class="tz-row-title">תזכורת לפלוגות שלא דיווחו<span class="tz-row-sub">התראה למשתמשי הפלוגה</span></span><span class="pill num" style="height: 34px;">09:00</span></span></div>
+        <div class="tz-row"><span class="tz-row-body"><span class="tz-row-title">נעילת הדוח<span class="tz-row-sub">אחרי הנעילה רק מנהל יכול לשנות את היום</span></span><span class="pill num" style="height: 34px;">10:00</span></span></div>
+        <div class="tz-row"><span class="tz-row-body"><span class="tz-row-title">שליחה לחטיבה</span><span class="pill num" style="height: 34px;">10:15</span></span></div>
+        <div class="tz-row"><span class="tz-row-body"><span class="tz-row-title">מילוי אוטומטי מאתמול<span class="tz-row-sub">מציע לפלוגה את סטטוס האתמול כברירת מחדל</span></span><button class="tg" role="switch" aria-checked="true" aria-label="מילוי אוטומטי מאתמול" style="background: #1e3a5f; justify-content: flex-end;"><span></span></button></span></div>
+      </div>
+    </section>
+
+    <!-- Companies -->
+    <section id="cos" style="display: flex; flex-direction: column; gap: 6px;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 0 16px 4px;">
+        <h2 class="title2">פלוגות ומסגרות</h2>
+        <button class="tz-btn tz-btn-plain" style="min-height: 36px;">הוספת פלוגה</button>
+      </div>
+      <div class="tz-group">
+        <sc-for list="{{companies}}" as="c" hint-placeholder-count="7">
+          <div>
+            <div class="tz-row">
+              <button class="sw" aria-label="{{c.colorLabel}}" sc-camel-on-click="{{c.edit}}" style="align-self: center; width: 28px; height: 28px; background: {{c.hex}}; box-shadow: {{c.ring}};"></button>
+              <span class="tz-row-body" style="gap: 12px;">
+                <span class="tz-row-title" style="display: flex; flex-direction: column;"><span style="font-weight: 600; color: {{c.nameFg}};">{{c.name}}</span><span class="footnote">{{c.type}} · {{c.units}} מסגרות · {{c.people}} ברשימה</span></span>
+                <span class="mono" style="font-size: 13px; color: #5a6678;">{{c.code}}</span>
+                <span class="{{c.chip}}">{{c.state}}</span>
+                [i]
+              </span>
+            </div>
+            <sc-if value="{{c.editing}}" hint-placeholder-val="{{false}}">
+              <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 16px 14px 16px; background: #f7f9fb; border-bottom: 1px solid #e1e6ec;">
+                <span class="footnote" style="margin-inline-end: 6px;">צבע ל{{c.name}}</span>
+                <sc-for list="{{c.palette}}" as="p" hint-placeholder-count="8">
+                  <button class="sw" aria-label="{{p.label}}" sc-camel-on-click="{{p.pick}}" style="background: {{p.hex}}; box-shadow: {{p.ring}};"></button>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+      <p class="footnote" style="margin: 0; padding: 0 16px;">הצבע מופיע בכל מקום שהפלוגה מוצגת: סינון, טבלאות ודוחות. פלוגה לא פעילה לא נספרת בסבב.</p>
+      <h3 class="tz-section-header" style="padding-top: 14px;">כוחות מסופחים</h3>
+      <div class="tz-group">
+        <div class="tz-row"><span class="tz-row-body"><span class="tz-row-title">שריון 9מ<span class="tz-row-sub">סדיר · 29 בדוח היום</span></span><span class="footnote">נכלל בדוחות</span><button class="tg" role="switch" aria-checked="true" aria-label="שריון נכלל בדוחות" style="background: #1e3a5f; justify-content: flex-end;"><span></span></button></span></div>
+        <div class="tz-row"><span class="tz-row-body"><span class="tz-row-title">גששים<span class="tz-row-sub">1 בדוח היום</span></span><span class="footnote">נכלל בדוחות</span><button class="tg" role="switch" aria-checked="true" aria-label="גששים נכללים בדוחות" style="background: #1e3a5f; justify-content: flex-end;"><span></span></button></span></div>
+        <div class="tz-row"><span class="tz-row-body"><span class="tz-row-title">צמה<span class="tz-row-sub">5 בדוח היום</span></span><span class="footnote">נכלל בדוחות</span><button class="tg" role="switch" aria-checked="true" aria-label="צמה נכללת בדוחות" style="background: #1e3a5f; justify-content: flex-end;"><span></span></button></span></div>
+      </div>
+    </section>
+
+    <!-- Statuses & locations -->
+    <section id="status" style="display: flex; flex-direction: column; gap: 6px;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 0 16px 4px;">
+        <h2 class="title2">סטטוסים ומיקומים</h2>
+        <button class="tz-btn tz-btn-plain" style="min-height: 36px;">סטטוס חדש</button>
+      </div>
+      <div class="tz-group" style="overflow-x: auto;">
+        <sc-raw-table class="tbl" style="min-width: 760px;">
+          <sc-raw-thead><sc-raw-tr><sc-raw-th style="width: 36px;"></sc-raw-th><sc-raw-th>סטטוס בדוח 1</sc-raw-th><sc-raw-th>קבוצה</sc-raw-th><sc-raw-th>מיקום ברירת מחדל</sc-raw-th><sc-raw-th>נספר בסד״כ</sc-raw-th><sc-raw-th>מעבר לגבול</sc-raw-th><sc-raw-th>דורש מוצב בשבצ״ק</sc-raw-th></sc-raw-tr></sc-raw-thead>
+          <sc-raw-tbody>
+            <sc-for list="{{statuses}}" as="s" hint-placeholder-count="10">
+              <sc-raw-tr>
+                <sc-raw-td><span style="display: block; width: 14px; height: 14px; border-radius: 999px; background: {{s.hex}};"></span></sc-raw-td>
+                <sc-raw-td style="font-weight: 500;">{{s.name}}</sc-raw-td>
+                <sc-raw-td><span class="{{s.groupChip}}">{{s.group}}</span></sc-raw-td>
+                <sc-raw-td style="color: #5a6678;">{{s.loc}}</sc-raw-td>
+                <sc-for list="{{s.flags}}" as="f" hint-placeholder-count="3">
+                  <sc-raw-td><button class="tg" role="switch" aria-checked="{{f.on}}" aria-label="{{f.label}}" sc-camel-on-click="{{f.toggle}}" style="background: {{f.bg}}; justify-content: {{f.jc}}; transform: scale(0.82); transform-origin: right center;"><span></span></button></sc-raw-td>
+                </sc-for>
+              </sc-raw-tr>
+            </sc-for>
+          </sc-raw-tbody>
+        </sc-raw-table>
+      </div>
+      <p class="footnote" style="margin: 0; padding: 0 16px;">אחרי שינוי, הסיכומים בסקירה ובדוחות מחושבים מחדש לפי ההגדרה.</p>
+
+      <h3 class="tz-section-header" style="padding-top: 14px;">מיקומים</h3>
+      <div class="tz-group">
+        <div class="tz-row"><span class="tz-tile" style="background: #e07b2e;">[i]</span><span class="tz-row-body"><span class="tz-row-title">מוצב 131<span class="tz-row-sub">עזה · מעבר לגבול · נספר בדוח 15א</span></span><span class="tz-row-value">פלחהן, פלסר</span>[i]</span></div>
+        <div class="tz-row"><span class="tz-tile" style="background: #e07b2e;">[i]</span><span class="tz-row-body"><span class="tz-row-title">מוצב 123<span class="tz-row-sub">עזה · מעבר לגבול · נספר בדוח 15א</span></span><span class="tz-row-value">פלנט, מסייעת, אגם</span>[i]</span></div>
+        <div class="tz-row"><span class="tz-tile" style="background: #1a7a43;">[i]</span><span class="tz-row-body"><span class="tz-row-title">מחנה מיוערת<span class="tz-row-sub">נספר בדוח 10א</span></span><span class="tz-row-value">כל הפלוגות</span>[i]</span></div>
+        <div class="tz-row"><span class="tz-tile" style="background: #7a8699;">[i]</span><span class="tz-row-body"><span class="tz-row-title">בחוץ<span class="tz-row-sub">לא משובץ במוצב היום</span></span>[i]</span></div>
+        <div class="tz-row"><span class="tz-row-body"><span class="tz-row-title" style="color: #1e3a5f;">הוספת מיקום</span></span></div>
+      </div>
+    </section>
+
+    <!-- Enlistment -->
+    <section id="enlist" style="display: flex; flex-direction: column; gap: 6px;">
+      <h2 class="title2" style="padding: 0 16px 4px;">גיוס והתייצבות</h2>
+      <div style="display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start;">
+        <div style="flex: 1 1 360px; min-width: 0; display: flex; flex-direction: column; gap: 6px;">
+          <div class="tz-group">
+            <div class="tz-row"><span class="tz-row-body"><span class="tz-row-title">יום הגיוס</span><span class="pill num" style="height: 34px; font-size: 15px;">א׳ 07.09.2026</span></span></div>
+            <div class="tz-row"><span class="tz-row-body"><span class="tz-row-title">שעת התייצבות</span><span class="pill num" style="height: 34px;">08:00</span></span></div>
+            <div class="tz-row"><span class="tz-row-body"><span class="tz-row-title">מקום התייצבות</span><span class="tz-row-value">שדה תימן</span></span></div>
+            <div class="tz-row"><span class="tz-row-body"><span class="tz-row-title">ימי התארגנות לפני הגיוס<span class="tz-row-sub">נספרים כ״התארגנות״ בדוח</span></span><span class="pill num" style="height: 34px;">2</span></span></div>
+            <div class="tz-row"><span class="tz-row-body"><span class="tz-row-title">התראה על גיוס נדחה<span class="tz-row-sub">יום לפני תאריך הגיוס החדש</span></span><button class="tg" role="switch" aria-checked="true" aria-label="התראה על גיוס נדחה" style="background: #1e3a5f; justify-content: flex-end;"><span></span></button></span></div>
+          </div>
+        </div>
+        <div style="flex: 1 1 360px; min-width: 0; display: flex; flex-direction: column; gap: 6px;">
+          <div class="tz-group" style="padding: 12px 16px; display: flex; flex-direction: column; gap: 10px;">
+            <span class="footnote">סטטוסי גיוס</span>
+            <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+              <span class="tz-chip st-forest">התייצב</span><span class="tz-chip st-gaza">טרם התייצב</span><span class="tz-chip st-leave">תאריך גיוס נדחה</span><span class="tz-chip st-leave">תאריך נדחה ביום גיוס</span><span class="tz-chip st-other">שוחרר</span><span class="tz-chip st-other">שוחרר ביום גיוס</span><span class="tz-chip st-missing">פוטנציאל נפקד</span>
+            </div>
+            <span class="footnote" style="padding-top: 6px;">צפי הגעה</span>
+            <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+              <span class="rolechip">מגיע מלא</span><span class="rolechip">מגיע חלקי</span><span class="rolechip">העלה בעיה · אישי</span><span class="rolechip">העלה בעיה · חו״ל</span><span class="rolechip">העלה בעיה · משפחה</span><span class="rolechip">העלה בעיה · עבודה</span><span class="rolechip">שוחרר באישור מ״פ</span><span class="rolechip">שחרור מג״ד</span><span class="rolechip">לבחינת מג״ד</span><span class="rolechip">אחר</span>
+            </div>
+            <button class="tz-btn tz-btn-plain" style="align-self: flex-start; min-height: 36px; padding: 0;">עריכת הרשימות</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Standby -->
+    <section id="standby" style="display: flex; flex-direction: column; gap: 6px;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 0 16px 4px;">
+        <h2 class="title2">כוננות ורכבים</h2>
+        <button class="tz-btn tz-btn-plain" style="min-height: 36px;">סוג כוננות חדש</button>
+      </div>
+      <div class="tz-group" style="overflow-x: auto;">
+        <sc-raw-table class="tbl" style="min-width: 820px;">
+          <sc-raw-thead><sc-raw-tr><sc-raw-th>סוג כוננות</sc-raw-th><sc-raw-th>רמה</sc-raw-th><sc-raw-th>גודל</sc-raw-th><sc-raw-th>תפקידים חובה</sc-raw-th><sc-raw-th>מוחזק ע״י</sc-raw-th><sc-raw-th>מי משנה</sc-raw-th></sc-raw-tr></sc-raw-thead>
+          <sc-raw-tbody>
+            <sc-for list="{{standbyTypes}}" as="t" hint-placeholder-count="7">
+              <sc-raw-tr>
+                <sc-raw-td style="font-weight: 600;">{{t.name}}</sc-raw-td>
+                <sc-raw-td><span class="{{t.levelChip}}">{{t.level}}</span></sc-raw-td>
+                <sc-raw-td class="num">{{t.size}}</sc-raw-td>
+                <sc-raw-td><span style="display: flex; flex-wrap: wrap; gap: 4px;"><sc-for list="{{t.roles}}" as="r" hint-placeholder-count="3"><span class="rolechip">{{r}}</span></sc-for></span></sc-raw-td>
+                <sc-raw-td style="color: #5a6678; white-space: normal;">{{t.by}}</sc-raw-td>
+                <sc-raw-td style="color: #5a6678;">{{t.who}}</sc-raw-td>
+              </sc-raw-tr>
+            </sc-for>
+          </sc-raw-tbody>
+        </sc-raw-table>
+      </div>
+      <p class="footnote" style="margin: 0; padding: 0 16px;">צוות שחסר בו תפקיד חובה או שאין בו מספיק זמינים מסומן כחסר כוח בסקירה ובשבצ״ק.</p>
+
+      <h3 class="tz-section-header" style="padding-top: 14px;">מאגר רכבים</h3>
+      <div class="tz-group">
+        <div class="tz-row"><span class="tz-row-body"><span class="mono" style="width: 90px; font-size: 15px; font-weight: 600;">704137</span><span class="tz-row-title">עתודת גדוד<span class="tz-row-sub">פלסר</span></span><span class="tz-chip st-forest">תקין</span></span></div>
+        <div class="tz-row"><span class="tz-row-body"><span class="mono" style="width: 90px; font-size: 15px; font-weight: 600;">701102</span><span class="tz-row-title">חפ״ק<span class="tz-row-sub">פלסר</span></span><span class="tz-chip st-forest">תקין</span></span></div>
+        <div class="tz-row"><span class="tz-row-body"><span class="mono" style="width: 90px; font-size: 15px; font-weight: 600;">704110</span><span class="tz-row-title">כרמל<span class="tz-row-sub">פלנט</span></span><span class="tz-chip st-gaza">בטיפול</span></span></div>
+        <div class="tz-row"><span class="tz-row-body"><span class="mono" style="width: 90px; font-size: 15px; font-weight: 600;">559</span><span class="tz-row-title">פינוי א<span class="tz-row-sub">אגם + מסייעת</span></span><span class="tz-chip st-forest">תקין</span></span></div>
+        <a class="tz-row" href="Standby.dc.html"><span class="tz-row-body"><span class="tz-row-title" style="color: #1e3a5f;">עוד 9 רכבים</span>[i]</span></a>
+      </div>
+    </section>
+
+    <!-- Users -->
+    <section id="users" style="display: flex; flex-direction: column; gap: 6px;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 0 16px 4px;">
+        <h2 class="title2">משתמשים והרשאות</h2>
+        <button class="tz-btn tz-btn-plain" style="min-height: 36px;">הוספת משתמש</button>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px;">
+        <div class="card" style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 8px;"><span class="badge-admin">מנהל גדודי</span></div>
+          <span style="font-size: 15px; line-height: 21px;">רואה ועורך את כל הפלוגות, הדוחות וההגדרות. יכול לשנות יום אחרי הנעילה.</span>
+        </div>
+        <div class="card" style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 8px;"><span class="rolechip" style="background: #e6edf6; color: #1e3a5f;">משתמש פלוגה</span></div>
+          <span style="font-size: 15px; line-height: 21px;">רק הפלוגה שלו: דוח 1, לוח נוכחות, שבצ״ק, צוותי הכוננות והרכבים שלה.</span>
+        </div>
+        <div class="card" style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 8px;"><span class="rolechip">צפייה בלבד</span></div>
+          <span style="font-size: 15px; line-height: 21px;">רואה את הסקירה והדוחות, בלי לשנות דבר.</span>
+        </div>
+      </div>
+      <div class="tz-group" style="margin-top: 8px;">
+        <div class="tz-row"><span class="tz-avatar">של</span><span class="tz-row-body"><span class="tz-row-title">שליש גדודי<span class="tz-row-sub">כל הפלוגות</span></span><span class="badge-admin">מנהל</span></span></div>
+        <div class="tz-row"><span class="tz-avatar">רס</span><span class="tz-row-body"><span class="tz-row-title">רס״פ פלסר<span class="tz-row-sub">פלסר</span></span><span class="rolechip" style="background: #e6edf6; color: #1e3a5f;">משתמש פלוגה</span></span></div>
+        <div class="tz-row"><span class="tz-avatar">מפ</span><span class="tz-row-body"><span class="tz-row-title">מ״פ פלנט<span class="tz-row-sub">פלנט</span></span><span class="rolechip" style="background: #e6edf6; color: #1e3a5f;">משתמש פלוגה</span></span></div>
+        <a class="tz-row" href="#"><span class="tz-row-body"><span class="tz-row-title" style="color: #1e3a5f;">כל המשתמשים</span>[i]</span></a>
+      </div>
+    </section>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:2300}}">
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      bat: '#1e3a5f', editing: 'פלסר',
+      colors: { 'אגם': '#1e3a5f', 'מסייעת': '#6a5bd6', 'פלנט': '#2e9a5c', 'פלחהן': '#d2691e', 'פלסר': '#0f7c8c', 'פלתצ': '#a3acb9', 'פלסם': '#8a5a00' },
+      flags: {}
+    };
+  }
+  renderVals() {
+    var self = this;
+    var PAL = [['כחול כהה', '#1e3a5f'], ['סגול', '#6a5bd6'], ['ירוק', '#2e9a5c'], ['כתום', '#d2691e'], ['טורקיז', '#0f7c8c'], ['חום', '#8a5a00'], ['אדום', '#c4321f'], ['ורוד', '#b8336a']];
+    var ring = function (on) { return on ? '0 0 0 2px #ffffff, 0 0 0 4px #0f1b2d' : 'none'; };
+    var batColors = PAL.slice(0, 6).map(function (p) {
+      var on = self.state.bat === p[1];
+      return { label: p[0], hex: p[1], sel: on ? 'true' : 'false', ring: ring(on), pick: function () { self.setState({ bat: p[1] }); } };
+    });
+    var CO = [
+      ['אגם', 'מפקדה', 5, 78, 'AGM', true], ['מסייעת', 'מסייעת', 7, 94, 'MSY', true], ['פלנט', 'לוחמת', 9, 123, 'PLN', true],
+      ['פלחהן', 'לוחמת', 8, 107, 'PLH', true], ['פלסר', 'לוחמת', 8, 96, 'PLS', true], ['פלתצ', 'לוחמת', 7, 0, 'PLT', false], ['פלסם', 'מנהלה', 11, 150, 'PSM', true]
+    ];
+    var companies = CO.map(function (c) {
+      var hex = self.state.colors[c[0]];
+      var editing = self.state.editing === c[0];
+      return {
+        name: c[0], type: c[1], units: c[2], people: c[3], code: c[4], hex: hex,
+        nameFg: c[5] ? '#0f1b2d' : '#7a8699',
+        state: c[5] ? 'פעילה' : 'לא פעילה בסבב', chip: c[5] ? 'tz-chip st-forest' : 'tz-chip st-other',
+        colorLabel: 'שינוי הצבע של ' + c[0], ring: ring(editing), editing: editing,
+        edit: function () { self.setState({ editing: editing ? null : c[0] }); },
+        palette: PAL.map(function (p) {
+          return { label: p[0], hex: p[1], ring: ring(hex === p[1]), pick: function () { var n = Object.assign({}, self.state.colors); n[c[0]] = p[1]; self.setState({ colors: n }); } };
+        })
+      };
+    });
+    var ST = [
+      ['עזה', '#e07b2e', 'בשטח', 'מוצב לפי שבצ״ק', [1, 1, 1]],
+      ['מיוערת', '#1a7a43', 'בשטח', 'מחנה מיוערת', [1, 0, 0]],
+      ['שדה תימן', '#7a8699', 'בשטח', 'שדה תימן', [1, 0, 0]],
+      ['התארגנות', '#7a8699', 'בשטח', 'מחנה מיוערת', [1, 0, 0]],
+      ['יום התארגנות אחרון', '#7a8699', 'בשטח', 'מחנה מיוערת', [1, 0, 0]],
+      ['יוצא לרענון', '#a99ff0', 'יציאה', 'בחוץ', [1, 0, 0]],
+      ['רענון', '#6a5bd6', 'בבית', 'בחוץ', [1, 0, 0]],
+      ['גימלים', '#b7c0cc', 'בבית', 'בחוץ', [1, 0, 0]],
+      ['קורס', '#b7c0cc', 'אחר', 'בחוץ', [1, 0, 0]],
+      ['עורף', '#b7c0cc', 'אחר', 'בחוץ', [1, 0, 0]]
+    ];
+    var GC = { 'בשטח': 'tz-chip st-gaza', 'יציאה': 'tz-chip st-leaving', 'בבית': 'tz-chip st-leave', 'אחר': 'tz-chip st-other' };
+    var FL = ['נספר בסד״כ', 'מעבר לגבול', 'דורש מוצב בשבצ״ק'];
+    var statuses = ST.map(function (s, i) {
+      return {
+        name: s[0], hex: s[1], group: s[2], groupChip: GC[s[2]], loc: s[3],
+        flags: s[4].map(function (def, j) {
+          var key = i + '_' + j;
+          var on = self.state.flags[key] !== undefined ? self.state.flags[key] : !!def;
+          return {
+            on: on ? 'true' : 'false', label: FL[j] + ' · ' + s[0], bg: on ? '#1e3a5f' : '#dfe4ea', jc: on ? 'flex-end' : 'flex-start',
+            toggle: function () { var n = Object.assign({}, self.state.flags); n[key] = !on; self.setState({ flags: n }); }
+          };
+        })
+      };
+    });
+    var standbyTypes = [
+      { name: 'חפ״ק מג״ד', level: 'גדודי', size: 3, roles: ['מג״ד', 'חובש', 'נהג'], by: 'אגם', who: 'מנהל' },
+      { name: 'חפ״ק סמג״ד', level: 'גדודי', size: 4, roles: ['סמג״ד', 'חובש', 'קשר'], by: 'אגם', who: 'מנהל' },
+      { name: 'עתודת גדוד', level: 'גדודי', size: 8, roles: ['מפק״צ', 'צלף', 'טילן'], by: 'פלסר', who: 'מנהל + הפלוגה המחזיקה' },
+      { name: 'פינוי', level: 'גדודי', size: 4, roles: ['פראמדיק', 'חובש', 'נהג'], by: 'אגם, מסייעת', who: 'מנהל + הפלוגה המחזיקה' },
+      { name: 'חפ״ק פלוגתי', level: 'פלוגתי', size: 3, roles: ['מ״פ / סמ״פ', 'קשר'], by: 'מסייעת, פלחהן, פלנט, פלסר', who: 'משתמש הפלוגה' },
+      { name: 'כרמל', level: 'פלוגתי', size: 6, roles: ['מפק״צ', 'מאגיסט', 'נגביסט'], by: 'פלחהן, פלנט', who: 'משתמש הפלוגה' },
+      { name: 'עתודה פלוגתית', level: 'פלוגתי', size: 8, roles: ['מ״כ', 'נהג'], by: 'מסייעת', who: 'משתמש הפלוגה' }
+    ].map(function (t) { t.levelChip = t.level === 'גדודי' ? 'tz-chip st-leave' : 'tz-chip st-other'; return t; });
+    return { batColors: batColors, batHex: this.state.bat, companies: companies, statuses: statuses, standbyTypes: standbyTypes };
+  }
+}
+</script>
+
+
+</body></html>

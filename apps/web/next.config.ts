@@ -21,12 +21,14 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
-  experimental: {
-    // the logistics sheet import posts the .xlsx (up to 4 MB) plus the ticked line ids;
-    // the limit counts multipart overhead. Vercel caps a request at 4.5 MB anyway.
-    serverActions: { bodySizeLimit: "4.5mb" },
-  },
   transpilePackages: ["@gdud/ui", "@gdud/core", "@gdud/auth", "@gdud/db"],
+  experimental: {
+    serverActions: {
+      // the דוח 1 and logistics sheet imports upload an xlsx (up to 4 MB) plus form fields; the
+      // limit counts multipart overhead, and Vercel rejects bodies over 4.5 MB anyway
+      bodySizeLimit: "4.5mb",
+    },
+  },
   turbopack: {
     root: path.resolve(process.cwd(), "../.."),
   },

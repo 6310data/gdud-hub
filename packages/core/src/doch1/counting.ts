@@ -1,0 +1,182 @@
+/**
+ * דוח 1 counting. Every number here comes from the status flags and display groups
+ * defined in settings — never from a status name — so next round's words need no code change.
+ */
+import type { Day } from "./dates";
+
+export interface StatusFlags {
+  /** נספר בסד״כ */
+  countsInSadak: boolean;
+  /** sheet group שנספר — presence days */
+  countsAsPresent: boolean;
+  /** sheet group רענון */
+  homeDay: boolean;
+  /** sheet group התארגנות */
+  orgDay: boolean;
+  /** sheet group כללי */
+  generalDay: boolean;
+  /** not on active duty that day ("0", נפקד) — reported, not missing */
+  offDuty: boolean;
+  acrossBorder: boolean;
+  needsOutpost: boolean;
+}
+
+export const STATUS_FLAG_KEYS = [
+  "countsInSadak",
+  "countsAsPresent",
+  "homeDay",
+  "orgDay",
+  "generalDay",
+  "offDuty",
+  "acrossBorder",
+  "needsOutpost",
+] as const satisfies readonly (keyof StatusFlags)[];
+
+/** Did any counting flag change? (Name, color, group and order changes don't need a new version.) */
+export function statusFlagsChanged(a: StatusFlags, b: StatusFlags): boolean {
+  return STATUS_FLAG_KEYS.some((k) => a[k] !== b[k]);
+}
+
+export interface StatusDef extends StatusFlags {
+  id: string;
+  name: string;
+  color: string;
+  displayGroup: string;
+  sheetValue: string;
+  sortOrder: number;
+  active: boolean;
+}
+
+export interface ReportMember {
+  personId: string;
+  companyId: string;
+  platoonId: string | null;
+  inReport: boolean;
+}
+
+/** personId → statusId for one day; a missing key = no entry (= missing report). */
+export type DayStatuses = ReadonlyMap<string, string>;
+
+export interface GroupCount {
+  name: string;
+  color: string;
+  count: number;
+}
+
+export interface Summary {
+  /** members counted (inReport) */
+  roster: number;
+  /** members with any entry */
+  reported: number;
+  /** inReport members without an entry */
+  missing: number;
+  /** entries whose status countsInSadak */
+  inSadak: number;
+  /** entries whose status offDuty */
+  offDuty: number;
+  /** countsInSadak statuses grouped by displayGroup, ordered by the group's lowest sortOrder; empty groups left out */
+  groups: GroupCount[];
+  /** reported / roster, 0..1 (1 when roster = 0) */
+  completion: number;
+}
+
+export function summarize(members: readonly ReportMember[], day: DayStatuses, statuses: readonly StatusDef[]): Summary {
+  const byId = new Map(statuses.map((s) => [s.id, s]));
+  const groups = new Map<string, { color: string; sortOrder: number; count: number }>();
+  let roster = 0;
+  let reported = 0;
+  let inSadak = 0;
+  let offDuty = 0;
+
+  for (const m of members) {
+    if (!m.inReport) continue;
+    roster++;
+    const statusId = day.get(m.personId);
+    if (statusId === undefined) continue;
+    reported++;
+    const st = byId.get(statusId);
+    if (!st) continue;
+    if (st.offDuty) offDuty++;
+    if (!st.countsInSadak) continue;
+    inSadak++;
+    const g = groups.get(st.displayGroup);
+    if (!g) groups.set(st.displayGroup, { color: st.color, sortOrder: st.sortOrder, count: 1 });
+    else g.count++;
+  }
+
+  // a group's color/order come from its lowest-sortOrder status, used or not
+  for (const st of statuses) {
+    const g = groups.get(st.displayGroup);
+    if (st.countsInSadak && g && st.sortOrder < g.sortOrder) {
+      g.sortOrder = st.sortOrder;
+      g.color = st.color;
+    }
+  }
+
+  return {
+    roster,
+    reported,
+    missing: roster - reported,
+    inSadak,
+    offDuty,
+    groups: [...groups.entries()]
+      .sort((a, b) => a[1].sortOrder - b[1].sortOrder || a[0].localeCompare(b[0], "he"))
+      .map(([name, g]) => ({ name, color: g.color, count: g.count })),
+    completion: roster === 0 ? 1 : reported / roster,
+  };
+}
+
+/** In-report members with no entry for the day. */
+export function missingMembers<T extends ReportMember>(members: readonly T[], day: DayStatuses): T[] {
+  return members.filter((m) => m.inReport && !day.has(m.personId));
+}
+
+/** "השלמת חסרים לפי אתמול": today's missing members who had an entry yesterday. */
+export function fillFromYesterdayPlan(
+  members: readonly ReportMember[],
+  today: DayStatuses,
+  yesterday: DayStatuses,
+): Array<{ personId: string; statusId: string }> {
+  const out: Array<{ personId: string; statusId: string }> = [];
+  for (const m of missingMembers(members, today)) {
+    const statusId = yesterday.get(m.personId);
+    if (statusId !== undefined) out.push({ personId: m.personId, statusId });
+  }
+  return out;
+}
+
+export interface DayWrite {
+  personId: string;
+  day: Day;
+  /** null = no entry (delete) */
+  statusId: string | null;
+}
+
+export const dayKey = (personId: string, day: Day): string => `${personId}|${day}`;
+
+/**
+ * Group update: every person × day set to `statusId`. Cells that already hold it are skipped.
+ * `undo` restores each written cell (null where there was no entry);
+ * `overwritten` counts cells that held a different status.
+ * @param existing `${personId}|${day}` → statusId
+ */
+export function planBulkWrite(
+  existing: ReadonlyMap<string, string>,
+  personIds: readonly string[],
+  days: readonly Day[],
+  statusId: string,
+): { writes: DayWrite[]; undo: DayWrite[]; overwritten: number } {
+  const writes: DayWrite[] = [];
+  const undo: DayWrite[] = [];
+  let overwritten = 0;
+  for (const personId of personIds) {
+    for (const day of days) {
+      const prev = existing.get(dayKey(personId, day));
+      if (prev === statusId) continue;
+      writes.push({ personId, day, statusId });
+      undo.push({ personId, day, statusId: prev ?? null });
+      if (prev !== undefined) overwritten++;
+    }
+  }
+  return { writes, undo, overwritten };
+}

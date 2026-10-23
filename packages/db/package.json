@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./schema": "./src/schema/index.ts",
+    "./doch1-import": "./src/doch1-import/index.ts",
     "./logistics-sheet": "./src/logistics-sheet/index.ts",
     "./logistics-sheet/preview": "./src/logistics-sheet/preview.ts"
   },
@@ -20,6 +21,7 @@
   "dependencies": {
     "@gdud/core": "workspace:*",
     "drizzle-orm": "^0.45.0",
+    "exceljs": "4.4.0",
     "postgres": "^3.4.7",
     "read-excel-file": "^9.3.12"
   },

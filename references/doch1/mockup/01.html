@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl"><head>
+<meta charset="utf-8">
+<title>סקירה גדודית</title>
+<script src="0286a50e-f48d-4055-8cfa-501aa917510a"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+</helmet>
+<div class="app" dir="rtl" style="display: flex; flex-wrap: wrap; min-height: 100vh; width: 100%;">
+
+  <!-- Sidebar -->
+  <aside class="side" style="flex: 1 1 232px; max-width: 100%;">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 4px 8px 18px;">
+      <div style="width: 38px; height: 38px; border-radius: 10px; background: #1e3a5f; color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 15px;">ד1</div>
+      <div style="display: flex; flex-direction: column; gap: 2px;">
+        <span style="font-size: 16px; font-weight: 700;">דוח 1 · גדס״ר</span>
+        <span class="footnote">סבב 7 · 23.08–10.12</span>
+      </div>
+    </div>
+    <nav aria-label="ניווט ראשי" style="display: flex; flex-direction: column; gap: 2px;">
+      <a class="side-link" href="#" aria-current="page">[i]סקירה</a>
+      <a class="side-link" href="CompanyGrid.dc.html">[i]לוח נוכחות</a>
+      <a class="side-link" href="Standby.dc.html">[i]<span style="flex: 1;">שבצ״ק וכוננות</span><span class="tz-chip st-gaza num" style="height: 22px; padding: 0 8px;">4</span></a>
+      <a class="side-link" href="Reports.dc.html">[i]דוחות</a>
+      <a class="side-link" href="#">[i]התייצבות</a>
+      <a class="side-link" href="#">[i]אלפון</a>
+      <a class="side-link" href="#">[i]<span style="flex: 1;">חריגים</span><span class="count-badge">6</span></a>
+      <a class="side-link" href="BrigadeReport.dc.html">[i]דוח לחטיבה</a>
+    </nav>
+    <div style="flex: 1; min-height: 24px;"></div>
+    <a class="side-link" href="Settings.dc.html">[i]הגדרות</a>
+    <div style="display: flex; align-items: center; gap: 10px; padding: 10px 8px; border-top: 1px solid #d9dfe7;">
+      <span class="tz-avatar">של</span>
+      <div style="display: flex; flex-direction: column; gap: 3px; min-width: 0;">
+        <span style="font-size: 15px; font-weight: 600;">שליש גדודי</span>
+        <span class="badge-admin" style="align-self: flex-start;">מנהל · כל הפלוגות</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Content -->
+  <main style="flex: 999 1 560px; min-width: 0; padding: 28px clamp(16px, 3vw, 40px) 48px; display: flex; flex-direction: column; gap: 22px;">
+
+    <header style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px; justify-content: space-between;">
+      <div style="display: flex; flex-direction: column; gap: 4px;">
+        <span class="footnote">יום ב׳ · 19.10.2026 · יום 58 בסבב · עודכן 08:42</span>
+        <h1 class="large-title">סקירה גדודית</h1>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+        <div class="tz-seg" role="tablist" aria-label="טווח" style="width: 240px;">
+          <sc-for list="{{ranges}}" as="r" hint-placeholder-count="3">
+            <button class="tz-seg-item" role="tab" aria-selected="{{r.sel}}" sc-camel-on-click="{{r.pick}}">{{r.label}}</button>
+          </sc-for>
+        </div>
+        <a class="tz-btn tz-btn-tinted" href="Reports.dc.html" style="min-height: 40px; font-size: 15px;">דוחות</a>
+        <a class="tz-btn tz-btn-filled" href="BrigadeReport.dc.html" style="min-height: 40px; font-size: 15px;">[i]דוח לחטיבה</a>
+      </div>
+    </header>
+
+    <!-- Company filter -->
+    <div role="group" aria-label="סינון לפי פלוגה" style="display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px;">
+      <sc-for list="{{pills}}" as="p" hint-placeholder-count="7">
+        <button class="{{p.cls}}" aria-pressed="{{p.sel}}" sc-camel-on-click="{{p.pick}}">{{p.label}}<span class="cnt num">{{p.cnt}}</span></button>
+      </sc-for>
+    </div>
+
+    <!-- KPIs -->
+    <section aria-label="מדדי היום" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px;">
+      <sc-for list="{{kpis}}" as="k" hint-placeholder-count="5">
+        <div class="card" style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="dot" style="background: {{k.color}}; width: 12px; height: 12px; border-radius: 4px;"></span>
+            <span style="font-size: 14px; font-weight: 500; color: #5a6678;">{{k.label}}</span>
+          </div>
+          <span class="big num" style="color: {{k.ink}}; text-align: right;">{{k.value}}</span>
+          <span class="footnote">{{k.foot}}</span>
+        </div>
+      </sc-for>
+    </section>
+
+    <!-- Composition -->
+    <section class="card" aria-label="חלוקת הסד״כ היום" style="display: flex; flex-direction: column; gap: 12px;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap;">
+        <h2 class="headline">איפה כולם היום · {{scopeLabel}}</h2>
+        <span class="footnote">{{scopeFoot}}</span>
+      </div>
+      <div style="display: flex; gap: 3px; height: 14px; border-radius: 999px; overflow: hidden; background: #e8ecf1;">
+        <sc-for list="{{segs}}" as="s" hint-placeholder-count="5">
+          <span style="flex-grow: {{s.v}}; flex-basis: 0; background: {{s.color}}; border-radius: 999px; min-width: 4px;"></span>
+        </sc-for>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px 22px;">
+        <sc-for list="{{segs}}" as="s" hint-placeholder-count="5">
+          <span style="display: inline-flex; align-items: center; gap: 7px; font-size: 14px;"><span class="dot" style="background: {{s.color}};"></span>{{s.label}}<strong class="num" style="font-weight: 600;">{{s.v}}</strong><span class="footnote num">{{s.pct}}</span></span>
+        </sc-for>
+      </div>
+    </section>
+
+    <!-- Standby -->
+    <section class="card" aria-label="כוננות היום" style="display: flex; flex-direction: column; gap: 14px;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap;">
+        <div style="display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;">
+          <h2 class="headline">כוננות היום</h2>
+          <span class="footnote">13 צוותים · 59 חיילים · 13 רכבים · 54 זמינים</span>
+        </div>
+        <a href="Standby.dc.html" style="font-size: 15px; text-decoration: none;">לכל הצוותים והרכבים</a>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px;">
+        <sc-for list="{{standby}}" as="s" hint-placeholder-count="13">
+          <a href="Standby.dc.html" style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; background: {{s.bg}}; text-decoration: none; color: #0f1b2d;">
+            <span style="flex: 1; min-width: 0; display: flex; flex-direction: column;"><span style="font-size: 15px; font-weight: 600;">{{s.name}}</span><span class="footnote">{{s.co}} · <span class="mono" style="font-size: 12px;">צ׳ {{s.veh}}</span></span></span>
+            <span class="{{s.chip}}"><span class="num">{{s.ready}}</span></span>
+          </a>
+        </sc-for>
+      </div>
+    </section>
+
+    <!-- Table + Attention -->
+    <div style="display: flex; flex-wrap: wrap; gap: 22px; align-items: flex-start;">
+
+      <section style="flex: 999 1 620px; min-width: 0; display: flex; flex-direction: column; gap: 6px;">
+        <h2 class="tz-section-header" style="padding-inline: 16px;">מצב לפי פלוגה</h2>
+        <div class="tz-group" style="overflow-x: auto;">
+          <sc-raw-table class="tbl" style="min-width: 760px;">
+            <sc-raw-thead>
+              <sc-raw-tr><sc-raw-th>פלוגה</sc-raw-th><sc-raw-th>ברשימה</sc-raw-th><sc-raw-th>בסד״כ</sc-raw-th><sc-raw-th>עזה</sc-raw-th><sc-raw-th>מיוערת</sc-raw-th><sc-raw-th>רענון</sc-raw-th><sc-raw-th>אחר</sc-raw-th><sc-raw-th>חסרי דיווח</sc-raw-th><sc-raw-th style="width: 150px;">השלמת דיווח</sc-raw-th><sc-raw-th><span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);">פתיחה</span></sc-raw-th></sc-raw-tr>
+            </sc-raw-thead>
+            <sc-raw-tbody>
+              <sc-for list="{{rows}}" as="r" hint-placeholder-count="6">
+                <sc-raw-tr style="background: {{r.bg}};">
+                  <sc-raw-td style="font-weight: 600;">{{r.id}}</sc-raw-td>
+                  <sc-raw-td class="num" style="color: #5a6678;">{{r.roster}}</sc-raw-td>
+                  <sc-raw-td class="num" style="font-weight: 600;">{{r.active}}</sc-raw-td>
+                  <sc-raw-td class="num">{{r.gaza}}</sc-raw-td>
+                  <sc-raw-td class="num">{{r.forest}}</sc-raw-td>
+                  <sc-raw-td class="num">{{r.leave}}</sc-raw-td>
+                  <sc-raw-td class="num">{{r.other}}</sc-raw-td>
+                  <sc-raw-td>
+                    <sc-if value="{{r.hasMissing}}" hint-placeholder-val="{{true}}"><span class="tz-chip st-missing num">{{r.missing}}</span></sc-if>
+                  </sc-raw-td>
+                  <sc-raw-td>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <div style="flex: 1; height: 6px; border-radius: 999px; background: #e8ecf1; overflow: hidden;"><div style="height: 6px; border-radius: 999px; width: {{r.pctW}}; background: {{r.pctColor}};"></div></div>
+                      <span class="num footnote" style="min-width: 34px;">{{r.pctLabel}}</span>
+                    </div>
+                  </sc-raw-td>
+                  <sc-raw-td><a href="CompanyGrid.dc.html" aria-label="פתיחת לוח הנוכחות של הפלוגה" style="display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; color: #a3acb9;">[i]</a></sc-raw-td>
+                </sc-raw-tr>
+              </sc-for>
+            </sc-raw-tbody>
+            <sc-raw-tfoot>
+              <sc-raw-tr>
+                <sc-raw-td>סה״כ גדוד</sc-raw-td><sc-raw-td class="num">648</sc-raw-td><sc-raw-td class="num">492</sc-raw-td><sc-raw-td class="num">116</sc-raw-td><sc-raw-td class="num">117</sc-raw-td><sc-raw-td class="num">240</sc-raw-td><sc-raw-td class="num">19</sc-raw-td><sc-raw-td><span class="tz-chip st-missing num">60</span></sc-raw-td><sc-raw-td><span class="num footnote">89%</span></sc-raw-td><sc-raw-td></sc-raw-td>
+              </sc-raw-tr>
+            </sc-raw-tfoot>
+          </sc-raw-table>
+        </div>
+        <p class="footnote" style="margin: 0; padding: 0 16px;">פלתצ אינה פעילה בסבב הזה ולכן אינה נספרת. רענון כולל את היוצאים לרענון היום.</p>
+      </section>
+
+      <section style="flex: 1 1 340px; min-width: 0; display: flex; flex-direction: column; gap: 6px;">
+        <h2 class="tz-section-header" style="padding-inline: 16px;">דורש טיפול היום</h2>
+        <div class="tz-group">
+          <sc-for list="{{issues}}" as="i" hint-placeholder-count="6">
+            <a class="tz-row" href="#">
+              <span class="tz-tile" style="background: {{i.tile}};">
+                [i]
+              </span>
+              <span class="tz-row-body">
+                <span class="tz-row-title">{{i.title}}<span class="tz-row-sub">{{i.sub}}</span></span>
+                <span class="tz-row-value num" style="font-weight: 600; color: {{i.ink}};">{{i.n}}</span>
+                [i]
+              </span>
+            </a>
+          </sc-for>
+        </div>
+        <p class="footnote" style="margin: 0; padding: 0 16px;">הבדיקות רצות בכל שמירה, במקום עמודות הבדיקה שבסוף כל שבצ״ק.</p>
+      </section>
+    </div>
+
+    <!-- Trend + Enlistment -->
+    <div style="display: flex; flex-wrap: wrap; gap: 22px; align-items: stretch;">
+      <section class="card" aria-label="מגמת סד״כ" style="flex: 999 1 620px; min-width: 0; display: flex; flex-direction: column; gap: 14px;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px;">
+          <h2 class="headline">סד״כ לפי מיקום · 6 שבועות</h2>
+          <div style="display: flex; flex-wrap: wrap; gap: 6px 16px;">
+            <span class="footnote" style="display: inline-flex; align-items: center; gap: 6px;"><span class="dot" style="background: #e07b2e;"></span>עזה</span>
+            <span class="footnote" style="display: inline-flex; align-items: center; gap: 6px;"><span class="dot" style="background: #1a7a43;"></span>מיוערת</span>
+            <span class="footnote" style="display: inline-flex; align-items: center; gap: 6px;"><span class="dot" style="background: #6a5bd6;"></span>רענון</span>
+            <span class="footnote" style="display: inline-flex; align-items: center; gap: 6px;"><span class="dot" style="background: #b7c0cc;"></span>אחר / שדה תימן</span>
+          </div>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: flex-end; height: 200px; border-bottom: 1px solid #e1e6ec; padding-top: 8px;" role="img" aria-label="סד״כ יומי בין 07.09 ל-19.10, בין 460 ל-499 חיילים בכל יום">
+          <sc-for list="{{trend}}" as="t" hint-placeholder-count="15">
+            <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; gap: 2px; height: 100%;">
+              <span class="num" style="font-size: 11px; text-align: center; color: #5a6678; font-weight: {{t.fw}};">{{t.total}}</span>
+              <span style="height: {{t.ho}}; background: #b7c0cc; border-radius: 3px 3px 0 0;"></span>
+              <span style="height: {{t.hl}}; background: #6a5bd6;"></span>
+              <span style="height: {{t.hf}}; background: #1a7a43;"></span>
+              <span style="height: {{t.hg}}; background: #e07b2e;"></span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <sc-for list="{{trend}}" as="t" hint-placeholder-count="15">
+            <span class="num" style="flex: 1; min-width: 0; text-align: center; font-size: 11px; color: {{t.lc}}; font-weight: {{t.fw}};">{{t.d}}</span>
+          </sc-for>
+        </div>
+      </section>
+
+      <section class="card" aria-label="התייצבות לסבב" style="flex: 1 1 340px; min-width: 0; display: flex; flex-direction: column; gap: 12px;">
+        <h2 class="headline">התייצבות לסבב</h2>
+        <div style="display: flex; align-items: baseline; gap: 10px;">
+          <span class="big num">98%</span>
+          <span class="footnote">476 מתוך 487 שצפויים להתייצב</span>
+        </div>
+        <div class="tz-bar" style="height: 8px;"><span class="ok" style="flex-grow: 476;"></span><span class="broken" style="flex-grow: 5;"></span><span class="brigade" style="flex-grow: 6;"></span></div>
+        <div class="tz-group" style="background: #f7f9fb;">
+          <div class="tz-row"><span class="tz-row-body"><span class="tz-row-title">התייצבו</span><span class="tz-row-value num">476</span></span></div>
+          <div class="tz-row"><span class="tz-row-body"><span class="tz-row-title">תאריך גיוס נדחה</span><span class="tz-row-value num">107</span></span></div>
+          <div class="tz-row"><span class="tz-row-body"><span class="tz-row-title">שוחררו</span><span class="tz-row-value num">43</span></span></div>
+          <div class="tz-row"><span class="tz-row-body"><span class="tz-row-title">פוטנציאל נפקד</span><span class="tz-chip st-missing num">6</span></span></div>
+          <div class="tz-row"><span class="tz-row-body"><span class="tz-row-title">טרם התייצבו</span><span class="tz-chip st-gaza num">5</span></span></div>
+        </div>
+      </section>
+    </div>
+
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:1640}}">
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { co: 'all', range: 'today' };
+  }
+  renderVals() {
+    var CO = [
+      { id: 'אגם', roster: 78, active: 65, gaza: 3, forest: 26, leave: 29, other: 7, missing: 5 },
+      { id: 'מסייעת', roster: 94, active: 75, gaza: 2, forest: 31, leave: 40, other: 2, missing: 12 },
+      { id: 'פלנט', roster: 123, active: 87, gaza: 47, forest: 0, leave: 38, other: 2, missing: 14 },
+      { id: 'פלחהן', roster: 107, active: 79, gaza: 33, forest: 0, leave: 44, other: 2, missing: 8 },
+      { id: 'פלסר', roster: 96, active: 66, gaza: 31, forest: 0, leave: 35, other: 0, missing: 9 },
+      { id: 'פלסם', roster: 150, active: 120, gaza: 0, forest: 60, leave: 54, other: 6, missing: 12 }
+    ];
+    var self = this;
+    var sel = this.state.co;
+    var sum = function (k) { return CO.reduce(function (a, c) { return a + c[k]; }, 0); };
+    var all = { id: 'כל הגדוד', roster: sum('roster'), active: sum('active'), gaza: sum('gaza'), forest: sum('forest'), leave: sum('leave'), other: sum('other'), missing: sum('missing') };
+    var cur = sel === 'all' ? all : CO.filter(function (c) { return c.id === sel; })[0];
+    var pct = function (v, t) { return t ? Math.round(v / t * 100) + '%' : '0%'; };
+
+    var pills = [{ id: 'all', label: 'כל הגדוד', cnt: all.roster }].concat(CO.map(function (c) { return { id: c.id, label: c.id, cnt: c.roster }; }))
+      .map(function (p) { return { label: p.label, cnt: p.cnt, sel: sel === p.id ? 'true' : 'false', cls: sel === p.id ? 'pill on' : 'pill', pick: function () { self.setState({ co: p.id }); } }; });
+
+    var ranges = [{ id: 'today', label: 'היום' }, { id: 'week', label: 'שבוע' }, { id: 'round', label: 'כל הסבב' }]
+      .map(function (r) { return { label: r.label, sel: self.state.range === r.id ? 'true' : 'false', pick: function () { self.setState({ range: r.id }); } }; });
+
+    var kpis = [
+      { label: 'בסד״כ היום', value: cur.active, foot: 'מתוך ' + cur.roster + ' ברשימה', color: '#1e3a5f', ink: '#0f1b2d' },
+      { label: 'בעזה', value: cur.gaza, foot: pct(cur.gaza, cur.active) + ' מהסד״כ', color: '#e07b2e', ink: '#0f1b2d' },
+      { label: 'מיוערת', value: cur.forest, foot: pct(cur.forest, cur.active) + ' מהסד״כ', color: '#1a7a43', ink: '#0f1b2d' },
+      { label: 'ברענון', value: cur.leave, foot: 'כולל היוצאים היום', color: '#6a5bd6', ink: '#0f1b2d' },
+      { label: 'חסרי דיווח', value: cur.missing, foot: 'התייצבו ואין להם סטטוס', color: '#c4321f', ink: '#c4321f' }
+    ];
+
+    var segs = [
+      { label: 'עזה', v: cur.gaza, color: '#e07b2e' },
+      { label: 'מיוערת', v: cur.forest, color: '#1a7a43' },
+      { label: 'רענון', v: cur.leave, color: '#6a5bd6' },
+      { label: 'אחר', v: cur.other, color: '#b7c0cc' },
+      { label: 'חסרי דיווח', v: cur.missing, color: '#c4321f' }
+    ].filter(function (s) { return s.v > 0; }).map(function (s) { s.pct = pct(s.v, cur.active + cur.missing); return s; });
+
+    var rows = CO.map(function (c) {
+      var p = Math.round(c.active / (c.active + c.missing) * 100);
+      return {
+        id: c.id, roster: c.roster, active: c.active, gaza: c.gaza, forest: c.forest, leave: c.leave, other: c.other,
+        missing: c.missing, hasMissing: c.missing > 0, pctW: p + '%', pctLabel: p + '%',
+        pctColor: p >= 90 ? '#2e9a5c' : '#e07b2e', bg: sel === c.id ? '#f1f5fa' : 'transparent'
+      };
+    });
+
+    var issues = [
+      { title: 'התייצבו ואין להם סטטוס היום', sub: 'פלנט 14 · מסייעת 12 · פלסם 12 · פלסר 9 · פלחהן 8 · אגם 5', n: 60, tile: '#c4321f', ink: '#c4321f' },
+      { title: 'עם סטטוס היום ולא משובצים', sub: 'אגם · אינם מופיעים בשבצ״ק', n: 41, tile: '#d2691e', ink: '#5a6678' },
+      { title: 'ללא צפי גיוס', sub: 'הנתון חסר ברשימה הגדודית', n: 27, tile: '#d2691e', ink: '#5a6678' },
+      { title: 'בשבצ״ק ולא ברשימה הגדודית', sub: 'פלחהן', n: 8, tile: '#7a8699', ink: '#5a6678' },
+      { title: 'מדווחים בעזה ללא מיקום', sub: 'פלסר · שבצ״ק', n: 4, tile: '#7a8699', ink: '#5a6678' },
+      { title: 'כפילות בשבצ״ק', sub: 'מסייעת · אותו מספר אישי פעמיים', n: 1, tile: '#7a8699', ink: '#5a6678' }
+    ];
+
+    var T = [
+      ['07.09', 0, 0, 10, 450], ['10.09', 123, 99, 238, 7], ['13.09', 106, 87, 260, 7], ['16.09', 107, 123, 235, 4],
+      ['19.09', 121, 106, 244, 8], ['22.09', 111, 122, 233, 13], ['25.09', 104, 99, 266, 8], ['28.09', 104, 118, 243, 9],
+      ['01.10', 105, 102, 259, 11], ['04.10', 103, 121, 245, 8], ['07.10', 109, 125, 242, 4], ['10.10', 109, 104, 264, 7],
+      ['13.10', 100, 124, 250, 19], ['16.10', 121, 103, 260, 15], ['19.10', 116, 117, 240, 19]
+    ];
+    var k = 165 / 500;
+    var trend = T.map(function (t, i) {
+      var last = i === T.length - 1;
+      return {
+        d: t[0], total: t[1] + t[2] + t[3] + t[4],
+        hg: Math.round(t[1] * k) + 'px', hf: Math.round(t[2] * k) + 'px', hl: Math.round(t[3] * k) + 'px', ho: Math.round(t[4] * k) + 'px',
+        fw: last ? 700 : 400, lc: last ? '#1e3a5f' : '#5a6678'
+      };
+    });
+
+    var SB = [
+      ['חפ״ק מג״ד 1', 'אגם', '700598', 3, 3], ['חפ״ק מג״ד 2', 'אגם', '704136', 2, 3], ['חפ״ק סמג״ד 1', 'אגם', '707570', 2, 4],
+      ['פינוי א', 'אגם + מסייעת', '559', 4, 4], ['חפ״ק', 'מסייעת', '241', 4, 4], ['עתודה', 'מסייעת', '116', 8, 8], ['פינוי ב', 'מסייעת', '155', 4, 4],
+      ['חפ״ק', 'פלחהן', '702509', 3, 3], ['כרמל', 'פלחהן', '700474', 5, 6], ['חפ״ק', 'פלנט', '700955', 3, 3], ['כרמל', 'פלנט', '704110', 6, 6],
+      ['חפ״ק', 'פלסר', '701102', 2, 3], ['עתודת גדוד', 'פלסר', '704137', 8, 8]
+    ];
+    var standby = SB.filter(function (s) { return sel === 'all' || s[1].indexOf(sel) >= 0; }).map(function (s) {
+      var gap = s[3] < s[4];
+      return { name: s[0], co: s[1], veh: s[2], ready: s[3] + '/' + s[4], chip: gap ? 'tz-chip st-gaza' : 'tz-chip st-forest', bg: gap ? '#fff6ee' : '#f2f4f7' };
+    });
+    return {
+      standby: standby,
+      pills: pills, ranges: ranges, kpis: kpis, segs: segs, rows: rows, issues: issues, trend: trend,
+      scopeLabel: cur.id, scopeFoot: (cur.active + cur.missing) + ' שאמורים לדווח היום', true: true
+    };
+  }
+}
+</script>
+
+
+</body></html>
