@@ -15,6 +15,8 @@ export interface Doch1Access {
   canOverview: boolean;
   /** copy-to-sheet: admin or company user */
   canCopy: boolean;
+  /** attendance board (לוח נוכחות): admin or company user */
+  canBoard: boolean;
   /** units the user reports for: companies (company_user) and platoons (platoon_commander); admin → all active round companies */
   reportScopes: string[];
   /** admin / company_user / platoon_commander covering unitId */
@@ -39,6 +41,7 @@ export function doch1Access({ user, parents }: Pick<Session, "user" | "parents">
     canView: can(user, "doch1", "any"),
     canOverview: isAdmin || can(user, "doch1", ["viewer"]),
     canCopy: isAdmin || can(user, "doch1", ["company_user"]),
+    canBoard: isAdmin || can(user, "doch1", ["company_user"]),
     reportScopes: battalionWide ? [...roundCompanyIds] : scopes.filter((u): u is string => u !== null),
     canReport: (unitId) => can(user, "doch1", REPORT_ROLES, unitId, parents),
     canCreateTeam: isAdmin || can(user, "doch1", ["company_user"]),

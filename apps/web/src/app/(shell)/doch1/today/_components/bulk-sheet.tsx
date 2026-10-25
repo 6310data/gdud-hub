@@ -11,6 +11,7 @@ const MAX_DAYS = 31;
 export function BulkSheet({
   count,
   day,
+  dayNames = ["היום", "מחר"],
   lastDay,
   statuses,
   overwrittenFor,
@@ -21,6 +22,8 @@ export function BulkSheet({
   count: number;
   /** the screen's day ("היום" in the sheet) */
   day: Day;
+  /** labels of `day` and the day after it */
+  dayNames?: readonly [string, string];
   /** the last day that may be chosen (round end / loaded range) */
   lastDay: Day;
   statuses: StatusDef[];
@@ -65,8 +68,8 @@ export function BulkSheet({
           <div className="tz-seg" role="tablist" aria-label="ימים">
             {(
               [
-                ["day", "היום"],
-                ["next", "מחר"],
+                ["day", dayNames[0]],
+                ["next", dayNames[1]],
                 ["range", "טווח"],
               ] as const
             ).map(([m, label]) => (
