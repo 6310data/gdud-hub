@@ -2,14 +2,17 @@
  * Apply a round-sheet import: the same resolution as planSheetImport(), then the writes,
  * all inside the caller's single RLS transaction (withUser). Order: new companies (then the
  * resolution again, with their ids) → statuses → platoons → round companies → people →
- * members → days → remembered mappings. `onProgress` reports each phase as it starts and how far
+ * members → days → שבצ״ק (locations, vehicles, teams, team members, soldiers' locations) →
+ * remembered mappings. `onProgress` reports each phase as it starts and how far
  * the long ones got, so the import screen can show the steps of a long first import.
  */
 import { and, eq, sql, type SQL } from "drizzle-orm";
 import type { Tx } from "../index";
 import * as schema from "../schema/index";
 import type { ParsedSheet } from "./parse";
+import { newLocationId, newTeamId, standbyChanges } from "./standby";
 import {
+  chosenCompanies,
   dayChanges,
   newCompanyId,
   DOCH1_NEW_STATUS_COLOR,
@@ -22,10 +25,11 @@ import {
 } from "./plan";
 
 const { units, people, doch1RoundCompanies, doch1Statuses, doch1Members, doch1Days, doch1ImportMappings } = schema;
+const { doch1Locations, doch1Vehicles, doch1StandbyTeams, doch1StandbyHolders, doch1StandbyMembers } = schema;
 
 const WRITE_CHUNK = 500;
 
-export type ImportPhase = "match" | "structure" | "people" | "members" | "days" | "mappings";
+export type ImportPhase = "match" | "structure" | "people" | "members" | "days" | "standby" | "mappings";
 /** Called when a phase starts (no counts) and after every written chunk (done of total). */
 export type ImportProgress = (phase: ImportPhase, done?: number, total?: number) => void;
 
@@ -200,12 +204,93 @@ export async function applySheetImport(
     onProgress("days", (daysDone += chunk.length), daysTotal);
   }
 
+  /* שבצ״ק */
+  const sb = standbyChanges(
+    res.standby,
+    chosenCompanies(res.chosen),
+    (pn) => personIds.get(pn)!,
+    (personId) => (res.existingMembers.has(personId) ? (res.existingMembers.get(personId)!.locationId ?? null) : undefined),
+  );
+  const sbTotal = sb.locate.length + sb.addMembers.length + sb.removeMembers.length + sb.roleUpdates.length;
+  let sbDone = 0;
+  onProgress("standby", 0, sbTotal);
+  const locationIds = new Map<string, string>();
+  for (const [key, target] of res.standby.locationMap) if (target && !target.startsWith("create:")) locationIds.set(key, target);
+  if (sb.newLocations.length) {
+    let sortOrder = Math.max(0, ...res.standby.locations.map((l) => l.sortOrder)) + 1;
+    const created = await tx
+      .insert(doch1Locations)
+      .values(sb.newLocations.map((l) => ({ roundId, name: l.name, kind: l.kind, sortOrder: sortOrder++ })))
+      .returning({ id: doch1Locations.id, name: doch1Locations.name });
+    for (const l of sb.newLocations) locationIds.set(l.key, created.find((c) => c.name === l.name)!.id);
+  }
+  const createdLocation = new Map(sb.newLocations.map((l) => [newLocationId(l.key), locationIds.get(l.key)!]));
+  const loc = (id: string | null) => (id ? (createdLocation.get(id) ?? id) : null);
+
+  const vehicleIds = new Map(res.standby.vehicles);
+  if (sb.newVehicles.length) {
+    const created = await tx.insert(doch1Vehicles).values(sb.newVehicles.map((number) => ({ number }))).returning({ id: doch1Vehicles.id, number: doch1Vehicles.number });
+    for (const v of created) vehicleIds.set(v.number, v.id);
+  }
+
+  const teamIds = new Map<string, string>();
+  for (const t of sb.newTeams) {
+    const [team] = await tx
+      .insert(doch1StandbyTeams)
+      .values({ roundId, name: t.name, typeId: t.typeId, locationId: loc(t.locationId), vehicleId: t.vehicle ? vehicleIds.get(t.vehicle)! : null })
+      .returning({ id: doch1StandbyTeams.id });
+    await tx.insert(doch1StandbyHolders).values({ teamId: team!.id, unitId: t.companyId });
+    teamIds.set(newTeamId(t.key), team!.id);
+  }
+  for (const t of sb.teamVehicles) {
+    await tx.update(doch1StandbyTeams).set({ vehicleId: vehicleIds.get(t.vehicle)! }).where(eq(doch1StandbyTeams.id, t.teamId));
+  }
+  const team = (id: string) => teamIds.get(id) ?? id;
+  // removals first: a soldier who moves must leave the old team before joining (one team per round)
+  for (const chunk of chunks(sb.removeMembers)) {
+    const keys = sql.join(
+      chunk.map((m) => sql`(${m.teamId}::uuid, ${m.personId}::uuid)`),
+      sql`, `,
+    );
+    await tx.delete(doch1StandbyMembers).where(sql`(${doch1StandbyMembers.teamId}, ${doch1StandbyMembers.personId}) in (${keys})`);
+    onProgress("standby", (sbDone += chunk.length), sbTotal);
+  }
+  for (const chunk of chunks(sb.roleUpdates)) {
+    const values = sql.join(
+      chunk.map((m) => sql`(${m.teamId}::uuid, ${m.personId}::uuid, ${m.role}::text)`),
+      sql`, `,
+    );
+    await tx.execute(sql`
+      update public.doch1_standby_members as m
+         set role = v.role
+        from (values ${values}) as v(team_id, person_id, role)
+       where m.team_id = v.team_id and m.person_id = v.person_id`);
+    onProgress("standby", (sbDone += chunk.length), sbTotal);
+  }
+  for (const chunk of chunks(sb.addMembers)) {
+    await tx.insert(doch1StandbyMembers).values(chunk.map((m) => ({ ...m, roundId, teamId: team(m.teamId) })));
+    onProgress("standby", (sbDone += chunk.length), sbTotal);
+  }
+  for (const chunk of chunks(sb.locate)) {
+    const values = sql.join(
+      chunk.map((m) => sql`(${m.personId}::uuid, ${loc(m.locationId)}::uuid)`),
+      sql`, `,
+    );
+    await tx.execute(sql`
+      update public.doch1_members as m
+         set location_id = v.location_id
+        from (values ${values}) as v(person_id, location_id)
+       where m.round_id = ${roundId}::uuid and m.person_id = v.person_id`);
+    onProgress("standby", (sbDone += chunk.length), sbTotal);
+  }
+
   /* remember every answer for the next import */
   onProgress("mappings");
   const saved = [
     ...[...res.tabMap].map(([sourceKey, targetId]) => ({ kind: "company", sourceKey, targetId })),
     ...[...res.platoonMap.keys()].map((sourceKey) => ({ kind: "platoon", sourceKey, targetId: unitIds.get(sourceKey) ?? null })),
     ...[...res.statusMap.keys()].map((sourceKey) => ({ kind: "status", sourceKey, targetId: statusIds.get(sourceKey) ?? null })),
+    ...[...res.standby.locationMap.keys()].map((sourceKey) => ({ kind: "location", sourceKey, targetId: locationIds.get(sourceKey) ?? null })),
   ];
   for (const chunk of chunks(saved)) {
     await tx
@@ -227,5 +312,10 @@ export async function applySheetImport(
     statusesCreated: res.newStatuses.length,
     platoonsCreated: toCreate.length,
     companiesCreated,
+    locationsCreated: sb.newLocations.length,
+    locationsSet: sb.locate.length,
+    teamsCreated: sb.newTeams.length,
+    teamMembersChanged: sb.addMembers.length + sb.removeMembers.length + sb.roleUpdates.length,
+    vehiclesCreated: sb.newVehicles.length,
   };
 }

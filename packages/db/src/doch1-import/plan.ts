@@ -1,6 +1,7 @@
 /**
  * Resolve a parsed round sheet against the database: which tab is which company, which
- * platoon text is which unit, which day value is which status — and what an import would
+ * platoon text is which unit, which day value is which status, which שבצ״ק מיקום is which
+ * location (standby.ts) — and what an import would
  * change. planSheetImport() only reads; applySheetImport() (apply.ts) runs the same
  * resolution and then writes. Everything runs in the caller's RLS transaction.
  */
@@ -9,6 +10,7 @@ import { eq, inArray } from "drizzle-orm";
 import type { Tx } from "../index";
 import * as schema from "../schema/index";
 import type { ParsedRow, ParsedSheet, ParsedTab, StatusGroup } from "./parse";
+import { resolveStandby, standbyChanges, type LocationAnswer, type StandbyResolution } from "./standby";
 
 const { units, people, doch1Rounds, doch1RoundCompanies, doch1Statuses, doch1Members, doch1Days, doch1ImportMappings } = schema;
 
@@ -19,10 +21,12 @@ export interface ImportMappings {
   platoons: Record<string, string | "create" | "company">;
   /** sheet value → status id */
   statuses: Record<string, string | "create">;
+  /** שבצ״ק מיקום (canonical) → location id, `create:<kind>` or "ignore" */
+  locations?: Record<string, LocationAnswer>;
 }
 
 export interface MappingQuestion {
-  kind: "tab" | "platoon" | "status";
+  kind: "tab" | "platoon" | "status" | "location";
   key: string;
   label: string;
   suggestion: string | null;
@@ -39,6 +43,14 @@ export interface ImportCounts {
   statusesCreated: number;
   platoonsCreated: number;
   companiesCreated: number;
+  /** שבצ״ק */
+  locationsCreated: number;
+  /** soldiers whose location changes */
+  locationsSet: number;
+  teamsCreated: number;
+  /** soldiers added to, removed from or with a new role on a team */
+  teamMembersChanged: number;
+  vehiclesCreated: number;
 }
 
 export interface SheetImportPlan {
@@ -103,6 +115,7 @@ export interface Resolution {
   /** the current (active) version of a status of this round, following replacements */
   currentStatus: (statusId: string) => string | undefined;
   units: UnitRow[];
+  standby: StandbyResolution;
 }
 
 const platoonKeyOf = (companyId: string, text: string) => `${companyId}|${canonicalName(text)}`;
@@ -114,9 +127,14 @@ function descendantsOf(companyId: string, all: readonly UnitRow[]): UnitRow[] {
   return all.filter((u) => u.id !== companyId && placement(u.id, byId).company?.id === companyId);
 }
 
-async function loadSaved(tx: Tx, roundId: string): Promise<Record<"company" | "platoon" | "status", Map<string, string | null>>> {
+async function loadSaved(tx: Tx, roundId: string): Promise<Record<"company" | "platoon" | "status" | "location", Map<string, string | null>>> {
   const rows = await tx.select().from(doch1ImportMappings).where(eq(doch1ImportMappings.roundId, roundId));
-  const out = { company: new Map<string, string | null>(), platoon: new Map<string, string | null>(), status: new Map<string, string | null>() };
+  const out = {
+    company: new Map<string, string | null>(),
+    platoon: new Map<string, string | null>(),
+    status: new Map<string, string | null>(),
+    location: new Map<string, string | null>(),
+  };
   for (const r of rows) out[r.kind as keyof typeof out]?.set(r.sourceKey, r.targetId);
   return out;
 }
@@ -303,6 +321,18 @@ export async function resolveSheetImport(tx: Tx, roundId: string, parsed: Parsed
     ).map((d) => [`${d.personId}|${d.day}`, d.statusId]),
   );
 
+  /* שבצ״ק tabs */
+  const standby = await resolveStandby(tx, roundId, parsed, {
+    tabMap,
+    chosen: chosenCompanies(chosen),
+    companyByKey: new Map(companies.map((c) => [canonicalName(c.name), c.id])),
+    isActive,
+    given: mappings.locations,
+    saved: saved.location,
+    ask: (q) => questions.push(q),
+    warnings,
+  });
+
   return {
     round: { id: round.id, startsOn: round.startsOn, endsOn: round.endsOn },
     questions,
@@ -320,7 +350,13 @@ export async function resolveSheetImport(tx: Tx, roundId: string, parsed: Parsed
     existingDays,
     currentStatus: current,
     units: allUnits,
+    standby,
   };
+}
+
+/** personal number → company, for the soldiers the import keeps */
+export function chosenCompanies(chosen: readonly ChosenRow[]): Map<string, string> {
+  return new Map(chosen.map((c) => [c.row.personalNumber, c.companyId]));
 }
 
 /* ── the changes an import makes ────────────────────────────────────────── */
@@ -454,6 +490,12 @@ export async function planSheetImport(tx: Tx, roundId: string, parsed: ParsedShe
     },
   );
   const createdPlatoons = new Set([...res.platoonMap].filter(([, v]) => v === "create").map(([k]) => k));
+  const sb = standbyChanges(
+    res.standby,
+    chosenCompanies(res.chosen),
+    (pn) => res.existingPeople.get(pn)?.id ?? `new:${pn}`,
+    (personId) => res.existingMembers.get(personId)?.locationId,
+  );
   return {
     roundId,
     questions: res.questions,
@@ -469,6 +511,11 @@ export async function planSheetImport(tx: Tx, roundId: string, parsed: ParsedShe
       statusesCreated: res.newStatuses.length,
       platoonsCreated: createdPlatoons.size,
       companiesCreated: res.newCompanies.size,
+      locationsCreated: sb.newLocations.length,
+      locationsSet: sb.locate.length,
+      teamsCreated: sb.newTeams.length,
+      teamMembersChanged: sb.addMembers.length + sb.removeMembers.length + sb.roleUpdates.length,
+      vehiclesCreated: sb.newVehicles.length,
     },
   };
 }

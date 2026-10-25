@@ -1,5 +1,6 @@
 /**
- * POST /doch1/import/run?mode=preview|apply — import of the round's Google Sheet (.xlsx export),
+ * POST /doch1/import/run?mode=preview|apply — import of the round's Google Sheet (.xlsx export:
+ * company tabs and their שבצ״ק tabs),
  * battalion doch1 admin only. The response streams the import's phases (lib/progress-stream.ts)
  * so the screen can show where a long first import is. The file is parsed in memory on every
  * call and never written to disk or storage; the client sends the same File again with its
@@ -35,6 +36,7 @@ const mappingsInput = z.object({
   tabs: answers.optional(),
   platoons: answers.optional(),
   statuses: answers.optional(),
+  locations: answers.optional(),
 });
 
 /** The importer's own checks (open questions, missing core role) carry messages meant for the admin. */
@@ -68,7 +70,8 @@ async function readUpload(fd: FormData, emit: ProgressEmitter): Promise<{ parsed
   const parsed = parseSheet(grids);
   if (!parsed.tabs.length) throw new UserError("לא נמצאו בקובץ לשוניות של פלוגות (שורת כותרת 3 עם ״מספר אישי״ ותאריכים).");
   const rows = parsed.tabs.reduce((n, t) => n + t.rows.length, 0);
-  emit.note("read", `${parsed.tabs.length} לשוניות · ${rows.toLocaleString("he-IL")} שורות חיילים`);
+  const standby = parsed.standby.length ? ` · ${parsed.standby.length} לשוניות שבצ״ק` : "";
+  emit.note("read", `${parsed.tabs.length} לשוניות · ${rows.toLocaleString("he-IL")} שורות חיילים${standby}`);
   return { parsed, mappings: m.data };
 }
 
@@ -91,7 +94,7 @@ export async function POST(request: NextRequest) {
       emit.phase("match");
       return withUser(ctx.s.claims, (tx) => planSheetImport(tx, ctx.round.id, parsed, mappings));
     }
-    const full: ImportMappings = { tabs: mappings.tabs ?? {}, platoons: mappings.platoons ?? {}, statuses: mappings.statuses ?? {} };
+    const full: ImportMappings = { tabs: mappings.tabs ?? {}, platoons: mappings.platoons ?? {}, statuses: mappings.statuses ?? {}, locations: mappings.locations ?? {} };
     const counts = await withUser(ctx.s.claims, (tx) => applySheetImport(tx, ctx.round.id, parsed, full, emit.phase));
     revalidateDoch1();
     return counts;
