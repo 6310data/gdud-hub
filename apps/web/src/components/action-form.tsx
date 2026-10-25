@@ -12,12 +12,14 @@ export function ActionForm({
   children,
   variant = "filled",
   className,
+  submitClassName,
 }: {
   action: Action;
   submitLabel: string;
   children?: React.ReactNode;
   variant?: "filled" | "tinted" | "plain" | "danger";
   className?: string;
+  submitClassName?: string;
 }) {
   const [state, formAction, pending] = useActionState(action, undefined);
   const ref = useRef<HTMLFormElement>(null);
@@ -39,7 +41,7 @@ export function ActionForm({
       className={className ?? "grid gap-3 p-4"}
     >
       {children}
-      <Button variant={variant} disabled={pending} small={variant === "plain" || variant === "danger"}>
+      <Button variant={variant} loading={pending} small={variant === "plain" || variant === "danger"} className={submitClassName}>
         {pending ? "שומר…" : submitLabel}
       </Button>
       {state?.error ? (

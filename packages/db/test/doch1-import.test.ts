@@ -287,8 +287,13 @@ describe("plan and apply", () => {
   });
 
   it("imports people, members and days; '0' maps to the off-duty status", async () => {
-    const counts = await apply(baseSheet(), { tabs: { גדודי: "ignore" }, platoons: { [platoonKey()]: "create" }, statuses: {} });
+    const progress: string[] = [];
+    const m: ImportMappings = { tabs: { גדודי: "ignore" }, platoons: { [platoonKey()]: "create" }, statuses: {} };
+    const counts = await asUser(admin, (tx) =>
+      applySheetImport(tx, roundId, baseSheet(), m, (phase, done, total) => progress.push(total === undefined ? phase : `${phase} ${done}/${total}`)),
+    );
     expect(counts).toMatchObject({ newPeople: 3, updatedPeople: 0, members: 3, daysWritten: 5, daysCleared: 0, statusesCreated: 3, platoonsCreated: 1 });
+    expect(progress).toEqual(["match", "structure", "people 0/3", "people 3/3", "members 0/3", "members 3/3", "days 0/5", "days 5/5", "mappings"]);
     const zero = await dayRow("7000002", "2026-10-20");
     const [st] = await db.select().from(doch1Statuses).where(eq(doch1Statuses.id, zero!.statusId));
     expect(st).toMatchObject({ sheetValue: "0", offDuty: true, countsInSadak: false });

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { addDays, dayRange, type Day, type StatusDef } from "@gdud/core";
+import { Spinner } from "@gdud/ui";
 import { StatusDot } from "../../_components/status-chip";
 
 type Mode = "day" | "next" | "range";
@@ -111,8 +112,10 @@ export function BulkSheet({
             type="button"
             className="tz-btn tz-btn-filled flex-1"
             disabled={!status || !valid || pending}
+            aria-busy={pending || undefined}
             onClick={() => status && onSubmit({ from: range[0]!, to: range[range.length - 1]!, statusId: status.id })}
           >
+            {pending ? <Spinner /> : null}
             {pending ? "מעדכן…" : `עדכון ${count} חיילים${status ? ` · ${status.name}` : ""} · ${range.length} ימים`}
           </button>
         </div>

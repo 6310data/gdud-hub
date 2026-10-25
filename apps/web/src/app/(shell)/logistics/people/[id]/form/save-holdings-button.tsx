@@ -12,7 +12,7 @@ export function SaveHoldingsButton({ personId, signer }: { personId: string; sig
     <span className="inline-flex flex-col items-end gap-1">
       <Button
         small
-        disabled={pending}
+        loading={pending}
         onClick={() =>
           start(async () => {
             const r = await issueHoldingsForm({ personId, signer });
@@ -21,7 +21,7 @@ export function SaveHoldingsButton({ personId, signer }: { personId: string; sig
           })
         }
       >
-        <Icon name="doc" size={16} />
+        {pending ? null : <Icon name="doc" size={16} />}
         {pending ? "שומר…" : "שמירת הטופס"}
       </Button>
       {error ? (

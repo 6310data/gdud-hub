@@ -1,24 +1,43 @@
 import Link from "next/link";
 import { withUser } from "@gdud/db";
+import { AppShell, type AppNavItem } from "@/components/app-shell";
 import { doch1Access } from "@/lib/doch1/access";
 import { loadActiveRound } from "@/lib/doch1/data";
-import { requireModule } from "@/lib/session";
-import { Doch1Nav, type Doch1Section } from "./_components/doch1-nav";
+import { moduleRoleLabel } from "@/lib/role-label";
+import { displayName, requireModule } from "@/lib/session";
 
+const dm = (day: string) => `${day.slice(8, 10)}.${day.slice(5, 7)}`;
+
+/** דוח 1 as its own app (mockup: references/doch1, screens 01 / 06 / 07). */
 export default async function Doch1Layout({ children }: { children: React.ReactNode }) {
   const s = await requireModule("doch1");
   const round = await withUser(s.claims, (tx) => loadActiveRound(tx));
   const access = doch1Access(s);
-  const sections: Doch1Section[] = [
-    "today",
-    ...(access.canOverview ? (["overview"] as const) : []),
-    ...(access.isAdmin ? (["brigade"] as const) : []),
-    ...(access.canCopy ? (["copy"] as const) : []),
-    ...(access.isAdmin ? (["import", "settings"] as const) : []),
+  const role = moduleRoleLabel(s, "doch1");
+
+  const main: AppNavItem[] = [
+    ...(access.canOverview ? [{ href: "/doch1", label: "סקירה", icon: "grid", exact: true } as const] : []),
+    { href: "/doch1/today", label: "דוח 1 של היום", short: "היום", icon: "report" },
+    ...(access.canCopy ? [{ href: "/doch1/copy", label: "העתקה לגיליון", short: "העתקה", icon: "table" } as const] : []),
+    ...(access.isAdmin ? [{ href: "/doch1/brigade", label: "דוח לחטיבה", short: "לחטיבה", icon: "send" } as const] : []),
   ];
+  const bottom: AppNavItem[] = access.isAdmin
+    ? [
+        { href: "/doch1/import", label: "ייבוא הגיליון", short: "ייבוא", icon: "upload" },
+        { href: "/doch1/settings", label: "הגדרות", icon: "gear" },
+      ]
+    : [];
+
   return (
-    <div data-wide className="flex flex-col gap-[22px]">
-      <Doch1Nav sections={sections} roundName={round?.name ?? null} />
+    <AppShell
+      name="דוח 1"
+      sub={round ? `${round.name} · ${dm(round.startsOn)}–${dm(round.endsOn)}` : "אין סבב פעיל"}
+      mark={{ text: "ד1" }}
+      groups={[{ items: main }]}
+      bottom={bottom}
+      user={{ name: displayName(s.user, s.claims), email: s.user.email, role: role?.role, roleTone: role?.tone }}
+      current="raised"
+    >
       {round ? null : (
         <div className="tz-card flex flex-col items-start gap-2 p-5">
           <h2 className="tz-headline">אין סבב פעיל</h2>
@@ -33,6 +52,6 @@ export default async function Doch1Layout({ children }: { children: React.ReactN
         </div>
       )}
       {children}
-    </div>
+    </AppShell>
   );
 }

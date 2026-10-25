@@ -24,8 +24,9 @@ const nextConfig: NextConfig = {
   transpilePackages: ["@gdud/ui", "@gdud/core", "@gdud/auth", "@gdud/db"],
   experimental: {
     serverActions: {
-      // the דוח 1 and logistics sheet imports upload an xlsx (up to 4 MB) plus form fields; the
-      // limit counts multipart overhead, and Vercel rejects bodies over 4.5 MB anyway
+      // the logistics sheet import uploads an xlsx (up to 4 MB) plus form fields; the limit counts
+      // multipart overhead, and Vercel rejects bodies over 4.5 MB anyway (the דוח 1 import is a
+      // route handler: doch1/import/run/route.ts)
       bodySizeLimit: "4.5mb",
     },
   },

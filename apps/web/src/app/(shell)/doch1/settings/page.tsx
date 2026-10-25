@@ -1,16 +1,45 @@
 import { notFound } from "next/navigation";
-import { byHe } from "@gdud/core";
+import { byHe, dayRange, israelToday } from "@gdud/core";
 import { desc, schema, withUser } from "@gdud/db";
 import { doch1Access } from "@/lib/doch1/access";
 import { countMembersByCompany, loadRoundCompanies, loadStatuses, toRoundVM } from "@/lib/doch1/data";
 import { fmtDay } from "@/lib/doch1/format";
 import { requireModule } from "@/lib/session";
-import { Panel } from "../_components/panel";
 import { CompaniesTable, type CompanyRow } from "./_components/companies-table";
 import { RoundForm } from "./_components/round-form";
 import { StatusEditor } from "./_components/status-editor";
 
 export const metadata = { title: "דוח 1 · הגדרות" };
+
+const SECTIONS = [
+  { id: "round", label: "גדוד וסבב", color: "var(--primary)" },
+  { id: "companies", label: "פלוגות ומסגרות", color: "var(--tile-brigade)" },
+  { id: "statuses", label: "סטטוסים", color: "var(--bar-broken)" },
+  { id: "rounds", label: "סבבים", color: "var(--tile-neutral)" },
+] as const;
+
+const dm = (day: string) => `${day.slice(8, 10)}.${day.slice(5, 7)}`;
+
+/** "כך זה ייראה": the app tile and how far the round is (mockup 05). */
+function RoundPreview({ battalion, round }: { battalion: string; round: { name: string; startsOn: string; endsOn: string } }) {
+  const length = dayRange(round.startsOn, round.endsOn).length;
+  const today = israelToday(new Date());
+  const day = Math.min(length, Math.max(0, dayRange(round.startsOn, today).length));
+  return (
+    <div className="tz-card flex flex-[1_1_240px] flex-col items-center gap-2.5 p-[22px] text-center">
+      <span className="tz-footnote">כך זה ייראה</span>
+      <span className="grid size-[72px] place-items-center rounded-[18px] bg-primary text-2xl font-bold text-white shadow-[var(--app-icon)]">ד1</span>
+      <span className="tz-headline">דוח 1 · {battalion}</span>
+      <span className="tz-footnote">
+        {round.name} · {dm(round.startsOn)}–{dm(round.endsOn)} · <span className="tz-num">{length}</span> ימים
+      </span>
+      <span className="h-1.5 w-full overflow-hidden rounded-full bg-fill">
+        <span className="block h-full rounded-full bg-primary" style={{ width: `${length ? (day / length) * 100 : 0}%` }} />
+      </span>
+      <span className="tz-footnote">{day ? `יום ${day} מתוך ${length}` : "הסבב עוד לא התחיל"}</span>
+    </div>
+  );
+}
 
 export default async function Doch1Settings() {
   const s = await requireModule("doch1");
@@ -38,6 +67,7 @@ export default async function Doch1Settings() {
       return {
         unitId: u.id,
         name: u.name,
+        color: u.color,
         inRound: !!rc,
         active: rc?.active ?? false,
         appFrom: rc?.appFrom ?? null,
@@ -45,56 +75,82 @@ export default async function Doch1Settings() {
       };
     });
   const others = data.rounds.filter((r) => !r.active).map(toRoundVM);
+  const battalion = s.units.find((u) => u.kind === "battalion")?.name ?? "גדוד";
+  const sections = SECTIONS.filter((x) => active || x.id === "round" || x.id === "rounds");
 
   return (
-    <div className="flex flex-col gap-[22px]">
-      <div className="flex flex-col">
-        <h1 className="tz-title">הגדרות</h1>
-        <span className="tz-footnote">שינוי בהגדרות חל מהיום והלאה. ימים שכבר דווחו נשארים כמו שהם.</span>
-      </div>
-
-      <Panel title={active ? `סבב נוכחי · ${active.name}` : "סבב חדש"}>
-        <RoundForm round={active ? { ...active, active: true } : null} />
-      </Panel>
-
-      {active ? (
-        <>
-          <Panel
-            title="פלוגות ומסגרות"
-            footer="פלוגה לא פעילה לא נספרת בסבב. ״דיווח באפליקציה מתאריך״ מפעיל את הפיילוט: מהתאריך הזה הייבוא מהגיליון לא משנה את ימי הפלוגה."
-          >
-            <CompaniesTable roundId={active.id} rows={companyRows} />
-          </Panel>
-
-          <Panel
-            title="סטטוסים"
-            footer={`כל הספירות מחושבות לפי הדגלים, לא לפי השם. שינוי דגלים בסטטוס שכבר דווח יוצר גרסה חדשה מהיום והלאה${
-              data.replaced ? ` (${data.replaced} גרסאות קודמות שמורות)` : ""
-            }.`}
-          >
-            <StatusEditor roundId={active.id} statuses={data.statuses} />
-          </Panel>
-        </>
-      ) : null}
-
-      {others.length || active ? (
-        <Panel title="סבבים נוספים">
-          {others.map((r) => (
-            <details key={r.id} className="border-b border-separator">
-              <summary className="cursor-pointer px-4 py-3">
-                {r.name} · {fmtDay(r.startsOn)}–{fmtDay(r.endsOn)}
-              </summary>
-              <RoundForm round={{ ...r, active: false }} />
-            </details>
+    <div className="flex flex-col gap-[22px] lg:flex-row lg:items-start lg:gap-8">
+      <aside className="flex flex-col gap-3 lg:sticky lg:top-6 lg:w-[220px] lg:flex-none">
+        <h1 className="tz-large-title">הגדרות</h1>
+        <nav aria-label="אזורי הגדרות" className="tz-pills lg:flex-col lg:gap-0.5 lg:overflow-visible">
+          {sections.map((x) => (
+            <a key={x.id} href={`#${x.id}`} className="tz-pill lg:h-10 lg:rounded-[9px] lg:bg-transparent lg:px-2.5 lg:text-[15px] lg:hover:bg-fill">
+              <span aria-hidden="true" className="size-[22px] flex-none rounded-[6px]" style={{ background: x.color }} />
+              {x.label}
+            </a>
           ))}
-          {active ? (
-            <details>
-              <summary className="cursor-pointer px-4 py-3 font-semibold text-primary">סבב חדש</summary>
-              <RoundForm round={null} />
-            </details>
-          ) : null}
-        </Panel>
-      ) : null}
+        </nav>
+        <p className="tz-footnote m-0 px-1">שינוי בהגדרות חל מהיום והלאה. ימים שכבר דווחו נשארים כמו שהם.</p>
+      </aside>
+
+      <div className="flex min-w-0 max-w-[1080px] flex-1 flex-col gap-[30px]">
+        <section id="round" className="flex scroll-mt-6 flex-col gap-1.5">
+          <h2 className="px-4 pb-1 text-[20px] font-bold leading-[26px]">{active ? `גדוד וסבב · ${active.name}` : "סבב חדש"}</h2>
+          <div className="flex flex-wrap items-start gap-[18px]">
+            <div className="min-w-0 flex-[2_1_420px]">
+              <RoundForm round={active ? { ...active, active: true } : null} />
+            </div>
+            {active ? <RoundPreview battalion={battalion} round={active} /> : null}
+          </div>
+        </section>
+
+        {active ? (
+          <>
+            <section id="companies" className="flex scroll-mt-6 flex-col gap-1.5">
+              <h2 className="px-4 pb-1 text-[20px] font-bold leading-[26px]">פלוגות ומסגרות</h2>
+              <CompaniesTable roundId={active.id} rows={companyRows} />
+              <p className="tz-section-footer">
+                פלוגה לא פעילה לא נספרת בסבב. ״דיווח באפליקציה מתאריך״ מפעיל את הפיילוט: מהתאריך הזה הייבוא מהגיליון לא משנה את ימי הפלוגה.
+              </p>
+            </section>
+
+            <section id="statuses" className="flex scroll-mt-6 flex-col gap-1.5">
+              <h2 className="px-4 pb-1 text-[20px] font-bold leading-[26px]">סטטוסים</h2>
+              <StatusEditor roundId={active.id} statuses={data.statuses} />
+              <p className="tz-section-footer">
+                כל הספירות מחושבות לפי הדגלים, לא לפי השם. שינוי דגלים בסטטוס שכבר דווח יוצר גרסה חדשה מהיום והלאה
+                {data.replaced ? ` (${data.replaced} גרסאות קודמות שמורות)` : ""}.
+              </p>
+            </section>
+          </>
+        ) : null}
+
+        {others.length || active ? (
+          <section id="rounds" className="flex scroll-mt-6 flex-col gap-1.5">
+            <h2 className="px-4 pb-1 text-[20px] font-bold leading-[26px]">סבבים</h2>
+            <div className="tz-group">
+              {others.map((r) => (
+                <details key={r.id} className="border-b border-separator">
+                  <summary className="cursor-pointer px-4 py-3">
+                    {r.name} · <span className="tz-num">{fmtDay(r.startsOn)}–{fmtDay(r.endsOn)}</span>
+                  </summary>
+                  <div className="px-4 pb-4">
+                    <RoundForm round={{ ...r, active: false }} />
+                  </div>
+                </details>
+              ))}
+              {active ? (
+                <details>
+                  <summary className="cursor-pointer px-4 py-3 font-semibold text-primary">סבב חדש</summary>
+                  <div className="px-4 pb-4">
+                    <RoundForm round={null} />
+                  </div>
+                </details>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
+      </div>
     </div>
   );
 }

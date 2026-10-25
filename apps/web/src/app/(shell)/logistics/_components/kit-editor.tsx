@@ -87,7 +87,7 @@ export function KitStandardForm({ itemId, initial, onDone }: { itemId: string; i
       <div className="flex gap-2">
         <Button
           small
-          disabled={pending}
+          loading={pending}
           onClick={() =>
             start(async () => {
               const r = await saveKit({ itemId, kit });

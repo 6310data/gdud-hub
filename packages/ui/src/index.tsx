@@ -38,7 +38,17 @@ export type IconName =
   | "alert"
   | "minus"
   | "print"
-  | "logo";
+  | "logo"
+  | "grid"
+  | "calendar"
+  | "pin"
+  | "send"
+  | "more"
+  | "upload"
+  | "contact"
+  | "report"
+  | "apps"
+  | "bell";
 
 const PATHS: Record<IconName, ReactNode> = {
   home: <path d="M4 11.5 12 5l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H5a1 1 0 0 1-1-1z" />,
@@ -184,6 +194,72 @@ const PATHS: Record<IconName, ReactNode> = {
       <path d="M8.5 12l2.5 2.5 4.5-5" />
     </>
   ),
+  grid: (
+    <>
+      <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" />
+      <rect x="13.5" y="3.5" width="7" height="7" rx="1.5" />
+      <rect x="3.5" y="13.5" width="7" height="7" rx="1.5" />
+      <rect x="13.5" y="13.5" width="7" height="7" rx="1.5" />
+    </>
+  ),
+  calendar: (
+    <>
+      <rect x="3.5" y="5" width="17" height="15" rx="2.5" />
+      <path d="M3.5 10h17M8 3v4M16 3v4" />
+    </>
+  ),
+  pin: (
+    <>
+      <path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z" />
+      <circle cx="12" cy="10" r="2.4" />
+    </>
+  ),
+  send: (
+    <>
+      <path d="M21 3 10.5 13.5" />
+      <path d="M21 3l-6.5 18-4-7.5-7.5-4z" />
+    </>
+  ),
+  more: (
+    <>
+      <circle cx="5.5" cy="12" r="1.4" />
+      <circle cx="12" cy="12" r="1.4" />
+      <circle cx="18.5" cy="12" r="1.4" />
+    </>
+  ),
+  upload: (
+    <>
+      <path d="M12 15V4M7.5 8.5 12 4l4.5 4.5" />
+      <path d="M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15" />
+    </>
+  ),
+  contact: (
+    <>
+      <rect x="4" y="3" width="16" height="18" rx="2.5" />
+      <circle cx="12" cy="10" r="3" />
+      <path d="M7.5 17c.9-2 2.5-3 4.5-3s3.6 1 4.5 3" />
+    </>
+  ),
+  report: (
+    <>
+      <rect x="4.5" y="2.5" width="15" height="19" rx="2.5" />
+      <path d="M8.3 10.5l2.2 2.2 4.6-4.6M8.3 16.5h7.4" />
+    </>
+  ),
+  bell: (
+    <>
+      <path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15z" />
+      <path d="M10 20.5a2 2 0 0 0 4 0" />
+    </>
+  ),
+  apps: (
+    <>
+      <rect x="4" y="4" width="6" height="6" rx="1.5" />
+      <rect x="14" y="4" width="6" height="6" rx="1.5" />
+      <rect x="4" y="14" width="6" height="6" rx="1.5" />
+      <path d="M17 14v6M14 17h6" />
+    </>
+  ),
 };
 
 export function Icon({ name, size = 24, className }: { name: IconName; size?: number; className?: string }) {
@@ -205,15 +281,87 @@ export function Icon({ name, size = 24, className }: { name: IconName; size?: nu
   );
 }
 
+/* ── Loading ── */
+export function Spinner({ size, label }: { size?: number; label?: string }) {
+  const style = size ? { width: size, height: size } : undefined;
+  return label ? (
+    <span className="tz-spinner" role="status" aria-label={label} style={style} />
+  ) : (
+    <span className="tz-spinner" aria-hidden="true" style={style} />
+  );
+}
+
+/** A grey shimmering block that stands in for content while it loads. */
+export function Skeleton({ height, width, className }: { height: number | string; width?: number | string; className?: string }) {
+  return <span className={cx("tz-skeleton", className)} style={{ height, width }} aria-hidden="true" />;
+}
+
 /* ── Buttons ── */
 type BtnVariant = "filled" | "tinted" | "plain" | "danger";
+/** `loading` disables the button and shows a spinner before the label. */
 export function Button({
   variant = "filled",
   small,
+  loading,
   className,
+  disabled,
+  children,
   ...rest
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: BtnVariant; small?: boolean }) {
-  return <button className={cx("tz-btn", `tz-btn-${variant}`, small && "tz-btn-sm", className)} {...rest} />;
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: BtnVariant; small?: boolean; loading?: boolean }) {
+  return (
+    <button
+      className={cx("tz-btn", `tz-btn-${variant}`, small && "tz-btn-sm", className)}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
+      {...rest}
+    >
+      {loading ? <Spinner size={small ? 15 : 17} /> : null}
+      {children}
+    </button>
+  );
+}
+
+/* ── Steps of a long process ── */
+/** active = working on it now (spinner); current = the step the user is on */
+export type StepState = "done" | "active" | "current" | "waiting" | "error";
+export interface StepItem {
+  id: string;
+  label: ReactNode;
+  state: StepState;
+  detail?: ReactNode;
+  /** 0–1, shown as a bar under an active step */
+  progress?: number;
+}
+
+export function Steps({ steps, label, row }: { steps: readonly StepItem[]; label?: string; row?: boolean }) {
+  return (
+    <ol className="tz-steps" data-layout={row ? "row" : undefined} aria-label={label}>
+      {steps.map((st, i) => (
+        <li key={st.id} data-state={st.state} aria-current={st.state === "active" || st.state === "current" ? "step" : undefined}>
+          <span className="tz-step-mark">
+            {st.state === "done" ? (
+              <Icon name="check" size={15} />
+            ) : st.state === "active" ? (
+              <Spinner />
+            ) : st.state === "error" ? (
+              <Icon name="close" size={14} />
+            ) : (
+              i + 1
+            )}
+          </span>
+          <span className="tz-step-body">
+            <span>{st.label}</span>
+            {st.detail ? <span className="tz-step-detail">{st.detail}</span> : null}
+            {st.state === "active" && st.progress !== undefined ? (
+              <span className="tz-meter" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(st.progress * 100)}>
+                <span style={{ width: `${Math.round(st.progress * 100)}%` }} />
+              </span>
+            ) : null}
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
 }
 
 /* ── Page title ── */

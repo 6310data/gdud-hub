@@ -185,8 +185,8 @@ export function StorageForm({ data, initialPersonId }: { data: StorageData; init
             <span className="tz-label">הערה ללוג</span>
             <input className="tz-input" value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={300} placeholder="לא חובה" />
           </label>
-          <Button type="button" disabled={!count || pending} onClick={submit}>
-            <Icon name="archive" size={18} />
+          <Button type="button" disabled={!count} loading={pending} onClick={submit}>
+            {pending ? null : <Icon name="archive" size={18} />}
             {pending ? "שומר…" : `${t.button}${count ? ` · ${count} פריטים` : ""}`}
           </Button>
           <span className="tz-footnote">{t.note}</span>

@@ -36,8 +36,8 @@ export function ActionButton({
 
   return (
     <span className="inline-flex flex-col items-end">
-      <Button type="button" variant={armed ? "danger" : variant} small disabled={pending} onClick={onClick}>
-        {pending ? "…" : armed ? confirmLabel : label}
+      <Button type="button" variant={armed ? "danger" : variant} small loading={pending} onClick={onClick}>
+        {armed ? confirmLabel : label}
       </Button>
       {error ? (
         <span role="alert" className="text-xs text-danger">

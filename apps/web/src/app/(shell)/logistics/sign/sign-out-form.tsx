@@ -347,8 +347,8 @@ export function SignOutForm({ data, initialPersonId, initialSerialId }: { data: 
             <Button type="button" variant="tinted" className="flex-1" onClick={() => dialog.current?.close()}>
               חזרה לעריכה
             </Button>
-            <Button type="button" className="flex-1" disabled={pending || !ready} onClick={issue}>
-              <Icon name="pencil" size={18} />
+            <Button type="button" className="flex-1" disabled={!ready} loading={pending} onClick={issue}>
+              {pending ? null : <Icon name="pencil" size={18} />}
               {pending ? "מחתים…" : "הנפקת טופס והחתמה"}
             </Button>
           </div>

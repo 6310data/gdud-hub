@@ -24,7 +24,7 @@ export function GoogleSignIn({ next }: { next: string }) {
 
   return (
     <>
-      <Button onClick={signIn} disabled={pending} className="w-full">
+      <Button onClick={signIn} loading={pending} className="w-full">
         {pending ? "מעביר ל-Google…" : "כניסה עם Google"}
       </Button>
       {failed ? (

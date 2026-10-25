@@ -7,13 +7,34 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 import type { ApplyResult, PreviewLine, SheetKey, XlsxTab } from "@gdud/db/logistics-sheet";
 import { carryTicks, checkUploadFile } from "@gdud/db/logistics-sheet/preview";
-import { Button } from "@gdud/ui";
+import { Button, Steps, type StepItem } from "@gdud/ui";
+import { FilePicker } from "@/components/file-picker";
 import { applySheetImport, inspectSheetFile, previewSheetImport, type PreviewData } from "../_actions/sheet-import";
 import type { ActionOutcome } from "@/lib/action-result";
 import { ChangeTable } from "./change-table";
 import { STALE_PREVIEW } from "./messages";
 
 type Step = "upload" | "tabs" | "preview" | "result";
+const WIZARD: Array<{ id: Step; label: string; working: string }> = [
+  { id: "upload", label: "העלאת הקובץ", working: "קורא את הקובץ…" },
+  { id: "tabs", label: "בחירת לשוניות", working: "" },
+  { id: "preview", label: "בדיקת השינויים", working: "משווה את הגיליון לאפליקציה…" },
+  { id: "result", label: "ייבוא", working: "כותב את השינויים…" },
+];
+
+/** Where the admin is; while a request runs, the step it produces spins. */
+function wizardSteps(step: Step, busy: Step | null): StepItem[] {
+  const at = WIZARD.findIndex((w) => w.id === step);
+  const working = busy ? WIZARD.findIndex((w) => w.id === busy) : -1;
+  const current = working >= 0 ? working : at;
+  return WIZARD.map((w, i) => ({
+    id: w.id,
+    label: w.label,
+    state: step === "result" || i < current ? "done" : i === working ? "active" : i === current ? "current" : "waiting",
+    detail: i === working ? w.working : undefined,
+  }));
+}
+
 const DEFAULT_TABS: readonly SheetKey[] = ["serials", "assignments", "storage"];
 
 /** An action call that never throws: a rejected request (too large, network) becomes a Hebrew error. */
@@ -30,6 +51,8 @@ const count = (lines: readonly PreviewLine[], pred: (l: PreviewLine) => boolean)
 export function ImportFlow() {
   const [step, setStep] = useState<Step>("upload");
   const [file, setFile] = useState<File | null>(null);
+  /** the file being read, before the server accepted it */
+  const [picked, setPicked] = useState<File | null>(null);
   const [tabs, setTabs] = useState<XlsxTab[]>([]);
   const [chosen, setChosen] = useState<ReadonlySet<SheetKey>>(new Set());
   const [preview, setPreview] = useState<PreviewData | null>(null);
@@ -38,6 +61,8 @@ export function ImportFlow() {
   const [result, setResult] = useState<ApplyResult | null>(null);
   const [error, setError] = useState<string>();
   const [pending, start] = useTransition();
+  /** the step the running request produces */
+  const [busy, setBusy] = useState<Step>("upload");
 
   /** chosen tabs in the workbook's order; the אלפון is always read (lookup only) and never chosen */
   const chosenTabs = tabs.flatMap((t) => (t.key && chosen.has(t.key) ? [t.key] : []));
@@ -54,6 +79,8 @@ export function ImportFlow() {
     if (!f) return;
     const problem = checkUploadFile(f);
     if (problem) return setError(problem);
+    setPicked(f);
+    setBusy("upload");
     start(async () => {
       const fd = new FormData();
       fd.append("file", f);
@@ -68,6 +95,7 @@ export function ImportFlow() {
 
   function showPreview() {
     setError(undefined);
+    setBusy("preview");
     start(async () => {
       const r = await safe(() => previewSheetImport(form({ tabs: chosenTabs })));
       if (!r.ok) return setError(r.error);
@@ -82,6 +110,7 @@ export function ImportFlow() {
   function apply() {
     if (!preview) return;
     setError(undefined);
+    setBusy("result");
     start(async () => {
       const r = await safe(() => applySheetImport(form({ tabs: chosenTabs, selected: [...selected], fingerprint: [preview.fingerprint] })));
       if (!r.ok) return setError(r.error);
@@ -108,18 +137,21 @@ export function ImportFlow() {
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="tz-card overflow-hidden" aria-live="polite">
+        <Steps steps={wizardSteps(step, pending ? busy : null)} label="שלבי הייבוא" row />
+      </div>
       {error ? (
         <div role="alert" className="tz-alert tz-alert-error m-0 flex flex-wrap items-center gap-3">
           <span className="flex-1">{error}</span>
           {error === STALE_PREVIEW ? (
-            <Button type="button" small onClick={showPreview} disabled={pending}>
+            <Button type="button" small onClick={showPreview} loading={pending}>
               הצג שוב
             </Button>
           ) : null}
         </div>
       ) : null}
 
-      {step === "upload" ? <UploadStep pending={pending} onFile={pickFile} /> : null}
+      {step === "upload" ? <UploadStep pending={pending} file={pending ? picked : null} onFile={pickFile} /> : null}
 
       {step === "tabs" ? (
         <section className="tz-card flex flex-col gap-3 p-4">
@@ -151,7 +183,7 @@ export function ImportFlow() {
           </div>
           <p className="tz-footnote m-0">הגיליון לא משתנה. הייבוא רק מעדכן את האפליקציה לפי הגיליון.</p>
           <div className="flex flex-wrap gap-2">
-            <Button type="button" onClick={showPreview} disabled={pending || chosenTabs.length === 0}>
+            <Button type="button" onClick={showPreview} disabled={chosenTabs.length === 0} loading={pending}>
               {pending ? "בודק…" : "הצג מה ישתנה"}
             </Button>
             <Link href="/logistics" className="tz-btn tz-btn-plain">
@@ -180,28 +212,18 @@ export function ImportFlow() {
   );
 }
 
-function UploadStep({ pending, onFile }: { pending: boolean; onFile(f: File | null): void }) {
+function UploadStep({ pending, file, onFile }: { pending: boolean; file: File | null; onFile(f: File | null): void }) {
   return (
-    <section className="tz-card flex flex-col gap-3 p-4">
-      <h2 className="tz-headline">איך מורידים את הגיליון</h2>
-      <ol className="m-0 flex flex-col gap-1 ps-5 text-[15px]">
-        <li>פותחים את &quot;לוגיסטיקה גדודית&quot; ב-Google Sheets</li>
-        <li>קובץ ← הורדה ← Microsoft Excel (&lrm;.xlsx)</li>
-        <li>מעלים את הקובץ כאן. הקובץ לא נשמר באפליקציה.</li>
-      </ol>
-      <label className="tz-field">
-        <span className="tz-label">קובץ ‎.xlsx (עד 4MB)</span>
-        <input
-          type="file"
-          accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-          disabled={pending}
-          onChange={(e) => {
-            onFile(e.target.files?.[0] ?? null);
-            e.target.value = ""; // choosing the same file again fires onChange again
-          }}
-        />
-      </label>
-      {pending ? <span className="tz-footnote">קורא את הקובץ…</span> : null}
+    <section className="tz-card flex flex-col gap-4 p-4">
+      <div className="flex flex-col gap-1">
+        <h2 className="tz-headline">איך מורידים את הגיליון</h2>
+        <ol className="m-0 flex list-decimal flex-col gap-0.5 ps-5 text-[15px]">
+          <li>פותחים את &quot;לוגיסטיקה גדודית&quot; ב-Google Sheets</li>
+          <li>קובץ ← הורדה ← Microsoft Excel (&lrm;.xlsx)</li>
+          <li>מעלים את הקובץ כאן. הקובץ לא נשמר באפליקציה.</li>
+        </ol>
+      </div>
+      <FilePicker file={file} onFile={onFile} busy={pending} disabled={pending} hint="קובץ ‎.xlsx עד 4MB" />
     </section>
   );
 }
@@ -279,7 +301,7 @@ function PreviewStep({ preview, tabs, active, onActive, selected, onToggle, pend
         <Button type="button" variant="plain" onClick={onBack} disabled={pending}>
           חזרה
         </Button>
-        <Button type="button" onClick={onApply} disabled={pending || ticked === 0}>
+        <Button type="button" onClick={onApply} disabled={ticked === 0} loading={pending}>
           {pending ? "מייבא…" : `ייבא ${ticked} שינויים`}
         </Button>
       </div>

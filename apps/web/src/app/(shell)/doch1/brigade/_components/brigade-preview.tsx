@@ -1,7 +1,7 @@
 "use client";
 import { useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { brigadeReportText, type BrigadeInput } from "@gdud/core";
-import { Icon } from "@gdud/ui";
+import { Icon, Spinner } from "@gdud/ui";
 import { logBrigadeCopy } from "../../_actions/brigade";
 
 const BOLD_LINE = /^\*(.+)\*$/;
@@ -92,11 +92,13 @@ export function BrigadePreview({ input }: { input: BrigadeInput }) {
 
       <div className="flex gap-2 pt-2">
         {canShare ? (
-          <button type="button" className="tz-btn tz-btn-tinted flex-1" disabled={pending} onClick={share}>
+          <button type="button" className="tz-btn tz-btn-tinted flex-1" disabled={pending} aria-busy={pending || undefined} onClick={share}>
+            {pending ? <Spinner /> : <Icon name="send" size={18} />}
             שיתוף
           </button>
         ) : null}
-        <button type="button" className="tz-btn tz-btn-filled flex-[2]" disabled={pending} onClick={copy}>
+        <button type="button" className="tz-btn tz-btn-filled flex-[2]" disabled={pending} aria-busy={pending || undefined} onClick={copy}>
+          {pending ? <Spinner /> : <Icon name="doc" size={18} />}
           העתקה לוואטסאפ
         </button>
       </div>

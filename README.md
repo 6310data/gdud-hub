@@ -6,7 +6,8 @@ One web app for the whole battalion. Each department (לוגיסטיקה, דוח
 
 ```
 apps/web/                  the Next.js app (one domain, one route per module)
-  src/app/(shell)/         signed-in area: home, /admin, /logistics, /doch1, /company/[unit], /kesher
+  src/app/(shell)/         signed-in area. (hub)/: home (pick a module), /admin, /company/[unit], /kesher;
+                           /logistics and /doch1 are each their own app (components/app-shell.tsx)
   src/app/login, auth/     Google sign-in, callback, sign-out
   src/proxy.ts             session refresh, redirect to /login, per-request CSP
   src/lib/session.ts       requireSession() / requireModule() — load the user + memberships

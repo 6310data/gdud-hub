@@ -6,7 +6,8 @@ The daily personnel report module (`/doch1`). Design: `docs/superpowers/specs/20
 
 | Piece | Where |
 |---|---|
-| Pages and Server Actions | `apps/web/src/app/(shell)/doch1/` |
+| Pages and Server Actions | `apps/web/src/app/(shell)/doch1/` (the module's own frame: `layout.tsx` → `components/app-shell.tsx`) |
+| Sheet import endpoint | `apps/web/src/app/(shell)/doch1/import/run/route.ts` — streams the import's phases (NDJSON, `lib/progress-stream.ts`) |
 | Counting, dates and the lock rule, report texts | `packages/core/src/doch1/` (pure, unit-tested) |
 | Tables | `packages/db/src/schema/doch1.ts` → `migrations/0004_doch1.sql` |
 | RLS, grants, the lock guard (`GD001` locked day, `GD002` outside the round) | `migrations/0005_doch1_security.sql`, tested in `packages/db/test/rls.test.ts` |
@@ -79,9 +80,9 @@ Who gets reminders: active users with a doch1 `company_user` or `platoon_command
 Battalion doch1 admin, `/doch1/import`:
 
 1. In the sheet: File → Download → Microsoft Excel (.xlsx). Keep the file out of the repository (`*.xlsx` is git-ignored) and delete it when done.
-2. Upload → "תצוגה מקדימה". Nothing is written yet. The preview lists the counts, warnings (rows without a personal number, a soldier in two tabs, values on days outside the round) and the round members that are not in the file (they are kept).
+2. "בחירת קובץ" (or drag the file in) → "העלאה ותצוגה מקדימה". The screen shows each phase as it runs (upload, reading the sheet, matching). Nothing is written yet. The preview lists the counts, warnings (rows without a personal number, a soldier in two tabs, values on days outside the round) and the round members that are not in the file (they are kept).
 3. Answer the mapping questions: a tab → company, "ליצור פלוגה" (a new company under the battalion, named after the tab; needs the core admin role too) or "להתעלם" (`גדודי` is a summary tab: ignore it); a platoon (מסגרת) → an existing unit, "ליצור מחלקה" (needs the core admin role too) or "ברמת הפלוגה"; an unknown status value → an existing status or "ליצור סטטוס". "עדכון תצוגה" until there are no questions. Answers are remembered for the next import of the round.
-4. "ייבוא" runs everything in one transaction. Re-importing the same file changes nothing.
+4. "ייבוא" runs everything in one transaction. The screen lists the phases (companies/platoons/statuses, soldiers, round members, day cells, saving the answers) with counts and the elapsed time; a first import can take a few minutes — keep the page open. If it fails, nothing is saved. Re-importing the same file changes nothing.
 5. The first import creates statuses with flags from the sheet's `Dropdowns` groups and a grey color; go over them in הגדרות › סטטוסים (colors, display groups, `נספר בסד״כ`, `מעבר לגבול`).
 
 The pilot rule: for a company with "דיווח באפליקציה מתאריך" set, the import never touches its day entries on or after that date (roster and enlistment fields still update).

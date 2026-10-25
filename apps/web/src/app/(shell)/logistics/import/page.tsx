@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { logisticsAccess } from "@/lib/logistics/access";
 import { requireModule } from "@/lib/session";
@@ -13,9 +12,6 @@ export default async function SheetImportPage() {
   if (!logisticsAccess(s).isStockAdmin) notFound();
   return (
     <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4">
-      <Link href="/logistics" className="tz-btn tz-btn-plain self-start px-0">
-        ‹ לוגיסטיקה
-      </Link>
       <PageHeader title="ייבוא מהגיליון" sub="מעדכן את האפליקציה לפי הגיליון. הגיליון עצמו לא משתנה." />
       <ImportFlow />
     </div>

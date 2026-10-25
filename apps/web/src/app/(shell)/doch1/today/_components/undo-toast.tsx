@@ -1,5 +1,6 @@
 "use client";
 import { useEffect } from "react";
+import { Spinner } from "@gdud/ui";
 
 const HIDE_AFTER_MS = 8000;
 
@@ -14,7 +15,8 @@ export function UndoToast({ message, onUndo, onDone, pending }: { message: strin
   return (
     <div className="tz-toast lg:bottom-6" role="status">
       <span>{message}</span>
-      <button type="button" onClick={onUndo} disabled={pending}>
+      <button type="button" className="inline-flex items-center gap-1.5" onClick={onUndo} disabled={pending}>
+        {pending ? <Spinner size={14} /> : null}
         {pending ? "מבטל…" : "ביטול"}
       </button>
     </div>

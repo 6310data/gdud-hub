@@ -163,7 +163,7 @@ export function ReturnForm({ data, initialPersonId, initialAssignmentId }: { dat
               <span className="tz-label">הערה</span>
               <textarea className="tz-input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={500} placeholder="לדוגמה: שריטה בעדשה" />
             </label>
-            <Button type="button" variant={dest === "ok" ? "filled" : "danger"} disabled={!chosen.length || pending} onClick={submit}>
+            <Button type="button" variant={dest === "ok" ? "filled" : "danger"} disabled={!chosen.length} loading={pending} onClick={submit}>
               {pending ? "מזכה…" : `זיכוי ${chosen.length || ""} פריטים ל${CONDITION_PLACE[dest]}`}
             </Button>
             <span className="tz-footnote">
