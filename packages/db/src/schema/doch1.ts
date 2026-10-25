@@ -260,7 +260,7 @@ export const doch1BrigadeLog = pgTable(
   ],
 ).enableRLS();
 
-/** Remembered import answers: sheet tab → company, platoon text → unit, sheet value → status. */
+/** Remembered import answers: sheet tab → company, platoon text → unit, sheet value → status, שבצ״ק מיקום → location. */
 export const doch1ImportMappings = pgTable(
   "doch1_import_mappings",
   {
@@ -276,7 +276,7 @@ export const doch1ImportMappings = pgTable(
   },
   (t) => [
     primaryKey({ columns: [t.roundId, t.kind, t.sourceKey] }),
-    check("doch1_import_mappings_kind", sql`${t.kind} in ('company', 'platoon', 'status')`),
+    check("doch1_import_mappings_kind", sql`${t.kind} in ('company', 'platoon', 'status', 'location')`),
   ],
 ).enableRLS();
 

@@ -26,6 +26,7 @@ const PHASES: Record<Mode, Array<{ id: string; label: string }>> = {
     { id: "people", label: "חיילים" },
     { id: "members", label: "שיבוץ לסבב" },
     { id: "days", label: "ימי דיווח" },
+    { id: "standby", label: "שבצ״ק: מיקומים, צוותי כוננות ורכבים" },
     { id: "mappings", label: "שמירת ההחלטות וסיום" },
   ],
 };
@@ -66,7 +67,7 @@ function Elapsed({ since }: { since: number }) {
 }
 
 type Answers = Record<MappingQuestion["kind"], Record<string, string>>;
-const NO_ANSWERS: Answers = { tab: {}, platoon: {}, status: {} };
+const NO_ANSWERS: Answers = { tab: {}, platoon: {}, status: {}, location: {} };
 
 const SPECIAL: Record<MappingQuestion["kind"], Array<{ id: string; label: string }>> = {
   tab: [
@@ -78,11 +79,18 @@ const SPECIAL: Record<MappingQuestion["kind"], Array<{ id: string; label: string
     { id: "company", label: "ברמת הפלוגה" },
   ],
   status: [{ id: "create", label: "ליצור סטטוס" }],
+  location: [
+    { id: "create:outpost", label: "ליצור מיקום · מוצב" },
+    { id: "create:camp", label: "ליצור מיקום · מחנה" },
+    { id: "create:outside", label: "ליצור מיקום · בחוץ" },
+    { id: "ignore", label: "לא לייבא (בלי מיקום)" },
+  ],
 };
 const KIND_TITLE: Record<MappingQuestion["kind"], string> = {
   tab: "לשונית",
   platoon: "מחלקה",
   status: "ערך בגיליון",
+  location: "מיקום בשבצ״ק",
 };
 
 function CountsCard({ counts, title }: { counts: ImportCounts; title: string }) {
@@ -96,6 +104,11 @@ function CountsCard({ counts, title }: { counts: ImportCounts; title: string }) 
     ["סטטוסים חדשים", counts.statusesCreated],
     ["פלוגות חדשות", counts.companiesCreated],
     ["מחלקות חדשות", counts.platoonsCreated],
+    ["מיקומים חדשים", counts.locationsCreated],
+    ["חיילים שהמיקום שלהם השתנה", counts.locationsSet],
+    ["צוותי כוננות חדשים", counts.teamsCreated],
+    ["שינויים בצוותי כוננות", counts.teamMembersChanged],
+    ["רכבים חדשים", counts.vehiclesCreated],
   ];
   return (
     <section className="flex flex-col gap-1.5">
@@ -135,13 +148,13 @@ export function ImportFlow({ roundName }: { roundName: string }) {
   const formData = (current: Answers) => {
     const fd = new FormData();
     fd.set("file", file!);
-    fd.set("mappings", JSON.stringify({ tabs: current.tab, platoons: current.platoon, statuses: current.status }));
+    fd.set("mappings", JSON.stringify({ tabs: current.tab, platoons: current.platoon, statuses: current.status, locations: current.location }));
     return fd;
   };
 
   /** Questions keep their suggestion as the default answer. */
   const withDefaults = (p: SheetImportPlan, current: Answers): Answers => {
-    const next: Answers = { tab: { ...current.tab }, platoon: { ...current.platoon }, status: { ...current.status } };
+    const next: Answers = { tab: { ...current.tab }, platoon: { ...current.platoon }, status: { ...current.status }, location: { ...current.location } };
     for (const q of p.questions) if (next[q.kind][q.key] === undefined && q.suggestion) next[q.kind][q.key] = q.suggestion;
     return next;
   };

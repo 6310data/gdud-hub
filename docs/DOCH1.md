@@ -84,7 +84,13 @@ Battalion doch1 admin, `/doch1/import`:
 2. "בחירת קובץ" (or drag the file in) → "העלאה ותצוגה מקדימה". The screen shows each phase as it runs (upload, reading the sheet, matching). Nothing is written yet. The preview lists the counts, warnings (rows without a personal number, a soldier in two tabs, values on days outside the round) and the round members that are not in the file (they are kept).
 3. Answer the mapping questions: a tab → company, "ליצור פלוגה" (a new company under the battalion, named after the tab; needs the core admin role too) or "להתעלם" (`גדודי` is a summary tab: ignore it); a platoon (מסגרת) → an existing unit, "ליצור מחלקה" (needs the core admin role too) or "ברמת הפלוגה"; an unknown status value → an existing status or "ליצור סטטוס". "עדכון תצוגה" until there are no questions. Answers are remembered for the next import of the round.
 4. "ייבוא" runs everything in one transaction. The screen lists the phases (companies/platoons/statuses, soldiers, round members, day cells, saving the answers) with counts and the elapsed time; a first import can take a few minutes — keep the page open. If it fails, nothing is saved. Re-importing the same file changes nothing.
-5. The first import creates statuses with flags from the sheet's `Dropdowns` groups and a grey color; go over them in הגדרות › סטטוסים (colors, display groups, `נספר בסד״כ`, `מעבר לגבול`).
+5. The first import creates statuses with flags from the sheet's `Dropdowns` groups and a grey color; go over them in הגדרות › סטטוסים (colors, display groups, `נספר בסד״כ`, `מעבר לגבול`, `זמין לכוננות`).
+6. **שבצ״ק.** Each `שבצק <company>` tab belongs to the company its day tab was mapped to (a company answered "להתעלם", or not active in the round, is skipped with a warning). Sections and their repeated header rows are found by the "מספר אישי" header; columns by header text (מיקום, צ כלי, כוננות, תפקיד בפועל / תקן). A מיקום value is matched to a location of the round by name; an unknown one is a question — create it as מוצב / מחנה / בחוץ (the suggestion comes from the name), map it to an existing location, or don't import it — and the answer is remembered. What the import sets:
+   - every soldier's location (a soldier of a company whose שבצ״ק was imported but who is in no שבצ״ק gets none);
+   - the team of every soldier the שבצ״ק lists: one team per company and כוננות value, held by that company — an existing team of the round with that name held by it, else a new one (its standby type when one has the same name, its location the one most of its soldiers have); "לא בכוננות" = no team; a soldier on another team moves;
+   - each team's members, their order and role (תפקיד בפועל in the שבצ״ק), and its vehicle when the sheet gives a צ׳ (a new צ׳ is added to the registry).
+
+   Teams made in the app keep their soldiers who are in no שבצ״ק; a soldier the שבצ״ק lists in a company tab of no company is a warning. During the pilot the sheet's שבצ״ק wins for every company, the pilot company included: changes made to its teams in the app are overwritten by the next import.
 
 The pilot rule: for a company with "דיווח באפליקציה מתאריך" set, the import never touches its day entries on or after that date (roster and enlistment fields still update).
 
@@ -123,7 +129,7 @@ Mockup screens 03 (desktop), 11 and 12 (phone). Everyone in doch1 opens it; a co
 
 Who edits a team: the battalion admin and the company users of its holding companies (a shared team like פינוי א has two). A company user creates teams for their own company only, can't add their company to another company's team, and adds only their own soldiers. Settings (admin): הגדרות › שבצ״ק, כוננות ורכבים — locations (kind מוצב / מחנה / בחוץ), standby types (level, size, required roles) and the vehicle registry, which is shared by all rounds.
 
-Not yet: the sheet import does not read the `שבצק <company>` tabs, so teams, vehicles and locations are entered in the app (the layout is written up in `references/doch1/sheet-structure.md`, "שבצ״ק tabs"). A soldier's location is current, not per day.
+**From the sheet:** the import reads every `שבצק <company>` tab (layout: `references/doch1/sheet-structure.md`, "שבצ״ק tabs") along with the company tabs — see "Importing the round's Google Sheet" below. A soldier's location is current, not per day.
 
 ## Status changes during a round
 

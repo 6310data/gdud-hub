@@ -1,5 +1,6 @@
 /**
- * Parse the round sheet "דוח 1 - סבב <n>" (layout: references/doch1/sheet-structure.md).
+ * Parse the round sheet "דוח 1 - סבב <n>" (layout: references/doch1/sheet-structure.md):
+ * the company day tabs, the "שבצק <company>" tabs and Dropdowns.
  * Columns are found by header text, never by position, so the old פלתצ layout and
  * renamed headers still work. Sheet template knowledge (tab and header names) lives here only.
  */
@@ -42,8 +43,32 @@ export interface StatusGroupHint {
   groups: StatusGroup[];
 }
 
+/** A soldier row of a שבצ״ק tab. "" = empty cell. */
+export interface ParsedStandbyRow {
+  sheetRow: number;
+  personalNumber: string;
+  /** מיקום (E) as written */
+  location: string;
+  /** כוננות (G); "" when empty or "לא בכוננות" */
+  team: string;
+  /** צ כלי (F), normalized to the registry's form ("" when empty or unreadable) */
+  vehicle: string;
+  /** תפקיד בפועל (K; תקן in פלסר) */
+  role: string;
+}
+
+/** A "שבצק <company>" tab (sheet-structure.md, "שבצ״ק tabs"). */
+export interface ParsedStandbyTab {
+  tabName: string;
+  /** canonicalName of the company part of the name ("שבצק פלסר" → "פלסר") */
+  companyKey: string;
+  hidden: boolean;
+  rows: ParsedStandbyRow[];
+}
+
 export interface ParsedSheet {
   tabs: ParsedTab[];
+  standby: ParsedStandbyTab[];
   statusHints: StatusGroupHint[];
   roundStart: Day | null;
   roundEnd: Day | null;
@@ -220,17 +245,109 @@ function parseDropdowns(grid: SheetGrid): Pick<ParsedSheet, "statusHints" | "rou
   };
 }
 
+/* ── שבצ״ק tabs ── */
+
+/** "שבצק פלסר", "שבצ״ק פלסר" — canonicalName drops the gershayim. */
+const STANDBY_TAB_PREFIX = "שבצק";
+/** The כוננות value that means "on no team". */
+const NO_STANDBY = canonicalName("לא בכוננות");
+
+type StandbyField = "personalNumber" | "location" | "vehicle" | "team" | "role";
+const STANDBY_ALIASES: Record<StandbyField, string[]> = {
+  personalNumber: ["מספר אישי"],
+  location: ["מיקום"],
+  vehicle: ["צ כלי", "צ רכב"],
+  team: ["כוננות"],
+  role: ["תפקיד בפועל", "תקן"],
+};
+const STANDBY_ALIAS_TO_FIELD = new Map<string, StandbyField>(
+  Object.entries(STANDBY_ALIASES).flatMap(([field, aliases]) => aliases.map((a) => [canonicalName(a), field as StandbyField] as const)),
+);
+const VEHICLE_RE = /^[0-9A-Za-z-]{1,20}$/;
+
+/** A starting suggestion for a new location's kind, from how the sheet writes them ("מוצב 131", "בחוץ"). The admin confirms it. */
+export function suggestLocationKind(text: string): "outpost" | "camp" | "outside" {
+  const key = canonicalName(text);
+  if (key.includes("מוצב")) return "outpost";
+  if (key === "בחוץ") return "outside";
+  return "camp";
+}
+
+/** The company part of a שבצ״ק tab's name, or null when it isn't one. */
+function standbyCompanyKey(tabName: string): string | null {
+  const key = canonicalName(tabName);
+  if (!key.startsWith(STANDBY_TAB_PREFIX)) return null;
+  const rest = key.slice(STANDBY_TAB_PREFIX.length).trim();
+  return rest || null;
+}
+
+/** "700598", "צ 273 ", "צ׳ 559" → the bare number; "" when empty; null when unreadable. */
+function vehicleNumber(v: Cell | undefined): string | null {
+  const s = cellText(v)
+    .replace(/^צ\s*['׳]?/, "")
+    .replace(/\s+/g, "")
+    .replace(/\.0+$/, "");
+  if (!s) return "";
+  return VEHICLE_RE.test(s) ? s : null;
+}
+
+/**
+ * Sections: a merged title row (חפ"ק מ"פ, צוות 1…), then a repeated header row (one with
+ * "מספר אישי"), then soldier rows. Every header row resets the columns; rows without a valid
+ * personal number (titles, blanks) are skipped.
+ */
+function parseStandbyTab(grid: SheetGrid, companyKey: string, warnings: string[]): ParsedStandbyTab {
+  const rows: ParsedStandbyRow[] = [];
+  let cols: Partial<Record<StandbyField, number>> | null = null;
+  grid.rows.forEach((row, i) => {
+    const header: Partial<Record<StandbyField, number>> = {};
+    row.forEach((h, col) => {
+      const field = typeof h === "string" ? STANDBY_ALIAS_TO_FIELD.get(headerKey(h)) : undefined;
+      if (field && header[field] === undefined) header[field] = col;
+    });
+    if (header.personalNumber !== undefined) {
+      cols = header;
+      return;
+    }
+    if (!cols) return;
+    const at = (f: StandbyField) => {
+      const col = cols![f];
+      return col === undefined ? undefined : row[col];
+    };
+    const personalNumber = normalizePersonalNumber(at("personalNumber"));
+    if (!personalNumber) return;
+    const vehicle = vehicleNumber(at("vehicle"));
+    if (vehicle === null) warnings.push(`${grid.name} שורה ${i + 1}: צ׳ הרכב ״${cellText(at("vehicle"))}״ לא נקרא`);
+    const team = cellText(at("team"));
+    rows.push({
+      sheetRow: i + 1,
+      personalNumber,
+      location: cellText(at("location")),
+      team: canonicalName(team) === NO_STANDBY ? "" : team,
+      vehicle: vehicle ?? "",
+      role: cellText(at("role")),
+    });
+  });
+  return { tabName: grid.name, companyKey, hidden: grid.hidden, rows };
+}
+
 export function parseSheet(grids: readonly SheetGrid[]): ParsedSheet {
   const warnings: string[] = [];
   const tabs: ParsedTab[] = [];
+  const standby: ParsedStandbyTab[] = [];
   let dropdowns: Pick<ParsedSheet, "statusHints" | "roundStart" | "roundEnd"> = { statusHints: [], roundStart: null, roundEnd: null };
   for (const grid of grids) {
     if (grid.name.trim().toLowerCase() === DROPDOWNS_TAB) {
       dropdowns = parseDropdowns(grid);
       continue;
     }
+    const standbyKey = standbyCompanyKey(grid.name);
+    if (standbyKey) {
+      standby.push(parseStandbyTab(grid, standbyKey, warnings));
+      continue;
+    }
     const layout = layoutOf(grid.rows[HEADER_ROW - 1] ?? []);
     if (layout) tabs.push(parseTab(grid, layout, warnings));
   }
-  return { tabs, ...dropdowns, warnings };
+  return { tabs, standby, ...dropdowns, warnings };
 }

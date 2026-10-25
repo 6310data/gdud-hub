@@ -90,6 +90,12 @@ function dropdowns(): SheetGrid {
   };
 }
 
+/** A שבצ״ק tab: columns A–M as in sheet-structure.md, "שבצק <company>". */
+const STANDBY_HEADERS: Cell[] = ['מס"ד', "פלוגה", "מסגרת", "סטטוס דוח 1", "מיקום", "צ כלי", "כוננות", "מספר אישי", "שם פרטי", "שם משפחה", "תפקיד בפועל", "פעילות", "הערות"];
+const standbyTab = (name: string, rows: Cell[][]): SheetGrid => ({ name, hidden: false, rows });
+const section = (title: string): Cell[] => [title];
+const standbyRow = (pn: Cell, location: string, vehicle: Cell, team: string, role: string): Cell[] => [1, "פלסר", "מחלקה 1", "עזה", location, vehicle, team, pn, "שם", "בדוי", role, null, null];
+
 describe("parseSheet", () => {
   it("reads soldiers and day cells by header, not position", () => {
     const swapped = [...HEADERS];
@@ -164,6 +170,36 @@ describe("parseSheet", () => {
     const parsed = parseSheet([companyTab("פלסר", [row], headers)]);
     expect(parsed.tabs[0]!.rows[0]!.callUpOn).toBeNull();
     expect(parsed.tabs[0]!.firstDay).toBe("2026-10-20");
+  });
+
+  it("reads שבצ״ק tabs: sections with repeated headers, by header text", () => {
+    const parsed = parseSheet([
+      standbyTab("שבצ״ק פלסר", [
+        section('חפ"ק מ"פ'),
+        STANDBY_HEADERS,
+        standbyRow(7100001, "מוצב 131", 701102, 'חפ"ק', 'סמ"פ'),
+        standbyRow(" 7100002.0", "מוצב 131", "צ 701102 ", 'חפ"ק', "נגביסט"),
+        section("צוות 1"),
+        [...STANDBY_HEADERS.slice(0, 10), "תקן", ...STANDBY_HEADERS.slice(11)],
+        standbyRow(7100003, "בחוץ", null, "לא בכוננות", "לוחם"),
+        standbyRow(null, "", null, "", ""),
+      ]),
+    ]);
+    expect(parsed.tabs).toEqual([]);
+    expect(parsed.standby).toHaveLength(1);
+    const tab = parsed.standby[0]!;
+    expect(tab).toMatchObject({ tabName: "שבצ״ק פלסר", companyKey: "פלסר" });
+    expect(tab.rows).toEqual([
+      { sheetRow: 3, personalNumber: "7100001", location: "מוצב 131", vehicle: "701102", team: 'חפ"ק', role: 'סמ"פ' },
+      { sheetRow: 4, personalNumber: "7100002", location: "מוצב 131", vehicle: "701102", team: 'חפ"ק', role: "נגביסט" },
+      { sheetRow: 7, personalNumber: "7100003", location: "בחוץ", vehicle: "", team: "", role: "לוחם" },
+    ]);
+  });
+
+  it("warns about a vehicle number it can't read", () => {
+    const parsed = parseSheet([standbyTab("שבצק פלסר", [STANDBY_HEADERS, standbyRow(7100001, "מוצב 131", "האמר שחור", 'חפ"ק', "נהג")])]);
+    expect(parsed.standby[0]!.rows[0]!.vehicle).toBe("");
+    expect(parsed.warnings).toEqual([expect.stringContaining("האמר שחור")]);
   });
 
   it("ignores tabs without a personal-number header or without dates", () => {
@@ -293,7 +329,7 @@ describe("plan and apply", () => {
       applySheetImport(tx, roundId, baseSheet(), m, (phase, done, total) => progress.push(total === undefined ? phase : `${phase} ${done}/${total}`)),
     );
     expect(counts).toMatchObject({ newPeople: 3, updatedPeople: 0, members: 3, daysWritten: 5, daysCleared: 0, statusesCreated: 3, platoonsCreated: 1 });
-    expect(progress).toEqual(["match", "structure", "people 0/3", "people 3/3", "members 0/3", "members 3/3", "days 0/5", "days 5/5", "mappings"]);
+    expect(progress).toEqual(["match", "structure", "people 0/3", "people 3/3", "members 0/3", "members 3/3", "days 0/5", "days 5/5", "standby 0/0", "mappings"]);
     const zero = await dayRow("7000002", "2026-10-20");
     const [st] = await db.select().from(doch1Statuses).where(eq(doch1Statuses.id, zero!.statusId));
     expect(st).toMatchObject({ sheetValue: "0", offDuty: true, countsInSadak: false });
@@ -428,5 +464,176 @@ describe("plan and apply", () => {
       expect((await plan(newTab())).questions).toEqual([]);
       expect(await apply(newTab())).toMatchObject({ companiesCreated: 0, platoonsCreated: 0, newPeople: 0 });
     });
+  });
+});
+
+describe("שבצ״ק import", () => {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const { units, appUsers, memberships, people, doch1Rounds, doch1Members, doch1Locations, doch1StandbyTypes, doch1StandbyTeams, doch1StandbyHolders, doch1StandbyMembers, doch1Vehicles } = schema;
+  let db: ReturnType<typeof drizzle<typeof schema>>;
+  let roundId = "";
+  const ids = { bat: "", plsr: "", plnt: "", outpost: "", reserveType: "" };
+  const admin = { sub: randomUUID(), email: "standby-admin@example.com" };
+
+  // invented soldiers: A, B, C in פלסר; D, E in פלנט
+  const A = () => soldier(7100001, "אבי", "בדוי", "", ["עזה", "עזה"]);
+  const B = () => soldier(7100002, "בני", "בדוי", "", ["עזה", "עזה"]);
+  const C = () => soldier(7100003, "גלי", "בדוי", "", ["עזה", "עזה"]);
+  const D = () => soldier(7100004, "דני", "בדוי", "", ["עזה", "עזה"]);
+  const E = () => soldier(7100005, "הדר", "בדוי", "", ["עזה", "עזה"]);
+  const file = (standbyRows: Cell[][], extra: SheetGrid[] = []) =>
+    parseSheet([dropdowns(), companyTab("פלסר", [A(), B(), C()]), companyTab("פלנט", [D(), E()]), standbyTab("שבצק פלסר", [section('חפ"ק'), STANDBY_HEADERS, ...standbyRows]), ...extra]);
+  const first = () =>
+    file([
+      standbyRow(7100001, "מוצב 131", 701102, 'חפ"ק', 'סמ"פ'),
+      standbyRow(7100002, "מוצב 131", 701102, 'חפ"ק', "נגביסט"),
+      standbyRow(7100003, "בחוץ", null, "לא בכוננות", "לוחם"),
+      // a פלנט soldier listed in פלסר's שבצ״ק (כוחות חבירים)
+      standbyRow(7100004, "מוצב 131", 704137, "עתודת גדוד", "צלף"),
+      standbyRow(7199999, "מוצב 131", null, 'חפ"ק', "לוחם"), // not in any company tab
+    ]);
+  const answers: ImportMappings = { tabs: {}, platoons: {}, statuses: {}, locations: { בחוץ: "create:outside" } };
+
+  const asAdmin = <T>(fn: (tx: Tx) => Promise<T>) => runAsUser(db as never, { sub: admin.sub, email: admin.email }, fn);
+  const plan = (parsed: ParsedSheet, m: Partial<ImportMappings> = {}) => asAdmin((tx) => planSheetImport(tx, roundId, parsed, m));
+  const apply = (parsed: ParsedSheet, m: ImportMappings = answers) => asAdmin((tx) => applySheetImport(tx, roundId, parsed, m));
+  const person = async (pn: string) => (await db.select().from(people).where(eq(people.personalNumber, pn)))[0]!;
+  const locationOf = async (pn: string) => {
+    const p = await person(pn);
+    const [m] = await db.select().from(doch1Members).where(eq(doch1Members.personId, p.id));
+    if (!m?.locationId) return null;
+    return (await db.select().from(doch1Locations).where(eq(doch1Locations.id, m.locationId)))[0]!.name;
+  };
+  /** team name → "member:role" list in order */
+  const teams = async () => {
+    const ts = await db.select().from(doch1StandbyTeams).where(eq(doch1StandbyTeams.roundId, roundId));
+    const out: Record<string, string[]> = {};
+    for (const t of ts) {
+      const ms = await db
+        .select({ name: people.fullName, role: doch1StandbyMembers.role, sortOrder: doch1StandbyMembers.sortOrder })
+        .from(doch1StandbyMembers)
+        .innerJoin(people, eq(people.id, doch1StandbyMembers.personId))
+        .where(eq(doch1StandbyMembers.teamId, t.id));
+      out[t.name] = ms.sort((a, b) => a.sortOrder - b.sortOrder).map((m) => `${m.name}:${m.role ?? ""}`);
+    }
+    return out;
+  };
+
+  beforeAll(async () => {
+    const pg = new PGlite();
+    await pg.exec(SUPABASE_SHIM_SQL);
+    db = drizzle(pg, { schema });
+    await migrate(db, { migrationsFolder: path.join(here, "../migrations") });
+    const [bat] = await db.insert(units).values({ kind: "battalion", name: "גדוד" }).returning();
+    const [plsr, plnt] = await db
+      .insert(units)
+      .values([
+        { parentId: bat!.id, kind: "company", name: "פלסר" },
+        { parentId: bat!.id, kind: "company", name: "פלנט" },
+      ])
+      .returning();
+    const [u] = await db.insert(appUsers).values({ email: admin.email, authUserId: admin.sub }).returning();
+    await db.insert(memberships).values([
+      { userId: u!.id, module: "doch1", role: "admin", unitId: null },
+      { userId: u!.id, module: "core", role: "admin", unitId: null },
+    ]);
+    const [round] = await db.insert(doch1Rounds).values({ name: "סבב 7", startsOn: "2026-08-23", endsOn: "2026-12-10", active: true }).returning();
+    roundId = round!.id;
+    const [loc] = await db.insert(doch1Locations).values({ roundId, name: "מוצב 131", kind: "outpost" }).returning();
+    const [type] = await db.insert(doch1StandbyTypes).values({ roundId, name: "עתודת גדוד", level: "battalion", size: 8 }).returning();
+    Object.assign(ids, { bat: bat!.id, plsr: plsr!.id, plnt: plnt!.id, outpost: loc!.id, reserveType: type!.id });
+  });
+
+  it("asks about an unknown location, with a kind suggestion; warns about soldiers outside the company tabs", async () => {
+    const p = await plan(first());
+    expect(p.questions).toEqual([
+      expect.objectContaining({ kind: "location", key: "בחוץ", suggestion: "create:outside", options: [{ id: ids.outpost, label: "מוצב 131" }] }),
+    ]);
+    expect(p.warnings).toContainEqual(expect.stringContaining("1 חיילים בשבצ״ק שאינם בלשוניות הפלוגות"));
+    // C's location waits for the answer; A, B, D are placed now
+    expect(p.counts).toMatchObject({ teamsCreated: 2, vehiclesCreated: 2, locationsSet: 3, teamMembersChanged: 3 });
+  });
+
+  it("imports locations, teams with their members, roles and vehicle", async () => {
+    const counts = await apply(first());
+    expect(counts).toMatchObject({ locationsCreated: 1, locationsSet: 4, teamsCreated: 2, vehiclesCreated: 2, teamMembersChanged: 3 });
+    expect(await teams()).toEqual({ 'חפ"ק': ['אבי בדוי:סמ"פ', "בני בדוי:נגביסט"], "עתודת גדוד": ["דני בדוי:צלף"] });
+    expect(await locationOf("7100001")).toBe("מוצב 131");
+    expect(await locationOf("7100003")).toBe("בחוץ");
+    expect(await locationOf("7100004")).toBe("מוצב 131"); // פלנט soldier, listed in פלסר's שבצ״ק
+    expect(await locationOf("7100005")).toBeNull(); // פלנט has no שבצ״ק tab
+    const [created] = await db.select().from(doch1Locations).where(eq(doch1Locations.name, "בחוץ"));
+    expect(created!.kind).toBe("outside");
+    const all = await db.select().from(doch1StandbyTeams);
+    const hq = all.find((t) => t.name === 'חפ"ק')!;
+    const reserve = all.find((t) => t.name === "עתודת גדוד")!;
+    // held by the company whose שבצ״ק lists it; type matched by name; location = its members' most common
+    const holders = await db.select().from(doch1StandbyHolders);
+    expect(holders.map((h) => h.unitId)).toEqual([ids.plsr, ids.plsr]);
+    expect(reserve.typeId).toBe(ids.reserveType);
+    expect(hq).toMatchObject({ typeId: null, locationId: ids.outpost });
+    const [v] = await db.select().from(doch1Vehicles).where(eq(doch1Vehicles.id, hq.vehicleId!));
+    expect(v!.number).toBe("701102");
+  });
+
+  it("is idempotent and remembers the location answer", async () => {
+    expect((await plan(first())).questions).toEqual([]);
+    expect(await apply(first(), { tabs: {}, platoons: {}, statuses: {} })).toMatchObject({
+      locationsCreated: 0,
+      locationsSet: 0,
+      teamsCreated: 0,
+      vehiclesCreated: 0,
+      teamMembersChanged: 0,
+    });
+  });
+
+  it("follows the sheet: removals, moves, roles, vehicle; app-only teams keep soldiers not in the שבצ״ק", async () => {
+    // a team made in the app, held by פלנט, with a soldier the שבצ״ק doesn't list
+    const [appTeam] = await db.insert(doch1StandbyTeams).values({ roundId, name: "צוות אפליקציה" }).returning();
+    await db.insert(doch1StandbyHolders).values({ teamId: appTeam!.id, unitId: ids.plnt });
+    await db.insert(doch1StandbyMembers).values({ roundId, teamId: appTeam!.id, personId: (await person("7100005")).id, role: "נהג" });
+
+    const counts = await apply(
+      file([
+        standbyRow(7100001, "מוצב 131", 701103, 'חפ"ק', 'מ"פ'), // new role, new vehicle
+        standbyRow(7100002, "מוצב 131", null, "לא בכוננות", "נגביסט"), // leaves the team
+        standbyRow(7100003, "מוצב 131", 701103, 'חפ"ק', "קשר"), // joins
+        standbyRow(7100004, "מוצב 131", 704137, "עתודת גדוד", "צלף"),
+      ]),
+    );
+    expect(counts).toMatchObject({ teamsCreated: 0, vehiclesCreated: 1, teamMembersChanged: 3, locationsSet: 1 });
+    expect(await teams()).toEqual({
+      'חפ"ק': ['אבי בדוי:מ"פ', "גלי בדוי:קשר"],
+      "עתודת גדוד": ["דני בדוי:צלף"],
+      "צוות אפליקציה": ["הדר בדוי:נהג"],
+    });
+    const [hq] = await db.select().from(doch1StandbyTeams).where(eq(doch1StandbyTeams.name, 'חפ"ק'));
+    expect((await db.select().from(doch1Vehicles).where(eq(doch1Vehicles.id, hq!.vehicleId!)))[0]!.number).toBe("701103");
+  });
+
+  it("a soldier the sheet moves to another team leaves the old one", async () => {
+    await apply(
+      file([
+        standbyRow(7100001, "מוצב 131", 701103, 'חפ"ק', 'מ"פ'),
+        standbyRow(7100003, "מוצב 131", 701103, 'חפ"ק', "קשר"),
+        standbyRow(7100004, "מוצב 131", 701103, 'חפ"ק', "צלף"), // from עתודת גדוד to חפ"ק
+      ]),
+    );
+    expect((await teams())['חפ"ק']).toEqual(['אבי בדוי:מ"פ', "גלי בדוי:קשר", "דני בדוי:צלף"]);
+    expect((await teams())["עתודת גדוד"]).toEqual([]);
+  });
+
+  it("a soldier of an imported company missing from the שבצ״ק loses their location", async () => {
+    await apply(file([standbyRow(7100001, "מוצב 131", 701103, 'חפ"ק', 'מ"פ')]));
+    expect(await locationOf("7100003")).toBeNull();
+    expect(await locationOf("7100001")).toBe("מוצב 131");
+  });
+
+  it("skips a שבצ״ק tab without a company, and an ignored company's", async () => {
+    const extra = standbyTab("שבצק פלוגה אחרת", [STANDBY_HEADERS, standbyRow(7100005, "מוצב 131", null, "כרמל", "נהג")]);
+    const p = await plan(file([], [extra]));
+    expect(p.warnings).toContainEqual(expect.stringContaining("שבצק פלוגה אחרת: לא נמצאה פלוגה"));
+    const ignored = await plan(file([]), { tabs: { פלסר: "ignore" } });
+    expect(ignored.warnings).toContainEqual(expect.stringContaining("״להתעלם״"));
   });
 });

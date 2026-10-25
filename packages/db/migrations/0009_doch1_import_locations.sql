@@ -1,0 +1,2 @@
+ALTER TABLE "doch1_import_mappings" DROP CONSTRAINT "doch1_import_mappings_kind";--> statement-breakpoint
+ALTER TABLE "doch1_import_mappings" ADD CONSTRAINT "doch1_import_mappings_kind" CHECK ("doch1_import_mappings"."kind" in ('company', 'platoon', 'status', 'location'));
