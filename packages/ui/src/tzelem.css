@@ -304,6 +304,27 @@ textarea.tz-input { padding-block: 10px; min-height: 64px; resize: vertical; }
 .tz-icon-btn:hover { background: var(--fill); color: var(--primary); }
 .tz-icon-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 
+/* ── Day board (דוח 1 לוח נוכחות): soldiers × days; sticky check + name columns, today outlined, future days faded as plan ── */
+.tz-board { min-width: 100%; border-collapse: separate; border-spacing: 0; font-size: 14px; white-space: nowrap; }
+.tz-board :is(th, td) { padding: 6px 3px; border-bottom: 1px solid var(--separator); background: var(--surface-100); }
+.tz-board tbody tr:last-child > * { border-bottom: 0; }
+.tz-board tfoot td { padding-block: 10px; border-top: 1px solid var(--line-strong); border-bottom: 0; }
+.tz-board tr[data-selected] > * { background: var(--primary-tinted); }
+.tz-board .tz-board-check { position: sticky; inset-inline-start: 0; z-index: 1; width: 44px; min-width: 44px; padding-inline: 13px; box-sizing: border-box; }
+.tz-board .tz-board-name { position: sticky; inset-inline-start: 44px; z-index: 1; min-width: 190px; max-width: 240px; padding: 8px 12px; text-align: start; border-inline-end: 1px solid var(--separator); }
+.tz-board thead th { font-size: 12px; font-weight: 600; color: var(--ink-muted); }
+.tz-board .tz-board-day { min-width: 44px; padding: 8px 2px; text-align: center; }
+.tz-board-day > span { display: inline-flex; flex-direction: column; align-items: center; gap: 1px; padding: 3px 6px; border-radius: 8px; color: var(--ink); }
+.tz-board-day[data-plan] > span { color: var(--tile-neutral); font-weight: 400; }
+.tz-board-day[aria-current="date"] > span { background: var(--primary); color: var(--on-primary); }
+.tz-cell { display: grid; place-items: center; width: 100%; min-width: 38px; height: 30px; padding: 0; border: 0; border-radius: var(--radius-tile); background: var(--fill); color: var(--ink-muted); font: 600 12px/1 var(--font-sans); }
+button.tz-cell { cursor: pointer; transition: transform 120ms ease-out; }
+button.tz-cell:active { transform: scale(.94); }
+.tz-cell:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.tz-cell-plan { opacity: .5; }
+.tz-cell-today { outline: 2px solid var(--primary); outline-offset: 1px; }
+.tz-cell-missing { background: var(--danger-soft); color: var(--danger); box-shadow: inset 0 0 0 1.5px var(--danger); }
+
 @media print {
   .tz-app { display: block; }
   .tz-app-side, .tz-app-top, .tz-tabs { display: none !important; }
@@ -313,10 +334,10 @@ textarea.tz-input { padding-block: 10px; min-height: 64px; resize: vertical; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .tz-btn, .tz-row, .tz-tab, .tz-seg-item, .tz-app-link, .tz-drop, .tz-meter span, .tz-screen input[role="switch"], .tz-screen input[role="switch"]::before { transition: none; }
+  button.tz-cell, .tz-btn, .tz-row, .tz-tab, .tz-seg-item, .tz-app-link, .tz-drop, .tz-meter span, .tz-screen input[role="switch"], .tz-screen input[role="switch"]::before { transition: none; }
   .tz-spinner { animation-duration: 1.6s; }
   .tz-skeleton { animation: none; }
-  .tz-btn:active, .tz-seg-item:active { transform: none; }
+  .tz-btn:active, .tz-seg-item:active, button.tz-cell:active { transform: none; }
 }
 @media (prefers-reduced-transparency: reduce) {
   .tz-tabs, .tz-app-top { background: var(--surface-100); -webkit-backdrop-filter: none; backdrop-filter: none; }
