@@ -1,7 +1,8 @@
 /**
  * Apply a round-sheet import: the same resolution as planSheetImport(), then the writes,
- * all inside the caller's single RLS transaction (withUser). Order: statuses → platoons →
- * round companies → people → members → days → remembered mappings.
+ * all inside the caller's single RLS transaction (withUser). Order: new companies (then the
+ * resolution again, with their ids) → statuses → platoons → round companies → people →
+ * members → days → remembered mappings.
  */
 import { and, eq, sql, type SQL } from "drizzle-orm";
 import type { Tx } from "../index";
@@ -9,6 +10,7 @@ import * as schema from "../schema/index";
 import type { ParsedSheet } from "./parse";
 import {
   dayChanges,
+  newCompanyId,
   DOCH1_NEW_STATUS_COLOR,
   peopleChanges,
   resolveSheetImport,
@@ -33,6 +35,12 @@ function rowsOf<T>(result: unknown): T[] {
   return Array.isArray(result) ? (result as T[]) : ((result as { rows?: T[] }).rows ?? []);
 }
 
+/** Creating units (companies, platoons) needs the battalion core admin role on top of doch1 admin. */
+async function requireCoreAdmin(tx: Tx, message: string) {
+  const [check] = rowsOf<{ ok: boolean }>(await tx.execute(sql`select app.has_role('core', array['admin']) as ok`));
+  if (!check?.ok) throw new SheetImportError(message);
+}
+
 function statusValues(roundId: string, s: NewStatus) {
   const has = (g: NewStatus["groups"][number]) => s.groups.includes(g);
   const offDuty = has("notCounted");
@@ -53,8 +61,25 @@ function statusValues(roundId: string, s: NewStatus) {
 }
 
 export async function applySheetImport(tx: Tx, roundId: string, parsed: ParsedSheet, mappings: ImportMappings): Promise<ImportCounts> {
-  const res = await resolveSheetImport(tx, roundId, parsed, mappings);
+  let res = await resolveSheetImport(tx, roundId, parsed, mappings);
   if (res.questions.length) throw new SheetImportError("נשארו שאלות מיפוי פתוחות — עדכנו את התצוגה המקדימה ונסו שוב");
+
+  /* new companies, under the battalion; then resolve again with their real ids */
+  const companiesCreated = res.newCompanies.size;
+  if (companiesCreated) {
+    await requireCoreAdmin(tx, "ליצירת פלוגות צריך הרשאת מנהל ליבה");
+    const parentId = res.units.find((u) => u.kind === "battalion" && u.active)?.id ?? null;
+    const tabs = { ...mappings.tabs };
+    let platoons = { ...mappings.platoons };
+    for (const [tabKey, name] of res.newCompanies) {
+      const [u] = await tx.insert(units).values({ parentId, kind: "company", name }).returning({ id: units.id });
+      tabs[tabKey] = u!.id;
+      const prefix = `${newCompanyId(tabKey)}|`;
+      platoons = Object.fromEntries(Object.entries(platoons).map(([k, v]) => [k.startsWith(prefix) ? `${u!.id}|${k.slice(prefix.length)}` : k, v]));
+    }
+    res = await resolveSheetImport(tx, roundId, parsed, { ...mappings, tabs, platoons });
+    if (res.questions.length) throw new SheetImportError("נשארו שאלות מיפוי פתוחות — עדכנו את התצוגה המקדימה ונסו שוב");
+  }
 
   /* statuses */
   const statusIds = new Map<string, string>();
@@ -72,8 +97,7 @@ export async function applySheetImport(tx: Tx, roundId: string, parsed: ParsedSh
     else unitIds.set(key, target);
   }
   if (toCreate.length) {
-    const [check] = rowsOf<{ ok: boolean }>(await tx.execute(sql`select app.has_role('core', array['admin']) as ok`));
-    if (!check?.ok) throw new SheetImportError("ליצירת מחלקות צריך הרשאת מנהל ליבה");
+    await requireCoreAdmin(tx, "ליצירת מחלקות צריך הרשאת מנהל ליבה");
     for (const key of toCreate) {
       const companyId = key.slice(0, key.indexOf("|"));
       const [u] = await tx
@@ -175,5 +199,6 @@ export async function applySheetImport(tx: Tx, roundId: string, parsed: ParsedSh
     daysSkippedPilot: changes.skippedPilot,
     statusesCreated: res.newStatuses.length,
     platoonsCreated: toCreate.length,
+    companiesCreated,
   };
 }

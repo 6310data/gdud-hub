@@ -13,8 +13,8 @@ import type { ParsedRow, ParsedSheet, ParsedTab, StatusGroup } from "./parse";
 const { units, people, doch1Rounds, doch1RoundCompanies, doch1Statuses, doch1Members, doch1Days, doch1ImportMappings } = schema;
 
 export interface ImportMappings {
-  /** tab key → company unit id */
-  tabs: Record<string, string | "ignore">;
+  /** tab key → company unit id ("create" = a new company named after the tab) */
+  tabs: Record<string, string | "ignore" | "create">;
   /** `${companyId}|${canonical platoon text}` → unit id ("company" = the soldier stays at company level) */
   platoons: Record<string, string | "create" | "company">;
   /** sheet value → status id */
@@ -38,6 +38,7 @@ export interface ImportCounts {
   daysSkippedPilot: number;
   statusesCreated: number;
   platoonsCreated: number;
+  companiesCreated: number;
 }
 
 export interface SheetImportPlan {
@@ -83,8 +84,10 @@ export interface Resolution {
   questions: MappingQuestion[];
   warnings: string[];
   chosen: ChosenRow[];
-  /** tab key → company id or null (ignore); only answered tabs */
+  /** tab key → company id (newCompanyId() for a company to create) or null (ignore); only answered tabs */
   tabMap: Map<string, string | null>;
+  /** tab key → tab name, for the tabs answered "create" */
+  newCompanies: Map<string, string>;
   /** platoon key → unit id or "create"; only answered keys */
   platoonMap: Map<string, string | "create">;
   /** platoon key → the sheet text as written (for creating it) */
@@ -103,6 +106,8 @@ export interface Resolution {
 }
 
 const platoonKeyOf = (companyId: string, text: string) => `${companyId}|${canonicalName(text)}`;
+/** Stands in for the id of a company the import will create; apply swaps it for the real id. */
+export const newCompanyId = (tabKey: string) => `new:${tabKey}`;
 
 function descendantsOf(companyId: string, all: readonly UnitRow[]): UnitRow[] {
   const byId = new Map(all.map((u) => [u.id, u]));
@@ -140,11 +145,17 @@ export async function resolveSheetImport(tx: Tx, roundId: string, parsed: Parsed
 
   /* tabs → companies */
   const tabMap = new Map<string, string | null>();
+  const newCompanies = new Map<string, string>();
   for (const tab of parsed.tabs) {
     if (tabMap.has(tab.key) || questions.some((q) => q.kind === "tab" && q.key === tab.key)) continue;
     const given = mappings.tabs?.[tab.key];
     const savedTarget = saved.company.get(tab.key);
     const auto = companies.find((c) => canonicalName(c.name) === tab.key)?.id;
+    if (given === "create") {
+      tabMap.set(tab.key, newCompanyId(tab.key));
+      newCompanies.set(tab.key, tab.tabName);
+      continue;
+    }
     const answer =
       given === "ignore" ? null : given && companyIds.has(given) ? given
       : savedTarget === null ? null : savedTarget && companyIds.has(savedTarget) ? savedTarget
@@ -298,6 +309,7 @@ export async function resolveSheetImport(tx: Tx, roundId: string, parsed: Parsed
     warnings,
     chosen,
     tabMap,
+    newCompanies,
     platoonMap,
     platoonText,
     statusMap,
@@ -456,6 +468,7 @@ export async function planSheetImport(tx: Tx, roundId: string, parsed: ParsedShe
       daysSkippedPilot: days.skippedPilot,
       statusesCreated: res.newStatuses.length,
       platoonsCreated: createdPlatoons.size,
+      companiesCreated: res.newCompanies.size,
     },
   };
 }

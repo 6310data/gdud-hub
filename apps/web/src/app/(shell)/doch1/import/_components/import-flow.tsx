@@ -12,7 +12,10 @@ type Answers = Record<MappingQuestion["kind"], Record<string, string>>;
 const NO_ANSWERS: Answers = { tab: {}, platoon: {}, status: {} };
 
 const SPECIAL: Record<MappingQuestion["kind"], Array<{ id: string; label: string }>> = {
-  tab: [{ id: "ignore", label: "להתעלם מהלשונית" }],
+  tab: [
+    { id: "ignore", label: "להתעלם מהלשונית" },
+    { id: "create", label: "ליצור פלוגה" },
+  ],
   platoon: [
     { id: "create", label: "ליצור מחלקה" },
     { id: "company", label: "ברמת הפלוגה" },
@@ -34,6 +37,7 @@ function CountsCard({ counts, title }: { counts: ImportCounts; title: string }) 
     ["ימים שנוקו", counts.daysCleared],
     ["דולגו בפלוגת הפיילוט", counts.daysSkippedPilot],
     ["סטטוסים חדשים", counts.statusesCreated],
+    ["פלוגות חדשות", counts.companiesCreated],
     ["מחלקות חדשות", counts.platoonsCreated],
   ];
   return (
@@ -171,7 +175,9 @@ export function ImportFlow({ roundName }: { roundName: string }) {
                   </label>
                 ))}
               </div>
-              <p className="tz-section-footer">אחרי הבחירה: ״עדכון תצוגה״. ההחלטות נשמרות לייבוא הבא של הסבב.</p>
+              <p className="tz-section-footer">
+                אחרי הבחירה: ״עדכון תצוגה״. ההחלטות נשמרות לייבוא הבא של הסבב. יצירת פלוגה או מחלקה דורשת גם הרשאת מנהל ליבה.
+              </p>
             </section>
           ) : (
             <p className="tz-alert tz-alert-ok m-0">אין שאלות פתוחות. אפשר לייבא.</p>

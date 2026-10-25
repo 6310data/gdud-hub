@@ -80,7 +80,7 @@ Battalion doch1 admin, `/doch1/import`:
 
 1. In the sheet: File → Download → Microsoft Excel (.xlsx). Keep the file out of the repository (`*.xlsx` is git-ignored) and delete it when done.
 2. Upload → "תצוגה מקדימה". Nothing is written yet. The preview lists the counts, warnings (rows without a personal number, a soldier in two tabs, values on days outside the round) and the round members that are not in the file (they are kept).
-3. Answer the mapping questions: a tab → company or "להתעלם" (`גדודי` is a summary tab: ignore it); a platoon (מסגרת) → an existing unit, "ליצור מחלקה" (needs the core admin role too) or "ברמת הפלוגה"; an unknown status value → an existing status or "ליצור סטטוס". "עדכון תצוגה" until there are no questions. Answers are remembered for the next import of the round.
+3. Answer the mapping questions: a tab → company, "ליצור פלוגה" (a new company under the battalion, named after the tab; needs the core admin role too) or "להתעלם" (`גדודי` is a summary tab: ignore it); a platoon (מסגרת) → an existing unit, "ליצור מחלקה" (needs the core admin role too) or "ברמת הפלוגה"; an unknown status value → an existing status or "ליצור סטטוס". "עדכון תצוגה" until there are no questions. Answers are remembered for the next import of the round.
 4. "ייבוא" runs everything in one transaction. Re-importing the same file changes nothing.
 5. The first import creates statuses with flags from the sheet's `Dropdowns` groups and a grey color; go over them in הגדרות › סטטוסים (colors, display groups, `נספר בסד״כ`, `מעבר לגבול`).
 

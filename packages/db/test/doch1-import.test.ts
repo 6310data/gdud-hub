@@ -389,4 +389,39 @@ describe("plan and apply", () => {
     const p = await plan(sheet([companyTab("לשונית חדשה", [S1()])]), { tabs: { "לשונית חדשה": ids.plsr1 } });
     expect(p.questions.some((q) => q.kind === "tab" && q.key === "לשונית חדשה")).toBe(true);
   });
+
+  describe("a tab answered 'create'", () => {
+    const S4 = () => soldier(7000004, "גל", "בדוי", "מחלקה 1", ["עזה", "רענון"]);
+    const newTab = () => sheet([companyTab("פלסר", [S1(), S2()]), companyTab("פלנט", [S3()]), companyTab("פלוגה חדשה", [S4()])]);
+    const newPlatoon = "new:פלוגה חדשה|מחלקה 1";
+    const m = (): ImportMappings => ({ tabs: { "פלוגה חדשה": "create" }, platoons: { [newPlatoon]: "create" }, statuses: {} });
+
+    it("previews the new company and asks about its platoons", async () => {
+      const first = await plan(newTab());
+      expect(first.questions).toEqual([expect.objectContaining({ kind: "tab", key: "פלוגה חדשה", suggestion: "ignore" })]);
+      const p = await plan(newTab(), { tabs: { "פלוגה חדשה": "create" } });
+      expect(p.questions).toEqual([
+        expect.objectContaining({ kind: "platoon", key: newPlatoon, label: "פלוגה חדשה · מחלקה 1", suggestion: "create", options: [] }),
+      ]);
+      expect((await plan(newTab(), m())).counts).toMatchObject({ companiesCreated: 1, platoonsCreated: 1, newPeople: 1 });
+    });
+
+    it("needs the core admin role", async () => {
+      await expect(asUser(d1Only, (tx) => applySheetImport(tx, roundId, newTab(), m()))).rejects.toThrow("ליצירת פלוגות צריך הרשאת מנהל ליבה");
+    });
+
+    it("creates the company under the battalion, joins it to the round and remembers it", async () => {
+      const counts = await apply(newTab(), m());
+      expect(counts).toMatchObject({ companiesCreated: 1, platoonsCreated: 1, newPeople: 1, members: 1 });
+      const [company] = await db.select().from(units).where(and(eq(units.kind, "company"), eq(units.name, "פלוגה חדשה")));
+      expect(company).toMatchObject({ parentId: ids.bat, active: true });
+      const [s4] = await db.select().from(people).where(eq(people.personalNumber, "7000004"));
+      const [platoon] = await db.select().from(units).where(eq(units.id, s4!.unitId));
+      expect(platoon).toMatchObject({ name: "מחלקה 1", parentId: company!.id, kind: "platoon" });
+      const rc = await db.select().from(doch1RoundCompanies).where(and(eq(doch1RoundCompanies.roundId, roundId), eq(doch1RoundCompanies.unitId, company!.id)));
+      expect(rc).toHaveLength(1);
+      expect((await plan(newTab())).questions).toEqual([]);
+      expect(await apply(newTab())).toMatchObject({ companiesCreated: 0, platoonsCreated: 0, newPeople: 0 });
+    });
+  });
 });
