@@ -42,6 +42,7 @@ references/                old Apps Script / platoon-web code to port (not built
 ## Deploy (Vercel)
 
 - Import the GitHub repo. **Root Directory:** `apps/web` (Vercel detects pnpm + Turborepo).
+- Functions run in `fra1` (`apps/web/vercel.json`), next to the Supabase database. Keep them in the same region: every request makes several DB round trips.
 - Environment variables: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `DATABASE_URL` (transaction pooler). Not `MIGRATION_DATABASE_URL`.
 - Settings → Deployment Protection → enable for Preview deployments.
 - Migrations are run by you (`pnpm db:migrate`), not by Vercel builds.

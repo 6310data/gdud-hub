@@ -54,8 +54,10 @@ export async function runAsUser<T, D extends { transaction: Db["transaction"] }>
 ): Promise<T> {
   return database.transaction(async (tx) => {
     const json = JSON.stringify({ ...claims, role: "authenticated" });
-    await tx.execute(sql`select set_config('request.jwt.claims', ${json}, true)`);
-    await tx.execute(sql`set local role authenticated`);
+    // One round trip: set_config('role', …, true) is `set local role`.
+    await tx.execute(
+      sql`select set_config('request.jwt.claims', ${json}, true), set_config('role', 'authenticated', true)`,
+    );
     return fn(tx as Tx);
   });
 }
