@@ -13,6 +13,7 @@ export const metadata = { title: "לוגיסטיקה" };
 
 export default async function LogisticsOverview() {
   const s = await requireModule("logistics");
+  const access = logisticsAccess(s);
 
   const data = await withUser(s.claims, async (tx) => {
     const [stock, holdings, people, stored, events] = await Promise.all([
@@ -34,7 +35,24 @@ export default async function LogisticsOverview() {
 
   return (
     <>
-      <PageHeader title="סקירה" sub={`${fmtCount(t.total)} צ׳ים בגדוד · עודכן ${fmtWhen(now, now)}`} />
+      <PageHeader
+        title="סקירה"
+        sub={`${fmtCount(t.total)} צ׳ים בגדוד · עודכן ${fmtWhen(now, now)}`}
+        actions={
+          access.isAdmin ? (
+            <>
+              <Link href="/logistics/return" className="tz-btn tz-btn-tinted tz-btn-sm">
+                <Icon name="undo" size={16} />
+                זיכוי
+              </Link>
+              <Link href="/logistics/sign" className="tz-btn tz-btn-filled tz-btn-sm">
+                <Icon name="pencil" size={16} />
+                החתמה חדשה
+              </Link>
+            </>
+          ) : null
+        }
+      />
 
       <div className="flex flex-wrap items-start gap-[22px]">
         <div className="flex min-w-0 flex-[2_1_520px] flex-col gap-[22px]">
@@ -86,7 +104,7 @@ export default async function LogisticsOverview() {
             ) : null}
           </Panel>
 
-          {logisticsAccess(s).isStockAdmin ? (
+          {access.isStockAdmin ? (
             <Panel title="הגיליון">
               <AttentionRow
                 href="/logistics/import"

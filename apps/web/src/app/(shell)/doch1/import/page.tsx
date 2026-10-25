@@ -16,7 +16,7 @@ export default async function Doch1Import() {
   if (!round) return null; // the layout shows "אין סבב פעיל"
 
   return (
-    <div className="flex flex-col gap-[22px]">
+    <div className="flex w-full max-w-[960px] flex-col gap-[22px]">
       <div className="flex flex-col">
         <h1 className="tz-title">ייבוא הגיליון</h1>
         <span className="tz-footnote">חיילים, פרטי סבב וימים מהגיליון ״דוח 1״. אפשר לייבא שוב בכל פעם שהגיליון מתעדכן.</span>

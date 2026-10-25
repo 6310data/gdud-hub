@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useMemo, useOptimistic, useState, useTransition } from "react";
 import { fillFromYesterdayPlan, summarize, type Day, type DayWrite, type StatusDef } from "@gdud/core";
-import { Avatar, Icon } from "@gdud/ui";
+import { Avatar, Icon, Spinner } from "@gdud/ui";
 import { bulkSetStatus, fillFromYesterday, restoreDays, setDayStatus } from "../../_actions/days";
 import { setInReport } from "../../_actions/members";
 import { StatusChip } from "../../_components/status-chip";
@@ -23,6 +23,8 @@ export interface TodayMember {
 export type DaysByDay = Record<Day, Record<string, string>>;
 
 type Filter = "all" | "missing" | `group:${string}`;
+/** up to this many filters fit a segmented control (mockup 07); more become scrolling pills */
+const SEG_MAX = 4;
 
 function applyWrites(state: DaysByDay, writes: readonly DayWrite[]): DaysByDay {
   const next: DaysByDay = { ...state };
@@ -209,6 +211,8 @@ export function TodayList({
       return next;
     });
 
+  const filters: Array<[Filter, string]> = [["all", "הכל"], ["missing", `חסרים ${summary.missing}`], ...groups.map((g) => [`group:${g}`, g] as [Filter, string])];
+  const lockNote = `הדוח ננעל ב-${lockAt}${outOfReport.length ? ` · ${outOfReport.length} שוחררו או נדחו ואינם נספרים` : ""}`;
   const done = summary.missing === 0 && summary.roster > 0;
   const pct = Math.round(summary.completion * 100);
 
@@ -224,7 +228,7 @@ export function TodayList({
               <span className="text-[17px] font-semibold">
                 {summary.roster} מתוך {summary.roster} דיווחו · הדוח מוכן
               </span>
-              <span className="tz-footnote">הדוח ננעל ב-{lockAt}</span>
+              <span className="tz-footnote">{lockNote}</span>
             </span>
           </div>
         ) : (
@@ -242,9 +246,10 @@ export function TodayList({
             <div className="h-1.5 overflow-hidden rounded-full bg-fill" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="השלמת הדיווח">
               <div className="h-1.5 rounded-full bg-primary transition-[width] duration-300" style={{ width: `${pct}%` }} />
             </div>
-            <span className="tz-footnote">הדוח ננעל ב-{lockAt}</span>
+            <span className="tz-footnote">{lockNote}</span>
             {fillable ? (
-              <button type="button" className="tz-btn tz-btn-tinted min-h-11 text-base" disabled={pending} onClick={fill}>
+              <button type="button" className="tz-btn tz-btn-tinted min-h-11 text-base" disabled={pending} aria-busy={pending || undefined} onClick={fill}>
+                {pending ? <Spinner /> : null}
                 השלמת {fillable} חסרים לפי אתמול
               </button>
             ) : null}
@@ -298,19 +303,23 @@ export function TodayList({
             </button>
           ) : null}
         </div>
-        <div className="tz-pills" role="toolbar" aria-label="סינון">
-          {(
-            [
-              ["all", "הכל"],
-              ["missing", `חסרים ${summary.missing}`],
-              ...groups.map((g) => [`group:${g}`, g] as const),
-            ] as Array<[Filter, string]>
-          ).map(([id, label]) => (
-            <button key={id} type="button" className="tz-pill" aria-pressed={filter === id} onClick={() => setFilter(id)}>
-              {label}
-            </button>
-          ))}
-        </div>
+        {filters.length <= SEG_MAX ? (
+          <div className="tz-seg" role="tablist" aria-label="סינון">
+            {filters.map(([id, label]) => (
+              <button key={id} type="button" role="tab" className="tz-seg-item" aria-selected={filter === id} onClick={() => setFilter(id)}>
+                {label}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="tz-pills" role="toolbar" aria-label="סינון">
+            {filters.map(([id, label]) => (
+              <button key={id} type="button" className="tz-pill" aria-pressed={filter === id} onClick={() => setFilter(id)}>
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {sections.map((sec) => (
@@ -368,7 +377,8 @@ export function TodayList({
                     {m.platoonName ? <span className="tz-row-sub">{m.platoonName}</span> : null}
                   </span>
                   {canEditMembers ? (
-                    <button type="button" className="tz-btn tz-btn-plain tz-btn-sm" disabled={pending} onClick={() => setReport(m, true)}>
+                    <button type="button" className="tz-btn tz-btn-plain tz-btn-sm" disabled={pending} aria-busy={pending || undefined} onClick={() => setReport(m, true)}>
+                      {pending ? <Spinner size={14} /> : null}
                       החזרה לדוח
                     </button>
                   ) : (

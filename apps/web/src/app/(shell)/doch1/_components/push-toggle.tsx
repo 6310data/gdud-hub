@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, useSyncExternalStore, useTransition } from "react";
+import { Spinner } from "@gdud/ui";
 import { removeSubscription, saveSubscription } from "../_actions/push";
 
 // NEXT_PUBLIC_* must be read with literal property access so Next.js can inline it.
@@ -98,12 +99,14 @@ export function PushToggle() {
       {subscribed ? (
         <>
           <span className="tz-footnote">תזכורות פעילות</span>
-          <button type="button" className="tz-btn tz-btn-plain tz-btn-sm" disabled={pending} onClick={disable}>
+          <button type="button" className="tz-btn tz-btn-plain tz-btn-sm" disabled={pending} aria-busy={pending || undefined} onClick={disable}>
+            {pending ? <Spinner size={14} /> : null}
             ביטול
           </button>
         </>
       ) : (
-        <button type="button" className="tz-btn tz-btn-tinted tz-btn-sm" disabled={pending} onClick={enable}>
+        <button type="button" className="tz-btn tz-btn-tinted tz-btn-sm" disabled={pending} aria-busy={pending || undefined} onClick={enable}>
+          {pending ? <Spinner size={14} /> : null}
           קבלת תזכורות
         </button>
       )}

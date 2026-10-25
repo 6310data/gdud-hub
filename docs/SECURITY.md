@@ -22,6 +22,7 @@ The app holds personal data about soldiers. Check with the unit's ביטחון �
 - Never put `DATABASE_URL`, `MIGRATION_DATABASE_URL` or the Supabase secret/service key in client code or in a `NEXT_PUBLIC_` variable.
 - Don't store a field (ת״ז, מס׳ אישי, address…) unless a feature actually needs it.
 - Redirect targets go through `safeNextPath()`.
+- A cookie-authenticated `POST` route handler (not a Server Action) checks `sameOrigin()` (`apps/web/src/lib/progress-stream.ts`) and the same permission as the action it replaces, before reading the body.
 
 ## Approvals
 

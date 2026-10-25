@@ -2,7 +2,8 @@
  * Apply a round-sheet import: the same resolution as planSheetImport(), then the writes,
  * all inside the caller's single RLS transaction (withUser). Order: new companies (then the
  * resolution again, with their ids) → statuses → platoons → round companies → people →
- * members → days → remembered mappings.
+ * members → days → remembered mappings. `onProgress` reports each phase as it starts and how far
+ * the long ones got, so the import screen can show the steps of a long first import.
  */
 import { and, eq, sql, type SQL } from "drizzle-orm";
 import type { Tx } from "../index";
@@ -23,6 +24,10 @@ import {
 const { units, people, doch1RoundCompanies, doch1Statuses, doch1Members, doch1Days, doch1ImportMappings } = schema;
 
 const WRITE_CHUNK = 500;
+
+export type ImportPhase = "match" | "structure" | "people" | "members" | "days" | "mappings";
+/** Called when a phase starts (no counts) and after every written chunk (done of total). */
+export type ImportProgress = (phase: ImportPhase, done?: number, total?: number) => void;
 
 function chunks<T>(items: readonly T[]): T[][] {
   const out: T[][] = [];
@@ -60,11 +65,19 @@ function statusValues(roundId: string, s: NewStatus) {
   };
 }
 
-export async function applySheetImport(tx: Tx, roundId: string, parsed: ParsedSheet, mappings: ImportMappings): Promise<ImportCounts> {
+export async function applySheetImport(
+  tx: Tx,
+  roundId: string,
+  parsed: ParsedSheet,
+  mappings: ImportMappings,
+  onProgress: ImportProgress = () => {},
+): Promise<ImportCounts> {
+  onProgress("match");
   let res = await resolveSheetImport(tx, roundId, parsed, mappings);
   if (res.questions.length) throw new SheetImportError("נשארו שאלות מיפוי פתוחות — עדכנו את התצוגה המקדימה ונסו שוב");
 
   /* new companies, under the battalion; then resolve again with their real ids */
+  onProgress("structure");
   const companiesCreated = res.newCompanies.size;
   if (companiesCreated) {
     await requireCoreAdmin(tx, "ליצירת פלוגות צריך הרשאת מנהל ליבה");
@@ -120,9 +133,13 @@ export async function applySheetImport(tx: Tx, roundId: string, parsed: ParsedSh
   /* people */
   const ppl = peopleChanges(res, (key) => unitIds.get(key));
   const personIds = new Map([...res.existingPeople].map(([pn, p]) => [pn, p.id]));
+  const peopleTotal = ppl.inserts.length + ppl.updates.length;
+  let peopleDone = 0;
+  onProgress("people", 0, peopleTotal);
   for (const chunk of chunks(ppl.inserts)) {
     const rows = await tx.insert(people).values(chunk).returning({ id: people.id, personalNumber: people.personalNumber });
     for (const r of rows) personIds.set(r.personalNumber!, r.id);
+    onProgress("people", (peopleDone += chunk.length), peopleTotal);
   }
   for (const chunk of chunks(ppl.updates)) {
     const values = sql.join(
@@ -134,6 +151,7 @@ export async function applySheetImport(tx: Tx, roundId: string, parsed: ParsedSh
          set full_name = v.full_name, unit_id = v.unit_id, phone = v.phone, role_title = v.role_title
         from (values ${values}) as v(id, full_name, unit_id, phone, role_title)
        where p.id = v.id`);
+    onProgress("people", (peopleDone += chunk.length), peopleTotal);
   }
 
   /* members and days */
@@ -142,6 +160,8 @@ export async function applySheetImport(tx: Tx, roundId: string, parsed: ParsedSh
     (pn) => personIds.get(pn)!,
     (value) => statusIds.get(value),
   );
+  let membersDone = 0;
+  onProgress("members", 0, changes.members.length);
   for (const chunk of chunks(changes.members)) {
     await tx
       .insert(doch1Members)
@@ -159,12 +179,17 @@ export async function applySheetImport(tx: Tx, roundId: string, parsed: ParsedSh
           sheetRow: sql`excluded.sheet_row`,
         },
       });
+    onProgress("members", (membersDone += chunk.length), changes.members.length);
   }
+  const daysTotal = changes.writes.length + changes.clears.length;
+  let daysDone = 0;
+  onProgress("days", 0, daysTotal);
   for (const chunk of chunks(changes.writes)) {
     await tx
       .insert(doch1Days)
       .values(chunk.map((w) => ({ ...w, roundId })))
       .onConflictDoUpdate({ target: [doch1Days.personId, doch1Days.day], set: { statusId: sql`excluded.status_id` } });
+    onProgress("days", (daysDone += chunk.length), daysTotal);
   }
   for (const chunk of chunks(changes.clears)) {
     const keys: SQL = sql.join(
@@ -172,9 +197,11 @@ export async function applySheetImport(tx: Tx, roundId: string, parsed: ParsedSh
       sql`, `,
     );
     await tx.delete(doch1Days).where(and(eq(doch1Days.roundId, roundId), sql`(${doch1Days.personId}, ${doch1Days.day}) in (${keys})`));
+    onProgress("days", (daysDone += chunk.length), daysTotal);
   }
 
   /* remember every answer for the next import */
+  onProgress("mappings");
   const saved = [
     ...[...res.tabMap].map(([sourceKey, targetId]) => ({ kind: "company", sourceKey, targetId })),
     ...[...res.platoonMap.keys()].map((sourceKey) => ({ kind: "platoon", sourceKey, targetId: unitIds.get(sourceKey) ?? null })),

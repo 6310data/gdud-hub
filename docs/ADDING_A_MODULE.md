@@ -16,7 +16,7 @@ Example: porting the logistics app.
 
 4. **RLS tests** — add a `describe("logistics")` block to `packages/db/test/rls.test.ts`: what an admin, a company-scoped viewer and a user from another company can and can't do. `pnpm test` must pass.
 
-5. **Pages** — `apps/web/src/app/(shell)/logistics/…`. Start every page with `const s = await requireModule("logistics")`, read/write with `withUser(s.claims, tx => …)`, and use `can(s.user, "logistics", ["admin"], unitId, s.parents)` to decide what to show. Mutations are Server Actions that check `can()` and validate with zod before writing.
+5. **Pages** — `apps/web/src/app/(shell)/logistics/…`. Every module is its own app: its `layout.tsx` renders `<AppShell>` (`apps/web/src/components/app-shell.tsx`) with the module's name, tile, sections (sidebar on desktop, tab bar on the phone; more than five go under "עוד") and the user's role from `moduleRoleLabel()`. Other modules are reached only through the hub (`/`, "כל המחלקות"), never from inside a module. Add a `loading.tsx` next to the layout (`<PageLoading>`), and give every pending button `loading={pending}`. Start every page with `const s = await requireModule("logistics")`, read/write with `withUser(s.claims, tx => …)`, and use `can(s.user, "logistics", ["admin"], unitId, s.parents)` to decide what to show. Mutations are Server Actions that check `can()` and validate with zod before writing.
 
 6. **Data import** — a one-off script in `packages/db/scripts/` that reads the old Google Sheet and fills the new tables (people first, then module data). Run locally with `MIGRATION_DATABASE_URL`.
 
