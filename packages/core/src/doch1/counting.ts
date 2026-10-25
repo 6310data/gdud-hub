@@ -45,6 +45,8 @@ export interface StatusDef extends StatusFlags {
   sheetValue: string;
   sortOrder: number;
   active: boolean;
+  /** available for standby (שבצ״ק readiness); only today counts, so not a versioned flag */
+  standbyAvailable?: boolean;
 }
 
 export interface ReportMember {

@@ -801,4 +801,125 @@ describe("doch1", () => {
     const rows = await db.select().from(auditLog).where(eq(auditLog.tableName, "doch1_days"));
     expect(rows.some((r) => r.actorUserId === plsrClerk.appId)).toBe(true);
   });
+  describe("doch1 standby", () => {
+    const {
+      doch1Locations: locations,
+      doch1StandbyTypes: types,
+      doch1StandbyTeams: teams,
+      doch1StandbyHolders: holders,
+      doch1StandbyMembers: teamMembers,
+      doch1Vehicles: vehicles,
+    } = schema;
+    const t = { plsrTeam: "", sharedTeam: "" };
+    let outpost = "";
+    let vehicleId = "";
+
+    /** A team created the way the app does it: the team row, then its holding company. */
+    const createTeam = (u: TestUser, name: string, unitId: string) =>
+      as(u, async (tx) => {
+        const [team] = await tx.insert(teams).values({ roundId, name }).returning();
+        await tx.insert(holders).values({ teamId: team!.id, unitId });
+        return team!.id;
+      });
+
+    beforeAll(async () => {
+      const [loc] = await db.insert(locations).values({ roundId, name: "מוצב 1", kind: "outpost" }).returning();
+      outpost = loc!.id;
+      const [v] = await db.insert(vehicles).values({ number: "700100" }).returning();
+      vehicleId = v!.id;
+      // a battalion team held by both companies
+      const [shared] = await db.insert(teams).values({ roundId, name: "פינוי א" }).returning();
+      t.sharedTeam = shared!.id;
+      await db.insert(holders).values([
+        { teamId: t.sharedTeam, unitId: ids.plsr },
+        { teamId: t.sharedTeam, unitId: ids.plnt },
+      ]);
+    });
+
+    it("only battalion admins manage locations and standby types; every doch1 user reads them", async () => {
+      await rejects(as(plsrClerk, (tx) => tx.insert(locations).values({ roundId, name: "מוצב 2", kind: "outpost" })));
+      await rejects(as(plsrClerk, (tx) => tx.insert(types).values({ roundId, name: "חפ״ק" })));
+      await as(d1Admin, (tx) => tx.insert(types).values({ roundId, name: "חפ״ק", size: 3, requiredRoles: ["קשר"] }));
+      expect(await as(plsr1Cmdr, (tx) => tx.select().from(types))).toHaveLength(1);
+      expect(await as(stranger, (tx) => tx.select().from(locations))).toHaveLength(0);
+    });
+
+    it("a company user creates a team for their own company and edits it", async () => {
+      t.plsrTeam = await createTeam(plsrClerk, "חפ״ק", ids.plsr);
+      const upd = await as(plsrClerk, (tx) =>
+        tx.update(teams).set({ locationId: outpost, vehicleId }).where(eq(teams.id, t.plsrTeam)).returning(),
+      );
+      expect(upd).toHaveLength(1);
+      expect(await as(plntClerk, (tx) => tx.update(teams).set({ name: "x" }).where(eq(teams.id, t.plsrTeam)).returning())).toHaveLength(0);
+      expect(await as(plsr1Cmdr, (tx) => tx.update(teams).set({ name: "x" }).where(eq(teams.id, t.plsrTeam)).returning())).toHaveLength(0);
+      await rejects(createTeam(plsr1Cmdr, "x", ids.plsr1));
+      await rejects(createTeam(d1Viewer, "x", ids.plsr));
+    });
+
+    it("a company user cannot make their company a holder of someone else's team", async () => {
+      await rejects(as(plntClerk, (tx) => tx.insert(holders).values({ teamId: t.plsrTeam, unitId: ids.plnt })));
+      // nor create a team in another company's name
+      await rejects(createTeam(plntClerk, "x", ids.plsr));
+      await as(d1Admin, (tx) => tx.insert(holders).values({ teamId: t.plsrTeam, unitId: ids.plnt }));
+      expect(await as(plntClerk, (tx) => tx.update(teams).set({ sortOrder: 1 }).where(eq(teams.id, t.plsrTeam)).returning())).toHaveLength(1);
+      await db.delete(holders).where(and(eq(holders.teamId, t.plsrTeam), eq(holders.unitId, ids.plnt)));
+    });
+
+    it("team members: editors add soldiers they cover; one team per soldier per round", async () => {
+      await as(plsrClerk, (tx) => tx.insert(teamMembers).values({ roundId, teamId: t.plsrTeam, personId: p.plsr1Soldier, role: "קשר" }));
+      // another company's soldier, even on a team the clerk edits
+      await rejects(as(plsrClerk, (tx) => tx.insert(teamMembers).values({ roundId, teamId: t.sharedTeam, personId: p.plntSoldier })));
+      // a soldier is on one team at most
+      await rejects(as(d1Admin, (tx) => tx.insert(teamMembers).values({ roundId, teamId: t.sharedTeam, personId: p.plsr1Soldier })));
+      // not an editor of the team
+      await rejects(as(plntClerk, (tx) => tx.insert(teamMembers).values({ roundId, teamId: t.plsrTeam, personId: p.plntSoldier })));
+      await as(plntClerk, (tx) => tx.insert(teamMembers).values({ roundId, teamId: t.sharedTeam, personId: p.plntSoldier }));
+      expect(
+        await as(plntClerk, (tx) => tx.update(teamMembers).set({ role: "x" }).where(eq(teamMembers.teamId, t.plsrTeam)).returning()),
+      ).toHaveLength(0);
+      expect(await as(plsr1Cmdr, (tx) => tx.delete(teamMembers).where(eq(teamMembers.teamId, t.plsrTeam)).returning())).toHaveLength(0);
+    });
+
+    it("team members are read by their unit's users and by the team's editors", async () => {
+      const cmdr = await as(plsr1Cmdr, (tx) => tx.select().from(teamMembers));
+      expect(cmdr.map((m) => m.personId)).toEqual([p.plsr1Soldier]);
+      // the plsr clerk edits the shared team, so they see its plnt soldier too
+      const clerk = await as(plsrClerk, (tx) => tx.select().from(teamMembers));
+      expect(clerk.map((m) => m.personId).sort()).toEqual([p.plsr1Soldier, p.plntSoldier].sort());
+      expect(await as(stranger, (tx) => tx.select().from(teamMembers))).toHaveLength(0);
+    });
+
+    it("vehicles: a team's editors change its vehicle's state; others cannot", async () => {
+      expect(await as(plsrClerk, (tx) => tx.update(vehicles).set({ state: "service" }).where(eq(vehicles.id, vehicleId)).returning())).toHaveLength(1);
+      expect(await as(plntClerk, (tx) => tx.update(vehicles).set({ state: "broken" }).where(eq(vehicles.id, vehicleId)).returning())).toHaveLength(0);
+      await as(plntClerk, (tx) => tx.insert(vehicles).values({ number: "700200" }));
+      await rejects(as(plsr1Cmdr, (tx) => tx.insert(vehicles).values({ number: "700300" })));
+      expect(await as(plsrClerk, (tx) => tx.delete(vehicles).where(eq(vehicles.id, vehicleId)).returning())).toHaveLength(0);
+      await rejects(as(d1Admin, (tx) => tx.insert(vehicles).values({ number: "70 01" })));
+    });
+
+    it("soldier location: company users set it in their company; it must be a location of the same round", async () => {
+      const set = (u: TestUser, personId: string, locationId: string | null) =>
+        as(u, (tx) => tx.update(members).set({ locationId }).where(eq(members.personId, personId)).returning());
+      expect(await set(plsrClerk, p.plsr1Soldier, outpost)).toHaveLength(1);
+      expect(await set(plsrClerk, p.plntSoldier, outpost)).toHaveLength(0);
+      expect(await set(plsr1Cmdr, p.plsr1Soldier, null)).toHaveLength(0);
+      const [other] = await db.insert(rounds).values({ name: "סבב ישן", startsOn: today, endsOn: today }).returning();
+      const [foreign] = await db.insert(locations).values({ roundId: other!.id, name: "מוצב 1", kind: "outpost" }).returning();
+      await rejects(set(d1Admin, p.plsr1Soldier, foreign!.id));
+      await rejects(as(d1Admin, (tx) => tx.update(teams).set({ locationId: foreign!.id }).where(eq(teams.id, t.plsrTeam))));
+    });
+
+    it("a holder removing itself leaves the team to the admin; deleting a team is for its editors", async () => {
+      expect(await as(plntClerk, (tx) => tx.delete(teams).where(eq(teams.id, t.plsrTeam)).returning())).toHaveLength(0);
+      expect(await as(plsrClerk, (tx) => tx.delete(teams).where(eq(teams.id, t.plsrTeam)).returning())).toHaveLength(1);
+      // the team's members went with it
+      expect(await db.select().from(teamMembers).where(eq(teamMembers.teamId, t.plsrTeam))).toHaveLength(0);
+    });
+
+    it("standby writes are audited", async () => {
+      const rows = await db.select().from(auditLog).where(eq(auditLog.tableName, "doch1_standby_members"));
+      expect(rows.some((r) => r.actorUserId === plsrClerk.appId)).toBe(true);
+    });
+  });
 });

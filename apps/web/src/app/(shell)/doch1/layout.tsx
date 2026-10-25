@@ -8,7 +8,7 @@ import { displayName, requireModule } from "@/lib/session";
 
 const dm = (day: string) => `${day.slice(8, 10)}.${day.slice(5, 7)}`;
 
-/** דוח 1 as its own app (mockup: references/doch1, screens 01 / 06 / 07). */
+/** דוח 1 as its own app (mockup: references/doch1, screens 01 / 03 / 06 / 07 / 11). */
 export default async function Doch1Layout({ children }: { children: React.ReactNode }) {
   const s = await requireModule("doch1");
   const round = await withUser(s.claims, (tx) => loadActiveRound(tx));
@@ -18,6 +18,7 @@ export default async function Doch1Layout({ children }: { children: React.ReactN
   const main: AppNavItem[] = [
     ...(access.canOverview ? [{ href: "/doch1", label: "סקירה", icon: "grid", exact: true } as const] : []),
     { href: "/doch1/today", label: "דוח 1 של היום", short: "היום", icon: "report" },
+    { href: "/doch1/standby", label: "שבצ״ק וכוננות", short: "שבצ״ק", icon: "shield" },
     ...(access.canCopy ? [{ href: "/doch1/copy", label: "העתקה לגיליון", short: "העתקה", icon: "table" } as const] : []),
     ...(access.isAdmin ? [{ href: "/doch1/brigade", label: "דוח לחטיבה", short: "לחטיבה", icon: "send" } as const] : []),
   ];

@@ -10,6 +10,9 @@
  *   import answers (tab/platoon/status)      → doch1_import_mappings
  *   push reminders                           → doch1_push_subscriptions, doch1_reminder_requests, doch1_reminder_log
  *   brigade WhatsApp text copies             → doch1_brigade_log
+ *   שבצ״ק מיקום (E)                          → doch1_locations + doch1_members.location_id
+ *   שבצ״ק כוננות (G) + שיבוץ כלים (צ כלי, F) → doch1_standby_types / _teams / _holders / _members,
+ *                                              doch1_vehicles (battalion-wide, not per round)
  *
  * No status, location or group name lives in code: counts read the flags of doch1_statuses.
  * People and units are the shared core tables. Policies, grants, the lock guard and triggers:
@@ -29,6 +32,7 @@ import {
   text,
   time,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
   type AnyPgColumn,
@@ -108,6 +112,8 @@ export const doch1Statuses = pgTable(
     offDuty: boolean("off_duty").notNull().default(false),
     acrossBorder: boolean("across_border").notNull().default(false),
     needsOutpost: boolean("needs_outpost").notNull().default(false),
+    /** a soldier in this status counts as available for standby (שבצ״ק readiness); not versioned — only today matters */
+    standbyAvailable: boolean("standby_available").notNull().default(false),
     active: boolean("active").notNull().default(true),
     replacesId: uuid("replaces_id").references((): AnyPgColumn => doch1Statuses.id, { onDelete: "set null" }),
     ...timestamps,
@@ -142,6 +148,8 @@ export const doch1Members = pgTable(
     /** the company tab and row this soldier sits on in the sheet (copy-to-sheet order) */
     sheetTab: text("sheet_tab"),
     sheetRow: integer("sheet_row"),
+    /** מיקום בשבצ״ק (outpost / camp / outside); null = not in the שבצ״ק */
+    locationId: uuid("location_id").references((): AnyPgColumn => doch1Locations.id, { onDelete: "set null" }),
     ...timestamps,
   },
   (t) => [
@@ -269,5 +277,130 @@ export const doch1ImportMappings = pgTable(
   (t) => [
     primaryKey({ columns: [t.roundId, t.kind, t.sourceKey] }),
     check("doch1_import_mappings_kind", sql`${t.kind} in ('company', 'platoon', 'status')`),
+  ],
+).enableRLS();
+
+/** Places of the שבצ״ק (מוצב 131, מחנה מיוערת, בחוץ…). `kind` drives the data checks (an outpost needs an outpost status). */
+export const doch1Locations = pgTable(
+  "doch1_locations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    roundId: uuid("round_id")
+      .notNull()
+      .references(() => doch1Rounds.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    kind: text("kind").notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    active: boolean("active").notNull().default(true),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex("doch1_locations_round_name").on(t.roundId, t.name),
+    check("doch1_locations_kind", sql`${t.kind} in ('outpost', 'camp', 'outside')`),
+    check("doch1_locations_name_len", sql`length(${t.name}) between 1 and 30`),
+  ],
+).enableRLS();
+
+/** The vehicle registry (צ׳ רכב). Battalion-wide: a vehicle outlives a round. */
+export const doch1Vehicles = pgTable(
+  "doch1_vehicles",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    number: text("number").notNull().unique(),
+    kind: text("kind"),
+    state: text("state").notNull().default("ok"),
+    notes: text("notes"),
+    active: boolean("active").notNull().default(true),
+    ...timestamps,
+  },
+  (t) => [
+    check("doch1_vehicles_state", sql`${t.state} in ('ok', 'service', 'broken')`),
+    check("doch1_vehicles_number", sql`${t.number} ~ '^[0-9A-Za-z-]{1,20}$'`),
+    check("doch1_vehicles_text_len", sql`length(coalesce(${t.kind}, '')) <= 30 and length(coalesce(${t.notes}, '')) <= 200`),
+  ],
+).enableRLS();
+
+/** A kind of standby (חפ״ק מג״ד, עתודת גדוד, כרמל…): its size and the roles it must have. */
+export const doch1StandbyTypes = pgTable(
+  "doch1_standby_types",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    roundId: uuid("round_id")
+      .notNull()
+      .references(() => doch1Rounds.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    level: text("level").notNull().default("company"),
+    /** soldiers needed; null = the team's own member count */
+    size: integer("size"),
+    /** each entry is one role; "מ״פ / סמ״פ" = either one */
+    requiredRoles: text("required_roles").array().notNull().default(sql`'{}'::text[]`),
+    sortOrder: integer("sort_order").notNull().default(0),
+    active: boolean("active").notNull().default(true),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex("doch1_standby_types_round_name").on(t.roundId, t.name),
+    check("doch1_standby_types_level", sql`${t.level} in ('battalion', 'company')`),
+    check("doch1_standby_types_size", sql`${t.size} between 1 and 50`),
+    check("doch1_standby_types_text_len", sql`length(${t.name}) between 1 and 30 and cardinality(${t.requiredRoles}) <= 10`),
+  ],
+).enableRLS();
+
+/** A standby team of a round. Who edits it: the battalion admin and the company users of its holding companies. */
+export const doch1StandbyTeams = pgTable(
+  "doch1_standby_teams",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    roundId: uuid("round_id")
+      .notNull()
+      .references(() => doch1Rounds.id, { onDelete: "cascade" }),
+    typeId: uuid("type_id").references(() => doch1StandbyTypes.id, { onDelete: "set null" }),
+    name: text("name").notNull(),
+    locationId: uuid("location_id").references(() => doch1Locations.id, { onDelete: "set null" }),
+    vehicleId: uuid("vehicle_id").references(() => doch1Vehicles.id, { onDelete: "set null" }),
+    /** an inactive team is not counted in the standby */
+    active: boolean("active").notNull().default(true),
+    sortOrder: integer("sort_order").notNull().default(0),
+    ...timestamps,
+  },
+  (t) => [
+    unique("doch1_standby_teams_id_round").on(t.id, t.roundId),
+    index("doch1_standby_teams_round_idx").on(t.roundId),
+    check("doch1_standby_teams_name_len", sql`length(${t.name}) between 1 and 40`),
+  ],
+).enableRLS();
+
+/** The companies holding a team (פינוי א: אגם + מסייעת). */
+export const doch1StandbyHolders = pgTable(
+  "doch1_standby_holders",
+  {
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => doch1StandbyTeams.id, { onDelete: "cascade" }),
+    unitId: uuid("unit_id")
+      .notNull()
+      .references(() => units.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.teamId, t.unitId] }), index("doch1_standby_holders_unit_idx").on(t.unitId)],
+).enableRLS();
+
+/** A soldier on a standby team, with their role in it. One team per soldier per round (the sheet's כוננות column). */
+export const doch1StandbyMembers = pgTable(
+  "doch1_standby_members",
+  {
+    roundId: uuid("round_id").notNull(),
+    teamId: uuid("team_id").notNull(),
+    personId: uuid("person_id").notNull(),
+    role: text("role"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    ...timestamps,
+  },
+  (t) => [
+    primaryKey({ columns: [t.teamId, t.personId] }),
+    uniqueIndex("doch1_standby_members_one_team").on(t.roundId, t.personId),
+    foreignKey({ name: "doch1_standby_members_team_fk", columns: [t.teamId, t.roundId], foreignColumns: [doch1StandbyTeams.id, doch1StandbyTeams.roundId] }).onDelete("cascade"),
+    foreignKey({ name: "doch1_standby_members_member_fk", columns: [t.roundId, t.personId], foreignColumns: [doch1Members.roundId, doch1Members.personId] }).onDelete("cascade"),
+    check("doch1_standby_members_role_len", sql`length(coalesce(${t.role}, '')) <= 30`),
   ],
 ).enableRLS();

@@ -50,6 +50,20 @@
       "when": 1792673129636,
       "tag": "0006_logistics_sheet_import",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792951378704,
+      "tag": "0007_doch1_standby",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792951379323,
+      "tag": "0008_doch1_standby_security",
+      "breakpoints": true
     }
   ]
 }

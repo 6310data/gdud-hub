@@ -1,16 +1,18 @@
 "use server";
 /**
  * דוח 1 settings: the round (dates and daily times), companies in the round (+ the pilot
- * switch "reported in the app from"), statuses. Battalion-wide doch1 admins only.
+ * switch "reported in the app from"), statuses, and the שבצ״ק settings — locations,
+ * standby types, the vehicle registry. Battalion-wide doch1 admins only.
  */
 import { z } from "zod";
-import { israelToday, STATUS_FLAG_KEYS, statusFlagsChanged } from "@gdud/core";
-import { and, eq, gte, lt, ne, schema, withUser } from "@gdud/db";
+import { israelToday, LOCATION_KINDS, STANDBY_LEVELS, STATUS_FLAG_KEYS, statusFlagsChanged, VEHICLE_STATES } from "@gdud/core";
+import { and, eq, gte, lt, ne, schema, withUser, type Tx } from "@gdud/db";
 import { actionError, UserError, type ActionResult } from "@/lib/action-result";
 import { toStatusDef } from "@/lib/doch1/data";
 import { dayParam, doch1AdminSession, firstIssue, NO_PERMISSION, revalidateDoch1, uuid } from "./common";
 
 const { doch1Rounds: rounds, doch1RoundCompanies: roundCompanies, doch1Statuses: statuses, doch1Days: days } = schema;
+const { doch1Locations: locations, doch1StandbyTypes: standbyTypes, doch1Vehicles: vehicles } = schema;
 
 const clock = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "שעה בפורמט HH:MM");
 const optionalDay = z
@@ -111,6 +113,7 @@ const statusInput = z
     sheetValue: z.string().trim().min(1, "ערך בגיליון חסר").max(30, "עד 30 תווים"),
     sortOrder: z.coerce.number().int().min(0).max(999),
     active: checkbox,
+    standbyAvailable: checkbox,
     ...flagFields,
   })
   .refine((v) => !(v.countsInSadak && v.offDuty), { message: "סטטוס לא יכול להיות גם בסד״כ וגם מחוץ לשמ״פ" });
@@ -160,3 +163,94 @@ export async function saveStatus(_: ActionResult, fd: FormData): Promise<ActionR
   return { ok: true };
 }
 
+
+/* ── שבצ״ק: locations, standby types, vehicles ── */
+
+/** Validates and saves one settings row; `write` returns how many rows it wrote (0 = not found). */
+async function saveRow<S extends z.ZodType>(fd: FormData, schemaIn: S, write: (tx: Tx, v: z.output<S>) => Promise<number>): Promise<ActionResult> {
+  const s = await doch1AdminSession();
+  if (!s) return NO_PERMISSION;
+  const parsed = schemaIn.safeParse(Object.fromEntries(fd));
+  if (!parsed.success) return { error: firstIssue(parsed.error) };
+  try {
+    await withUser(s.claims, async (tx) => {
+      if (!(await write(tx, parsed.data))) throw new UserError("הפריט לא נמצא");
+    });
+  } catch (err) {
+    return { error: actionError(err) };
+  }
+  revalidateDoch1();
+  return { ok: true };
+}
+
+const locationInput = z.object({
+  id: optionalId,
+  roundId: uuid,
+  name: z.string().trim().min(1, "שם המיקום חסר").max(30, "עד 30 תווים"),
+  kind: z.enum(LOCATION_KINDS, "סוג מיקום לא תקין"),
+  sortOrder: z.coerce.number().int().min(0).max(999),
+  active: checkbox,
+});
+
+export async function saveLocation(_: ActionResult, fd: FormData): Promise<ActionResult> {
+  return saveRow(fd, locationInput, async (tx, { id, ...v }) => {
+    if (!id) return (await tx.insert(locations).values(v).returning({ id: locations.id })).length;
+    return (await tx.update(locations).set(v).where(and(eq(locations.id, id), eq(locations.roundId, v.roundId))).returning({ id: locations.id })).length;
+  });
+}
+
+const standbyTypeInput = z.object({
+  id: optionalId,
+  roundId: uuid,
+  name: z.string().trim().min(1, "שם סוג הכוננות חסר").max(30, "עד 30 תווים"),
+  level: z.enum(STANDBY_LEVELS, "רמה לא תקינה"),
+  size: z
+    .string()
+    .optional()
+    .transform((v) => (v ? Number(v) : null))
+    .pipe(z.number().int("גודל: מספר שלם").min(1, "גודל: 1 עד 50").max(50, "גודל: 1 עד 50").nullable()),
+  /** one role per line or comma; "מ״פ / סמ״פ" = either */
+  requiredRoles: z
+    .string()
+    .optional()
+    .transform((v) =>
+      (v ?? "")
+        .split(/[\n,]/)
+        .map((r) => r.trim())
+        .filter(Boolean),
+    )
+    .pipe(z.array(z.string().max(30, "תפקיד: עד 30 תווים")).max(10, "עד 10 תפקידי חובה")),
+  sortOrder: z.coerce.number().int().min(0).max(999),
+  active: checkbox,
+});
+
+export async function saveStandbyType(_: ActionResult, fd: FormData): Promise<ActionResult> {
+  return saveRow(fd, standbyTypeInput, async (tx, { id, ...v }) => {
+    if (!id) return (await tx.insert(standbyTypes).values(v).returning({ id: standbyTypes.id })).length;
+    return (await tx.update(standbyTypes).set(v).where(and(eq(standbyTypes.id, id), eq(standbyTypes.roundId, v.roundId))).returning({ id: standbyTypes.id })).length;
+  });
+}
+
+const vehicleInput = z.object({
+  id: optionalId,
+  number: z
+    .string()
+    .trim()
+    .transform((v) => v.replace(/\s+/g, ""))
+    .pipe(z.string().regex(/^[0-9A-Za-z-]{1,20}$/, "צ׳ רכב: ספרות בלבד, עד 20 תווים")),
+  kind: z
+    .string()
+    .trim()
+    .max(30, "סוג: עד 30 תווים")
+    .optional()
+    .transform((v) => v || null),
+  state: z.enum(VEHICLE_STATES, "מצב לא תקין"),
+  active: checkbox,
+});
+
+export async function saveVehicle(_: ActionResult, fd: FormData): Promise<ActionResult> {
+  return saveRow(fd, vehicleInput, async (tx, { id, ...v }) => {
+    if (!id) return (await tx.insert(vehicles).values(v).returning({ id: vehicles.id })).length;
+    return (await tx.update(vehicles).set(v).where(eq(vehicles.id, id)).returning({ id: vehicles.id })).length;
+  });
+}

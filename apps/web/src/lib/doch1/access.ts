@@ -4,7 +4,7 @@ import type { Session } from "@/lib/session";
 /**
  * What the signed-in user may do in דוח 1 — UI decisions only.
  * The same rules are enforced by RLS and the day guard
- * (packages/db/migrations/0005_doch1_security.sql).
+ * (packages/db/migrations/0005_doch1_security.sql, 0008_doch1_standby_security.sql).
  */
 export interface Doch1Access {
   /** battalion-wide doch1 admin (or super admin): every company, past days, settings, import */
@@ -19,6 +19,12 @@ export interface Doch1Access {
   reportScopes: string[];
   /** admin / company_user / platoon_commander covering unitId */
   canReport: (unitId: string) => boolean;
+  /** may create a standby team: admin or a company user (for their own company) */
+  canCreateTeam: boolean;
+  /** may edit a standby team held by these companies: admin, or a company user of one of them */
+  canEditTeam: (holderIds: readonly string[]) => boolean;
+  /** may set a soldier's שבצ״ק location: admin / company_user covering the soldier's unit */
+  canLocate: (unitId: string) => boolean;
 }
 
 const REPORT_ROLES = ["admin", "company_user", "platoon_commander"] as const;
@@ -35,5 +41,8 @@ export function doch1Access({ user, parents }: Pick<Session, "user" | "parents">
     canCopy: isAdmin || can(user, "doch1", ["company_user"]),
     reportScopes: battalionWide ? [...roundCompanyIds] : scopes.filter((u): u is string => u !== null),
     canReport: (unitId) => can(user, "doch1", REPORT_ROLES, unitId, parents),
+    canCreateTeam: isAdmin || can(user, "doch1", ["company_user"]),
+    canEditTeam: (holderIds) => isAdmin || holderIds.some((u) => can(user, "doch1", ["company_user"], u, parents)),
+    canLocate: (unitId) => can(user, "doch1", ["admin", "company_user"], unitId, parents),
   };
 }

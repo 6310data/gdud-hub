@@ -8,9 +8,10 @@ The daily personnel report module (`/doch1`). Design: `docs/superpowers/specs/20
 |---|---|
 | Pages and Server Actions | `apps/web/src/app/(shell)/doch1/` (the module's own frame: `layout.tsx` → `components/app-shell.tsx`) |
 | Sheet import endpoint | `apps/web/src/app/(shell)/doch1/import/run/route.ts` — streams the import's phases (NDJSON, `lib/progress-stream.ts`) |
-| Counting, dates and the lock rule, report texts | `packages/core/src/doch1/` (pure, unit-tested) |
-| Tables | `packages/db/src/schema/doch1.ts` → `migrations/0004_doch1.sql` |
-| RLS, grants, the lock guard (`GD001` locked day, `GD002` outside the round) | `migrations/0005_doch1_security.sql`, tested in `packages/db/test/rls.test.ts` |
+| Counting, dates and the lock rule, report texts, standby readiness | `packages/core/src/doch1/` (pure, unit-tested) |
+| Tables | `packages/db/src/schema/doch1.ts` → `migrations/0004_doch1.sql`, `0007_doch1_standby.sql` |
+| RLS, grants, the lock guard (`GD001` locked day, `GD002` outside the round) | `migrations/0005_doch1_security.sql`, `0008_doch1_standby_security.sql`, tested in `packages/db/test/rls.test.ts` |
+| שבצ״ק וכוננות pages | `apps/web/src/app/(shell)/doch1/standby/` (actions: `_actions/standby.ts`; loaders: `apps/web/src/lib/doch1/standby.ts`) |
 | Sheet import (xlsx → parse → plan → apply) | `packages/db/src/doch1-import/`, tested in `packages/db/test/doch1-import.test.ts` |
 | Push sender + reminder job | `apps/web/src/lib/doch1/push.ts`, `reminder-job.ts`, endpoint `apps/web/src/app/api/doch1/cron/route.ts` |
 
@@ -41,7 +42,7 @@ openssl rand -hex 32
 
 ## Database
 
-Apply the two new migrations (`0004_doch1`, `0005_doch1_security`) with the usual command, from your machine (not Vercel):
+Apply the new migrations (`0004_doch1`, `0005_doch1_security`, and for שבצ״ק `0007_doch1_standby`, `0008_doch1_standby_security`) with the usual command, from your machine (not Vercel):
 
 ```bash
 pnpm db:migrate
@@ -110,6 +111,19 @@ Every day:
 - The battalion admin compares `/doch1/brigade` with the brigade report sent from the sheet, and re-imports the sheet when the battalion views should show the other companies' current data (the pilot company's days from its pilot date are never overwritten).
 
 Ending the pilot early: clear the company's "דיווח באפליקציה מתאריך" and re-import — the sheet becomes the only source again.
+
+## שבצ״ק וכוננות (`/doch1/standby`)
+
+Mockup screens 03 (desktop), 11 and 12 (phone). Everyone in doch1 opens it; a company user and a platoon commander see their company, the battalion admin and viewers see every company.
+
+- **כוננות** — a card per standby team: holding companies, location, vehicle (צ׳), members with today's status, and readiness (`teamReadiness()` in `packages/core/src/doch1/standby.ts`). A member is available when today's status is marked "זמין לכוננות" in הגדרות › סטטוסים — no status name is hard-coded, so mark עזה and מיוערת (or this round's words) once. A team is short when fewer are available than its type's size (or its own member count, without a type) or a required role has no available member ("מ״פ / סמ״פ" = either); it is fit only when its vehicle is תקין. The side panel shows who is on which vehicle, soldiers per location, and the two checks: a status that needs an outpost without an outpost location, and an outpost location with another status.
+- **מיקומים** — every soldier's location in the שבצ״ק (one or many at once, "בחירה"), filtered by location or by a check.
+- **רכבים** — the state of the teams' vehicles (תקין / בטיפול / תקול).
+- **Team editor** (`/doch1/standby/<team>`) — vehicle צ׳ (typing a new צ׳ adds it to the registry) and its state, location, members (add, remove, "החלפה" with candidates from the holding companies: available today first, same role first), type, name, active, and for the admin the holding companies. Changing a status here writes today's דוח 1, under the same lock as the today screen. Every change shows an undo toast.
+
+Who edits a team: the battalion admin and the company users of its holding companies (a shared team like פינוי א has two). A company user creates teams for their own company only, can't add their company to another company's team, and adds only their own soldiers. Settings (admin): הגדרות › שבצ״ק, כוננות ורכבים — locations (kind מוצב / מחנה / בחוץ), standby types (level, size, required roles) and the vehicle registry, which is shared by all rounds.
+
+Not yet: the sheet import does not read the `שבצק <company>` tabs, so teams, vehicles and locations are entered in the app (the layout is written up in `references/doch1/sheet-structure.md`, "שבצ״ק tabs"). A soldier's location is current, not per day.
 
 ## Status changes during a round
 
