@@ -71,6 +71,20 @@
       "when": 1792962886547,
       "tag": "0009_doch1_import_locations",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792963996171,
+      "tag": "0010_rls_scope_sets",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1792964113791,
+      "tag": "0011_people_in_scope_once",
+      "breakpoints": true
     }
   ]
 }
