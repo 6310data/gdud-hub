@@ -2,11 +2,13 @@ import { notFound } from "next/navigation";
 import { byHe, dayRange, israelToday } from "@gdud/core";
 import { desc, schema, withUser } from "@gdud/db";
 import { doch1Access } from "@/lib/doch1/access";
-import { countMembersByCompany, loadRoundCompanies, loadStatuses, toRoundVM } from "@/lib/doch1/data";
+import { countMembersByCompany, loadMembers, loadRoundCompanies, loadStatuses, toRoundVM } from "@/lib/doch1/data";
+import { loadLocations, loadStandbyTypes, loadTeams, loadVehicles } from "@/lib/doch1/standby";
 import { fmtDay } from "@/lib/doch1/format";
 import { requireModule } from "@/lib/session";
 import { CompaniesTable, type CompanyRow } from "./_components/companies-table";
 import { RoundForm } from "./_components/round-form";
+import { LocationsEditor, StandbyTypesEditor, VehiclesEditor, type LocationRow, type StandbyTypeRow, type VehicleSettingsRow } from "./_components/standby-settings";
 import { StatusEditor } from "./_components/status-editor";
 
 export const metadata = { title: "דוח 1 · הגדרות" };
@@ -15,6 +17,7 @@ const SECTIONS = [
   { id: "round", label: "גדוד וסבב", color: "var(--primary)" },
   { id: "companies", label: "פלוגות ומסגרות", color: "var(--tile-brigade)" },
   { id: "statuses", label: "סטטוסים", color: "var(--bar-broken)" },
+  { id: "standby", label: "שבצ״ק, כוננות ורכבים", color: "var(--tile-broken)" },
   { id: "rounds", label: "סבבים", color: "var(--tile-neutral)" },
 ] as const;
 
@@ -48,14 +51,19 @@ export default async function Doch1Settings() {
   const data = await withUser(s.claims, async (tx) => {
     const rounds = await tx.select().from(schema.doch1Rounds).orderBy(desc(schema.doch1Rounds.startsOn));
     const active = rounds.find((r) => r.active) ?? null;
-    if (!active) return { rounds, active, companies: [], statuses: [], replaced: 0, counts: new Map<string, number>() };
-    const [companies, all, counts] = await Promise.all([
+    if (!active) return { rounds, active, companies: [], statuses: [], replaced: 0, counts: new Map<string, number>(), standby: null };
+    const [companies, all, counts, locations, types, vehicles, teams, members] = await Promise.all([
       loadRoundCompanies(tx, active.id),
       loadStatuses(tx, active.id, { includeInactive: true }),
       countMembersByCompany(tx, active.id, s.units),
+      loadLocations(tx, active.id),
+      loadStandbyTypes(tx, active.id),
+      loadVehicles(tx),
+      loadTeams(tx, active.id),
+      loadMembers(tx, active.id, s.units),
     ]);
     const current = all.filter((x) => x.active);
-    return { rounds, active, companies, statuses: current, replaced: all.length - current.length, counts };
+    return { rounds, active, companies, statuses: current, replaced: all.length - current.length, counts, standby: { locations, types, vehicles, teams, members } };
   });
 
   const active = data.active ? toRoundVM(data.active) : null;
@@ -75,6 +83,18 @@ export default async function Doch1Settings() {
       };
     });
   const others = data.rounds.filter((r) => !r.active).map(toRoundVM);
+  const unitName = new Map(s.units.map((u) => [u.id, u.name]));
+  const names = (ids: Iterable<string>) => [...new Set(ids)].map((id) => unitName.get(id) ?? "").filter(Boolean).join(", ");
+  const sb = data.standby;
+  const locationRows: LocationRow[] = (sb?.locations ?? []).map((l) => ({ ...l, count: sb!.members.filter((m) => m.locationId === l.id).length }));
+  const typeRows: StandbyTypeRow[] = (sb?.types ?? []).map((t) => ({ ...t, heldBy: names(sb!.teams.filter((x) => x.typeId === t.id).flatMap((x) => x.holderIds)) }));
+  const vehicleRows: VehicleSettingsRow[] = (sb?.vehicles ?? []).map((v) => ({
+    ...v,
+    teams: sb!.teams
+      .filter((t) => t.vehicleId === v.id)
+      .map((t) => `${t.name}${t.holderIds.length ? ` · ${names(t.holderIds)}` : ""}`)
+      .join(", "),
+  }));
   const battalion = s.units.find((u) => u.kind === "battalion")?.name ?? "גדוד";
   const sections = SECTIONS.filter((x) => active || x.id === "round" || x.id === "rounds");
 
@@ -119,8 +139,21 @@ export default async function Doch1Settings() {
               <StatusEditor roundId={active.id} statuses={data.statuses} />
               <p className="tz-section-footer">
                 כל הספירות מחושבות לפי הדגלים, לא לפי השם. שינוי דגלים בסטטוס שכבר דווח יוצר גרסה חדשה מהיום והלאה
-                {data.replaced ? ` (${data.replaced} גרסאות קודמות שמורות)` : ""}.
+                {data.replaced ? ` (${data.replaced} גרסאות קודמות שמורות)` : ""}. ״זמין לכוננות״ קובע מי נספר כזמין בצוותי הכוננות היום.
               </p>
+            </section>
+
+            <section id="standby" className="flex scroll-mt-6 flex-col gap-1.5">
+              <h2 className="px-4 pb-1 text-[20px] font-bold leading-[26px]">שבצ״ק, כוננות ורכבים</h2>
+              <h3 className="tz-section-header">מיקומים בשבצ״ק</h3>
+              <LocationsEditor roundId={active.id} rows={locationRows} />
+              <p className="tz-section-footer">חייל בסטטוס ״דורש מוצב״ בלי מיקום מסוג מוצב, או במוצב בסטטוס אחר, מופיע ב״לטיפול בשבצ״ק״.</p>
+              <h3 className="tz-section-header pt-3.5">סוגי כוננות</h3>
+              <StandbyTypesEditor roundId={active.id} rows={typeRows} />
+              <p className="tz-section-footer">צוות שחסר בו תפקיד חובה או שאין בו מספיק זמינים מסומן כחסר כוח. את הצוותים עצמם יוצרים ועורכים בשבצ״ק וכוננות.</p>
+              <h3 className="tz-section-header pt-3.5">מאגר רכבים</h3>
+              <VehiclesEditor rows={vehicleRows} />
+              <p className="tz-section-footer">המאגר משותף לכל הסבבים. רכב שאינו תקין מסמן את הצוות שלו כלא כשיר.</p>
             </section>
           </>
         ) : null}

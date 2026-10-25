@@ -46,6 +46,10 @@ function StatusFields({ status, roundId, nextSort }: { status: StatusDef | null;
             {FLAG_LABEL[k]}
           </label>
         ))}
+        <label className="flex items-center gap-1.5">
+          <input type="checkbox" name="standbyAvailable" defaultChecked={status?.standbyAvailable ?? false} />
+          זמין לכוננות
+        </label>
         <label className="flex items-center gap-2 font-semibold">
           פעיל
           <input type="checkbox" role="switch" name="active" defaultChecked={status?.active ?? true} />
@@ -61,7 +65,7 @@ export function StatusEditor({ roundId, statuses }: { roundId: string; statuses:
   return (
     <div className="tz-group">
       {statuses.map((s) => {
-        const flags = STATUS_FLAG_KEYS.filter((k) => s[k]);
+        const flags = [...STATUS_FLAG_KEYS.filter((k) => s[k]).map((k) => FLAG_LABEL[k]), ...(s.standbyAvailable ? ["זמין לכוננות"] : [])];
         return (
           <details key={s.id} className="group border-b border-separator">
             <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
@@ -70,7 +74,7 @@ export function StatusEditor({ roundId, statuses }: { roundId: string; statuses:
                 <span className="font-semibold">
                   {s.name} <span className="tz-footnote font-normal">· {s.displayGroup}</span>
                 </span>
-                <span className="tz-footnote truncate">{flags.length ? flags.map((k) => FLAG_LABEL[k]).join(" · ") : "לא נספר בשום ספירה"}</span>
+                <span className="tz-footnote truncate">{flags.length ? flags.join(" · ") : "לא נספר בשום ספירה"}</span>
               </span>
               <span className="tz-footnote" dir="auto" title="הערך בגיליון">
                 {s.sheetValue}

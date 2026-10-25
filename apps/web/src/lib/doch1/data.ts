@@ -58,6 +58,7 @@ export function toStatusDef(s: typeof statuses.$inferSelect): StatusDef {
     offDuty: s.offDuty,
     acrossBorder: s.acrossBorder,
     needsOutpost: s.needsOutpost,
+    standbyAvailable: s.standbyAvailable,
   };
 }
 
@@ -82,6 +83,8 @@ export interface MemberVM extends ReportMember {
   unitId: string;
   sheetTab: string | null;
   sheetRow: number | null;
+  /** מיקום בשבצ״ק */
+  locationId: string | null;
 }
 
 export interface RoundCompanyVM {
@@ -107,6 +110,7 @@ export async function loadMembers(tx: Tx, roundId: string, units: UnitNode[]): P
       inReport: members.inReport,
       sheetTab: members.sheetTab,
       sheetRow: members.sheetRow,
+      locationId: members.locationId,
       name: people.fullName,
       roleTitle: people.roleTitle,
       unitId: people.unitId,
@@ -129,6 +133,7 @@ export async function loadMembers(tx: Tx, roundId: string, units: UnitNode[]): P
       unitId: r.unitId,
       sheetTab: r.sheetTab,
       sheetRow: r.sheetRow,
+      locationId: r.locationId,
     });
   }
   return out.sort((a, b) => byHe(a.name, b.name));
