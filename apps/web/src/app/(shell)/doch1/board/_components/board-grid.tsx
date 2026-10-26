@@ -121,6 +121,7 @@ export function BoardGrid({
 
   const byId = useMemo(() => new Map(statuses.map((s) => [s.id, s])), [statuses]);
   const active = useMemo(() => statuses.filter((s) => s.active), [statuses]);
+  const cardHref = (personId: string) => `/doch1/soldiers/${personId}?back=${encodeURIComponent(`/doch1/board?unit=${unitId}&from=${shown[0]}`)}`;
 
   const inRound = (d: Day) => d >= roundStart && d <= roundEnd;
   const writableDay = (d: Day) => canEdit && inRound(d) && (isAdmin || d > today || (d === today && todayOpen));
@@ -353,7 +354,7 @@ export function BoardGrid({
                         {canEdit ? <input type="checkbox" aria-label={`בחירת ${m.name}`} checked={on} onChange={() => toggle(m.personId)} /> : null}
                       </td>
                       <td className="tz-board-name">
-                        <span className="flex items-center gap-2.5">
+                        <Link href={cardHref(m.personId)} className="flex items-center gap-2.5 text-ink no-underline">
                           <Avatar name={m.name} size={32} />
                           <span className="flex min-w-0 flex-col">
                             <span className="truncate text-[15px] font-medium">{m.name}</span>
@@ -362,7 +363,7 @@ export function BoardGrid({
                               {m.roleTitle ? ` · ${m.roleTitle}` : ""}
                             </span>
                           </span>
-                        </span>
+                        </Link>
                       </td>
                       {shown.map((d) => {
                         if (!inService(m, d)) {

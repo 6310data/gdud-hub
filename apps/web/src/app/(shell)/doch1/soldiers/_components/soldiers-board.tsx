@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useEffect, useOptimistic, useState, useTransition } from "react";
 import { inService, type Day } from "@gdud/core";
 import { Avatar, Icon, Spinner } from "@gdud/ui";
@@ -13,7 +14,7 @@ export interface SoldierVM {
   inReport: boolean;
   callUpOn: Day | null;
   releasedOn: Day | null;
-  /** the user may set this soldier's dates */
+  /** the user may set this soldier's dates (with "בחירה") */
   editable: boolean;
 }
 
@@ -28,8 +29,8 @@ const FILTERS: Array<[Filter, string, (m: SoldierVM, today: Day) => boolean]> = 
   ["released", "שוחררו", (m, today) => !!m.releasedOn && m.releasedOn < today],
 ];
 
-/** The soldiers of one company with their call-up / release dates; one soldier or a selection at a time. */
-export function SoldiersBoard({ rows: serverRows, today, initialFilter }: { rows: SoldierVM[]; today: Day; initialFilter: string }) {
+/** The soldiers of one company with their call-up / release dates. A row opens the soldier card; "בחירה" sets dates for a selection. */
+export function SoldiersBoard({ rows: serverRows, today, initialFilter, back }: { rows: SoldierVM[]; today: Day; initialFilter: string; back: string }) {
   const [rows, optimistic] = useOptimistic(serverRows, (list, c: Change) =>
     list.map((m) =>
       c.personIds.includes(m.personId)
@@ -136,18 +137,19 @@ export function SoldiersBoard({ rows: serverRows, today, initialFilter }: { rows
                     שחרור <span className="tz-num">{fmtDay(m.releasedOn)}</span>
                   </span>
                 ) : null}
-                {m.editable && !selecting ? <Icon name="chevron" size={17} className="tz-chevron" /> : null}
+                {!selecting ? <Icon name="chevron" size={17} className="tz-chevron" /> : null}
               </span>
             </>
           );
+          if (!selecting) {
+            return (
+              <Link key={m.personId} href={`/doch1/soldiers/${m.personId}?back=${encodeURIComponent(back)}`} className="tz-row">
+                {body}
+              </Link>
+            );
+          }
           return m.editable ? (
-            <button
-              key={m.personId}
-              type="button"
-              className="tz-row"
-              aria-pressed={selecting ? selected.has(m.personId) : undefined}
-              onClick={() => (selecting ? toggle(m.personId) : setSheetFor([m.personId]))}
-            >
+            <button key={m.personId} type="button" className="tz-row" aria-pressed={selected.has(m.personId)} onClick={() => toggle(m.personId)}>
               {body}
             </button>
           ) : (

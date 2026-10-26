@@ -10,7 +10,7 @@ The app holds personal data about soldiers. Check with the unit's ביטחון �
 | Who sees which rows | Postgres RLS on every table; all user queries run through `withUser()` as role `authenticated`. Tested in `packages/db/test/rls.test.ts`. |
 | What the UI offers | `can()` from `@gdud/auth` + `requireModule()`. Convenience only — never the only check. |
 | Writes | Server Actions: `can()` check → zod validation → `withUser()` write (RLS checks again). |
-| History | `audit_log`, written by triggers with the acting user. Readable by battalion core admins. |
+| History | `audit_log`, written by triggers with the acting user. Readable by battalion core admins. doch1 users get one soldier's rows (their days, round fields and people row) through `app.doch1_person_log()`, only for a soldier they already see (`0013_doch1_person_log`). |
 | Browser | Nonce-based CSP, HSTS, `X-Frame-Options: DENY`, no third-party scripts, fonts self-hosted. |
 | Supply chain | pnpm `minimumReleaseAge` (7 days), Dependabot, lockfile committed. |
 

@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useCallback, useMemo, useOptimistic, useState, useTransition } from "react";
 import { fillFromYesterdayPlan, summarize, type Day, type DayWrite, type StatusDef } from "@gdud/core";
 import { Avatar, Icon, Spinner } from "@gdud/ui";
@@ -195,6 +196,8 @@ export function TodayList({
 
   const hideToast = useCallback(() => setToast(null), [setToast]);
   const closeSheet = useCallback(() => setSheetFor(null), [setSheetFor]);
+  const back = `/doch1/today?unit=${unitId}${isToday ? "" : `&day=${day}`}`;
+  const cardHref = (personId: string) => `/doch1/soldiers/${personId}?back=${encodeURIComponent(back)}`;
   const closeBulk = useCallback(() => setBulkOpen(false), [setBulkOpen]);
 
   const overwrittenFor = (list: Day[], statusId: string) => {
@@ -339,7 +342,7 @@ export function TodayList({
                       {m.roleTitle ? <span className="tz-row-sub">{m.roleTitle}</span> : null}
                     </span>
                     <StatusChip status={statusOf(m.personId)} />
-                    {writable && !selecting ? <Icon name="chevron" size={17} className="tz-chevron" /> : null}
+                    {!selecting ? <Icon name="chevron" size={17} className="tz-chevron" /> : null}
                   </span>
                 </>
               );
@@ -354,9 +357,9 @@ export function TodayList({
                   {body}
                 </button>
               ) : (
-                <div key={m.personId} className="tz-row">
+                <Link key={m.personId} href={cardHref(m.personId)} className="tz-row">
                   {body}
-                </div>
+                </Link>
               );
             })}
           </div>
@@ -417,6 +420,7 @@ export function TodayList({
           onPick={(id) => pick(sheetFor, id)}
           onClose={closeSheet}
           onTakeOutOfReport={canEditMembers ? () => setReport(sheetFor, false) : undefined}
+          cardHref={cardHref(sheetFor.personId)}
         />
       ) : null}
       {bulkOpen ? (

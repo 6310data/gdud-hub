@@ -9,7 +9,8 @@ import { SoldiersBoard, type SoldierVM } from "./_components/soldiers-board";
 export const metadata = { title: "דוח 1 · חיילים" };
 
 /**
- * חיילים: every soldier of the round with their call-up and release dates (תאריך גיוס / שחרור).
+ * חיילים: every soldier of the round with their call-up and release dates (תאריך גיוס / שחרור);
+ * a row opens the soldier card (soldiers/[personId]).
  * A soldier is listed in every day screen only from the call-up date through the release date;
  * without a call-up date, nowhere — this is where those dates are entered.
  */
@@ -56,7 +57,7 @@ export default async function Doch1Soldiers({ searchParams }: { searchParams: Pr
         </span>
         <h1 className="tz-large-title">חיילים</h1>
         <p className="tz-footnote m-0">
-          חייל מופיע בדוח, בלוח, בסקירה ובשבצ״ק מתאריך הגיוס ועד תאריך השחרור (כולל). חייל בלי תאריך גיוס לא מופיע באף רשימה.
+          חייל מופיע בדוח, בלוח, בסקירה ובשבצ״ק מתאריך הגיוס ועד תאריך השחרור (כולל). חייל בלי תאריך גיוס לא מופיע באף רשימה. לחיצה על חייל פותחת את הכרטיס שלו; תאריכים לכמה חיילים יחד: ״בחירה״.
         </p>
       </div>
       {companies.length > 1 ? (
@@ -68,7 +69,7 @@ export default async function Doch1Soldiers({ searchParams }: { searchParams: Pr
           ))}
         </nav>
       ) : null}
-      <SoldiersBoard key={unit.id} rows={rows} today={israelToday(new Date())} initialFilter={sp.show ?? "all"} />
+      <SoldiersBoard key={unit.id} rows={rows} today={israelToday(new Date())} initialFilter={sp.show ?? "all"} back={`/doch1/soldiers?unit=${unit.id}`} />
     </div>
   );
 }

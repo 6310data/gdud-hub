@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useEffect } from "react";
 import type { StatusDef } from "@gdud/core";
 import { StatusDot } from "../../_components/status-chip";
@@ -13,6 +14,7 @@ export function StatusSheet({
   onPick,
   onClose,
   onTakeOutOfReport,
+  cardHref,
 }: {
   name: string;
   /** "סטטוס להיום" or "סטטוס ל…" */
@@ -24,6 +26,8 @@ export function StatusSheet({
   onClose: () => void;
   /** company user / admin: the soldier was released or deferred and should not be counted */
   onTakeOutOfReport?: () => void;
+  /** the soldier card (כרטיס חייל) */
+  cardHref?: string;
 }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -61,7 +65,7 @@ export function StatusSheet({
             </button>
           ))}
         </div>
-        {current || onTakeOutOfReport ? (
+        {current || onTakeOutOfReport || cardHref ? (
           <div className="flex flex-wrap gap-2 px-4 pt-3">
             {current ? (
               <button type="button" className="tz-btn tz-btn-plain" onClick={() => onPick(null)}>
@@ -72,6 +76,11 @@ export function StatusSheet({
               <button type="button" className="tz-btn tz-btn-plain" onClick={onTakeOutOfReport}>
                 לא נספר בדוח (שוחרר / נדחה)
               </button>
+            ) : null}
+            {cardHref ? (
+              <Link href={cardHref} className="tz-btn tz-btn-plain">
+                כרטיס חייל
+              </Link>
             ) : null}
           </div>
         ) : null}

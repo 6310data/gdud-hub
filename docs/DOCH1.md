@@ -11,6 +11,7 @@ The daily personnel report module (`/doch1`). Design: `docs/superpowers/specs/20
 | Counting, dates and the lock rule, report texts, standby readiness | `packages/core/src/doch1/` (pure, unit-tested) |
 | Tables | `packages/db/src/schema/doch1.ts` → `migrations/0004_doch1.sql`, `0007_doch1_standby.sql` |
 | RLS, grants, the lock guard (`GD001` locked day, `GD002` outside the round) | `migrations/0005_doch1_security.sql`, `0008_doch1_standby_security.sql`, tested in `packages/db/test/rls.test.ts` |
+| כרטיס חייל | `apps/web/src/app/(shell)/doch1/soldiers/[personId]/` (loaders: `apps/web/src/lib/doch1/soldier.ts`; numbers and change-log text: `packages/core/src/doch1/soldier.ts`, `changes.ts`) |
 | שבצ״ק וכוננות pages | `apps/web/src/app/(shell)/doch1/standby/` (actions: `_actions/standby.ts`; loaders: `apps/web/src/lib/doch1/standby.ts`) |
 | Sheet import (xlsx → parse → plan → apply) | `packages/db/src/doch1-import/`, tested in `packages/db/test/doch1-import.test.ts` |
 | Push sender + reminder job | `apps/web/src/lib/doch1/push.ts`, `reminder-job.ts`, endpoint `apps/web/src/app/api/doch1/cron/route.ts` |
@@ -138,6 +139,18 @@ A soldier is listed on a day only from their **call-up date** (תאריך גיו
 The dates are set on `/doch1/soldiers` (company user or admin covering the soldier; one soldier, or several with "בחירה"). The sheet import fills the call-up date from column J; a blank J keeps the date entered in the app. The release date comes only from the app. Migration: `0012_doch1_service_dates` (`pnpm db:migrate`).
 
 "לא נספר בדוח" (today screen) still works as before, on top of the dates.
+
+## כרטיס חייל (`/doch1/soldiers/<person>`)
+
+Mockup screen 09. Opens from a row on חיילים, from "כרטיס חייל" in the today screen's status sheet (or the row itself once the day is locked) and from a name on the board. Anyone in doch1 who sees the soldier opens it (RLS: a platoon commander only their platoon).
+
+- **Today** — the status and yesterday's, the שבצ״ק location, the standby team (a link to the team editor for who may edit it) and its vehicle, and the soldier's own data checks (outpost status without an outpost, an outpost with another status, no report yet). "שינוי סטטוס" uses the same sheet and lock as the today screen; "לא נספר בדוח" / "החזרה לדוח" for a company user or admin.
+- **14 days** — a strip of the last 14 days with a count per status; days before the call-up or after the release are blank, not missing.
+- **The round** — סטטוס גיוס, צפי הגעה, the dates, תפקיד לדמ״ח, and the sheet's per-soldier numbers (`soldierRoundStats()` in `packages/core/src/doch1/soldier.ts`, `sheet-structure.md` "Derived numbers"): presence and home days from the round's call-up day, home % (red above 55%), the current רענון streak, total ימ״מ (כללי, every שנספר status and רענון — not התארגנות), and ימי התארגנות entitled / used / left (the weekend rule: 0.5 back for one org day on Fri/Sat, 1 for two or more). All by flags; planned days don't count.
+- **פרטים** — phone (התקשרות = `tel:`, הודעה = WhatsApp), דיסקית, notes, and the **change log**: every change to the soldier's days, round fields and people row, who and when. It comes from `audit_log` through `app.doch1_person_log()` (migration `0013_doch1_person_log`), which returns rows of one soldier the caller already sees — `audit_log` itself stays core-admin only.
+- **עריכה** (company user or admin covering the soldier) — call-up and release dates, phone, תפקיד בפועל, תפקיד לדמ״ח, סטטוס גיוס, צפי הגעה (the values used in the round are suggested), דיסקית, notes. During the pilot the next sheet import overwrites these from the sheet (except the release date, and a blank call-up cell).
+
+Migration: `0013_doch1_person_log` (`pnpm db:migrate`).
 
 ## Moving between days
 
