@@ -423,18 +423,19 @@ export function dayChanges(
   for (const c of res.chosen) {
     const r = c.row;
     const personId = personOf(r.personalNumber);
+    const had = res.existingMembers.get(personId);
     const member: MemberFields = {
       personId,
       dmhCategory: r.dmhCategory || null,
       arrivalForecast: r.arrivalForecast || null,
-      callUpOn: r.callUpOn,
+      // a blank call-up date in the sheet keeps the one entered in the app
+      callUpOn: r.callUpOn ?? had?.callUpOn ?? null,
       enlistmentStatus: r.enlistmentStatus || null,
       hasDisc: r.hasDisc,
       notes: r.notes || null,
       sheetTab: c.tab.tabName,
       sheetRow: r.sheetRow,
     };
-    const had = res.existingMembers.get(personId);
     if (!had || (Object.keys(member) as Array<keyof MemberFields>).some((k) => had[k] !== member[k])) members.push(member);
 
     const appFrom = res.roundCompanies.get(c.companyId)?.appFrom ?? null;

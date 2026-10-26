@@ -4,7 +4,7 @@ import { availableStatusIds, hebrewDayLabel, isAvailable, israelClock, israelTod
 import { Icon, Serial } from "@gdud/ui";
 import { withUser } from "@gdud/db";
 import { doch1Access } from "@/lib/doch1/access";
-import { loadActiveRound, loadDays, loadMembers, loadRoundCompanies, loadStatuses } from "@/lib/doch1/data";
+import { listedOn, loadActiveRound, loadDays, loadMembers, loadRoundCompanies, loadStatuses } from "@/lib/doch1/data";
 import { loadLocations, loadStandbyTypes, loadTeams, loadVehicles, standbyCompanies, withReadiness } from "@/lib/doch1/standby";
 import { requireModule } from "@/lib/session";
 import { LocationsBoard, type LocatedMemberVM } from "./_components/locations-board";
@@ -53,7 +53,8 @@ export default async function Doch1Standby({ searchParams }: { searchParams: Pro
       loadTeams(tx, round.id),
     ]);
     const days = await loadDays(tx, round.id, [today]);
-    return { round, companies, members, statuses, locations, types, vehicles, teams, day: days.get(today)! };
+    // soldiers not called up yet or already released are not in today's שבצ״ק lists
+    return { round, companies, members: listedOn(members, today), statuses, locations, types, vehicles, teams, day: days.get(today)! };
   });
   if (!data) return null; // the layout shows "אין סבב פעיל"
 

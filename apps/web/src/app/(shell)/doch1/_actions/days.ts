@@ -8,7 +8,7 @@ import { z } from "zod";
 import { addDays, dayRange, dayKey, fillFromYesterdayPlan, planBulkWrite, type DayWrite } from "@gdud/core";
 import { and, eq, inArray, schema, sql, withUser, type Tx } from "@gdud/db";
 import { actionError, UserError, type ActionOutcome, type ActionResult } from "@/lib/action-result";
-import { loadDays, loadMembers, loadStatuses, membersUnder } from "@/lib/doch1/data";
+import { listedOn, loadDays, loadMembers, loadStatuses, membersUnder } from "@/lib/doch1/data";
 import { dayParam, doch1Ctx, firstIssue, NO_PERMISSION, NO_ROUND, revalidateDoch1, uuid, type Doch1Ctx } from "./common";
 
 const { people, doch1Days: days } = schema;
@@ -86,7 +86,7 @@ export async function fillFromYesterday(input: { unitId: string; day: string }):
   try {
     assertInRound(ctx, day);
     const filled = await withUser(ctx.s.claims, async (tx) => {
-      const members = membersUnder(await loadMembers(tx, ctx.round.id, ctx.s.units), unitId, ctx.s.units);
+      const members = listedOn(membersUnder(await loadMembers(tx, ctx.round.id, ctx.s.units), unitId, ctx.s.units), day);
       const yesterday = addDays(day, -1);
       const [loaded, statuses] = await Promise.all([loadDays(tx, ctx.round.id, [day, yesterday]), loadStatuses(tx, ctx.round.id, { includeInactive: true })]);
       // a status replaced since yesterday (new flags version) is written as its current version

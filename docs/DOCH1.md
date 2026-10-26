@@ -131,6 +131,18 @@ Who edits a team: the battalion admin and the company users of its holding compa
 
 **From the sheet:** the import reads every `שבצק <company>` tab (layout: `references/doch1/sheet-structure.md`, "שבצ״ק tabs") along with the company tabs — see "Importing the round's Google Sheet" below. A soldier's location is current, not per day.
 
+## Call-up and release dates (`/doch1/soldiers`)
+
+A soldier is listed on a day only from their **call-up date** (תאריך גיוס) through their **release date** (תאריך שחרור), inclusive (`inService()` in `packages/core/src/doch1/counting.ts`). A soldier with no call-up date is listed on no day. This applies to every screen and count: the today screen, the board (days outside the dates are blank cells), the overview, the brigade report, the שבצ״ק lists, "השלמת חסרים לפי אתמול" and the push reminders. Copy-to-sheet keeps those soldiers' sheet rows (with whatever value they have) but doesn't count them as missing.
+
+The dates are set on `/doch1/soldiers` (company user or admin covering the soldier; one soldier, or several with "בחירה"). The sheet import fills the call-up date from column J; a blank J keeps the date entered in the app. The release date comes only from the app. Migration: `0012_doch1_service_dates` (`pnpm db:migrate`).
+
+"לא נספר בדוח" (today screen) still works as before, on top of the dates.
+
+## Moving between days
+
+The overview, the today screen, copy-to-sheet and the brigade report take `?day=YYYY-MM-DD` (inside the round) and show "יום קודם / יום הבא", a date picker and "היום". The board moves a week at a time. שבצ״ק וכוננות is always today (locations and teams are current, not per day).
+
 ## Status changes during a round
 
 Renaming a status, its color, group or order changes it in place. Changing a counting flag of a status that past days already use creates a new version from today on: past days keep counting with the old flags, today and planned days move to the new version.

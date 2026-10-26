@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { addDays, availableStatusIds, hebrewDayLabel, isDayWritable, israelToday } from "@gdud/core";
+import { addDays, availableStatusIds, hebrewDayLabel, inService, isDayWritable, israelToday } from "@gdud/core";
 import { withUser } from "@gdud/db";
 import { doch1Access } from "@/lib/doch1/access";
 import { loadActiveRound, loadDays, loadMembers, loadRoundCompanies, loadStatuses } from "@/lib/doch1/data";
@@ -78,7 +78,7 @@ export default async function Doch1StandbyTeam({ params }: { params: Promise<{ t
   const onTeam = new Set(data.teams.flatMap((t) => t.members.map((m) => m.personId)));
   const holderSet = new Set(team.holderIds);
   const candidates: CandidateVM[] = data.members
-    .filter((m) => m.inReport && holderSet.has(m.companyId) && access.canLocate(m.unitId) && !team.members.some((x) => x.personId === m.personId))
+    .filter((m) => m.inReport && inService(m, today) && holderSet.has(m.companyId) && access.canLocate(m.unitId) && !team.members.some((x) => x.personId === m.personId))
     .map((m) => ({
       personId: m.personId,
       name: m.name,

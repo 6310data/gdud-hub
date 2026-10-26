@@ -175,7 +175,10 @@ export async function applySheetImport(
         set: {
           dmhCategory: sql`excluded.dmh_category`,
           arrivalForecast: sql`excluded.arrival_forecast`,
-          callUpOn: sql`excluded.call_up_on`,
+          // a blank call-up date in the sheet keeps the one entered in the app; a release date
+          // before the new call-up date is dropped (it would break doch1_members_service_dates)
+          callUpOn: sql`coalesce(excluded.call_up_on, ${doch1Members.callUpOn})`,
+          releasedOn: sql`case when ${doch1Members.releasedOn} < coalesce(excluded.call_up_on, ${doch1Members.callUpOn}) then null else ${doch1Members.releasedOn} end`,
           enlistmentStatus: sql`excluded.enlistment_status`,
           hasDisc: sql`excluded.has_disc`,
           notes: sql`excluded.notes`,

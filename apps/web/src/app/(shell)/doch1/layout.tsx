@@ -19,6 +19,7 @@ export default async function Doch1Layout({ children }: { children: React.ReactN
     ...(access.canOverview ? [{ href: "/doch1", label: "סקירה", icon: "grid", exact: true } as const] : []),
     { href: "/doch1/today", label: "דוח 1 של היום", short: "היום", icon: "report" },
     { href: "/doch1/standby", label: "שבצ״ק וכוננות", short: "שבצ״ק", icon: "shield" },
+    { href: "/doch1/soldiers", label: "חיילים", icon: "people" },
     ...(access.canBoard ? [{ href: "/doch1/board", label: "לוח נוכחות", short: "לוח", icon: "calendar" } as const] : []),
     ...(access.canCopy ? [{ href: "/doch1/copy", label: "העתקה לגיליון", short: "העתקה", icon: "table" } as const] : []),
     ...(access.isAdmin ? [{ href: "/doch1/brigade", label: "דוח לחטיבה", short: "לחטיבה", icon: "send" } as const] : []),
