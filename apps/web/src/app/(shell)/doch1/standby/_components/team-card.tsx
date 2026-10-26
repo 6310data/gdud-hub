@@ -26,17 +26,20 @@ export function gapText(team: TeamStatusVM): string {
   return parts.join(" · ");
 }
 
-/** A standby team (mockup 03): readiness, vehicle, members with today's status. */
+/** A standby team (mockup 03): readiness, vehicle, members with the shown day's status. */
 export function TeamCard({
   team,
   statusOf,
   isAvailable,
   editable,
+  when = "היום",
 }: {
   team: TeamStatusVM;
   statusOf: (personId: string) => StatusDef | null;
   isAvailable: (personId: string) => boolean;
   editable: boolean;
+  /** "היום" or "של 19.10" */
+  when?: string;
 }) {
   const gap = gapText(team);
   const full = team.readiness.state === "full";
@@ -90,7 +93,7 @@ export function TeamCard({
       {gap || editable ? (
         <div className="flex items-center justify-between gap-2 border-t border-separator px-4 pt-2 pb-3">
           <span className="tz-footnote" style={gap ? { color: "var(--status-broken)" } : undefined}>
-            {gap ? `${gap} · ${team.readiness.state === "short" ? "הצוות לא שלם היום" : "הצוות לא כשיר היום"}` : "הצוות שלם וכשיר"}
+            {gap ? `${gap} · ${team.readiness.state === "short" ? `הצוות לא שלם ${when}` : `הצוות לא כשיר ${when}`}` : "הצוות שלם וכשיר"}
           </span>
           {editable ? (
             <Link href={`/doch1/standby/${team.id}`} className="tz-btn tz-btn-plain tz-btn-sm whitespace-nowrap">

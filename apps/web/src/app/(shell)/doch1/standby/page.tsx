@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { scopesFor } from "@gdud/auth";
-import { availableStatusIds, hebrewDayLabel, isAvailable, israelClock, israelToday, locationChecks, VEHICLE_STATE_LABEL } from "@gdud/core";
+import { availableStatusIds, hebrewDayLabel, isAvailable, isDay, israelClock, israelToday, locationChecks, VEHICLE_STATE_LABEL } from "@gdud/core";
 import { Icon, Serial } from "@gdud/ui";
 import { withUser } from "@gdud/db";
 import { doch1Access } from "@/lib/doch1/access";
 import { listedOn, loadActiveRound, loadDays, loadMembers, loadRoundCompanies, loadStatuses } from "@/lib/doch1/data";
 import { loadLocations, loadStandbyTypes, loadTeams, loadVehicles, standbyCompanies, withReadiness } from "@/lib/doch1/standby";
 import { requireModule } from "@/lib/session";
+import { DayNav } from "../_components/day-nav";
 import { LocationsBoard, type LocatedMemberVM } from "./_components/locations-board";
 import { NewTeamForm } from "./_components/new-team-form";
 import { gapText, ReadyChip, TeamCard } from "./_components/team-card";
@@ -33,8 +34,8 @@ function Kpi({ label, value, foot, warn }: { label: string; value: number; foot:
   );
 }
 
-/** שבצ״ק וכוננות (mockup screens 03 desktop, 11 phone): standby teams and their readiness today, locations, vehicles. */
-export default async function Doch1Standby({ searchParams }: { searchParams: Promise<{ view?: string; co?: string; check?: string }> }) {
+/** שבצ״ק וכוננות (mockup screens 03 desktop, 11 phone): standby teams and their readiness on a day (default today), locations, vehicles. */
+export default async function Doch1Standby({ searchParams }: { searchParams: Promise<{ view?: string; co?: string; check?: string; day?: string }> }) {
   const s = await requireModule("doch1");
   const sp = await searchParams;
   const now = new Date();
@@ -43,6 +44,8 @@ export default async function Doch1Standby({ searchParams }: { searchParams: Pro
   const data = await withUser(s.claims, async (tx) => {
     const round = await loadActiveRound(tx);
     if (!round) return null;
+    // teams, members and locations are current; availability and the checks follow `day`'s דוח 1
+    const day = sp.day && isDay(sp.day) && sp.day >= round.startsOn && sp.day <= round.endsOn ? sp.day : today;
     const [companies, members, statuses, locations, types, vehicles, teams] = await Promise.all([
       loadRoundCompanies(tx, round.id),
       loadMembers(tx, round.id, s.units),
@@ -52,9 +55,9 @@ export default async function Doch1Standby({ searchParams }: { searchParams: Pro
       loadVehicles(tx),
       loadTeams(tx, round.id),
     ]);
-    const days = await loadDays(tx, round.id, [today]);
-    // soldiers not called up yet or already released are not in today's שבצ״ק lists
-    return { round, companies, members: listedOn(members, today), statuses, locations, types, vehicles, teams, day: days.get(today)! };
+    const days = await loadDays(tx, round.id, [day]);
+    // soldiers not called up yet or already released that day are not in the שבצ״ק lists
+    return { round, shownDay: day, companies, members: listedOn(members, day), statuses, locations, types, vehicles, teams, day: days.get(day)! };
   });
   if (!data) return null; // the layout shows "אין סבב פעיל"
 
@@ -67,7 +70,10 @@ export default async function Doch1Standby({ searchParams }: { searchParams: Pro
 
   const view: View = VIEWS.some((v) => v.id === sp.view) ? (sp.view as View) : "teams";
   const co = sp.co === "gaps" || (sp.co && companyIds.has(sp.co)) ? sp.co : "all";
-  const qs = (v: View, c: string = co) => `/doch1/standby?view=${v}${c !== "all" ? `&co=${c}` : ""}`;
+  const shownDay = data.shownDay;
+  const isToday = shownDay === today;
+  const when = isToday ? "היום" : `של ${shownDay.slice(8, 10)}.${shownDay.slice(5, 7)}`;
+  const qs = (v: View, c: string = co) => `/doch1/standby?view=${v}${c !== "all" ? `&co=${c}` : ""}${isToday ? "" : `&day=${shownDay}`}`;
 
   const available = availableStatusIds(data.statuses);
   const statusById = new Map(data.statuses.map((st) => [st.id, st]));
@@ -144,10 +150,20 @@ export default async function Doch1Standby({ searchParams }: { searchParams: Pro
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-1">
           <span className="tz-footnote">
-            {unitName} · {hebrewDayLabel(today)}
+            {unitName} · {hebrewDayLabel(shownDay)}
           </span>
           <h1 className="tz-large-title">שבצ״ק וכוננות</h1>
-          <span className="tz-footnote">מחושב מהשבצ״ק ומדוח 1 של היום · {israelClock(now)}</span>
+          <span className="tz-footnote">
+            {isToday ? `מחושב מהשבצ״ק ומדוח 1 של היום · ${israelClock(now)}` : `זמינות לפי דוח 1 ${when}. הצוותים, הרכבים והמיקומים הם של עכשיו.`}
+          </span>
+          <DayNav
+            day={shownDay}
+            today={today}
+            min={data.round.startsOn}
+            max={data.round.endsOn}
+            path="/doch1/standby"
+            params={{ view: view === "teams" ? null : view, co: co === "all" ? null : co }}
+          />
         </div>
         <div className="tz-seg w-full max-w-[360px]" role="tablist" aria-label="תצוגה">
           {VIEWS.map((v) => (
@@ -190,7 +206,7 @@ export default async function Doch1Standby({ searchParams }: { searchParams: Pro
             <Kpi label="צוותי כוננות" value={activeTeams.length} foot={`${allTeams.length - activeTeams.length ? `${allTeams.length - activeTeams.length} לא פעילים` : "כולם פעילים"}`} />
             <Kpi label="חיילים בכוננות" value={onStandby.length} foot="בצוותים הפעילים" />
             <Kpi label="רכבים משובצים" value={new Set(activeTeams.map((t) => t.vehicleId).filter(Boolean)).size} foot="לפי צ׳ הרכב" />
-            <Kpi label="זמינים עכשיו" value={onStandby.filter((m) => avail(m.personId)).length} foot="לפי דוח 1 של היום" />
+            <Kpi label={isToday ? "זמינים עכשיו" : "זמינים"} value={onStandby.filter((m) => avail(m.personId)).length} foot={`לפי דוח 1 ${when}`} />
             <Kpi label="צוותים חסרי כוח" value={shortTeams.length} foot={awayOnShort ? (awayOnShort === 1 ? "חייל אחד לא זמין בהם" : `${awayOnShort} חיילים לא זמינים בהם`) : "כל הצוותים שלמים"} warn />
           </section>
 
@@ -213,7 +229,7 @@ export default async function Doch1Standby({ searchParams }: { searchParams: Pro
           <div className="flex flex-wrap items-start gap-[22px]">
             <section aria-label="צוותי כוננות" className="grid min-w-0 flex-[999_1_640px] grid-cols-[repeat(auto-fill,minmax(min(100%,300px),1fr))] items-start gap-3.5">
               {teams.map((t) => (
-                <TeamCard key={t.id} team={t} statusOf={statusOf} isAvailable={avail} editable={access.canEditTeam(t.holderIds)} />
+                <TeamCard key={t.id} team={t} statusOf={statusOf} isAvailable={avail} editable={access.canEditTeam(t.holderIds)} when={when} />
               ))}
               {!teams.length ? (
                 <p className="tz-card m-0 p-5 text-ink-muted">{allTeams.length ? "אין צוותים בסינון הזה." : "עוד אין צוותי כוננות בסבב."}</p>
@@ -291,7 +307,7 @@ export default async function Doch1Standby({ searchParams }: { searchParams: Pro
                   <span className="tz-row-body">
                     <span className="tz-row-title">
                       בסטטוס מוצב בלי מוצב
-                      <span className="tz-row-sub">הסטטוס היום דורש מוצב ואין מוצב בשבצ״ק</span>
+                      <span className="tz-row-sub">הסטטוס {when} דורש מוצב ואין מוצב בשבצ״ק</span>
                     </span>
                     <span className="tz-row-value tz-num font-semibold" style={checks.outpostStatusWithoutOutpost.length ? { color: "var(--danger)" } : undefined}>
                       {checks.outpostStatusWithoutOutpost.length}

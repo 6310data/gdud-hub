@@ -141,7 +141,7 @@ The dates are set on `/doch1/soldiers` (company user or admin covering the soldi
 
 ## Moving between days
 
-The overview, the today screen, copy-to-sheet and the brigade report take `?day=YYYY-MM-DD` (inside the round) and show "יום קודם / יום הבא", a date picker and "היום". The board moves a week at a time. שבצ״ק וכוננות is always today (locations and teams are current, not per day).
+The overview, the today screen, copy-to-sheet and the brigade report take `?day=YYYY-MM-DD` (inside the round) and show "יום קודם / יום הבא", a date picker and "היום". The board moves a week at a time. שבצ״ק וכוננות takes `?day=` too: availability, readiness and the status checks follow that day's report, while teams, vehicles and locations are always the current ones (they are not stored per day); the team editor works on today.
 
 ## Status changes during a round
 
