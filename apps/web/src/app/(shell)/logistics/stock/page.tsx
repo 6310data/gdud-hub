@@ -54,17 +54,22 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
         title="מחסן"
         sub={`${fmtCount(totals.ok + totals.broken)} צ׳ים בנשקייה · ${fmtCount(totals.brigade)} בחטיבה`}
         actions={
-          access.isStockAdmin ? (
-            <>
-              <Link href="/logistics/stock/new" className="tz-btn tz-btn-tinted tz-btn-sm">
-                פריט חדש
-              </Link>
-              <Link href={withParams("/logistics/stock/add", {}, { item: sp.item })} className="tz-btn tz-btn-filled tz-btn-sm">
-                <Icon name="plus" size={16} />
-                הוספת צ׳ים
-              </Link>
-            </>
-          ) : null
+          <>
+            <Link href="/logistics/stock/kits" className="tz-btn tz-btn-tinted tz-btn-sm">
+              תקן ציוד משלים
+            </Link>
+            {access.isStockAdmin ? (
+              <>
+                <Link href="/logistics/stock/new" className="tz-btn tz-btn-tinted tz-btn-sm">
+                  פריט חדש
+                </Link>
+                <Link href={withParams("/logistics/stock/add", {}, { item: sp.item })} className="tz-btn tz-btn-filled tz-btn-sm">
+                  <Icon name="plus" size={16} />
+                  הוספת צ׳ים
+                </Link>
+              </>
+            ) : null}
+          </>
         }
       />
 
