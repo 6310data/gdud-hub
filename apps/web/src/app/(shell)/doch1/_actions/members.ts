@@ -1,7 +1,7 @@
 "use server";
 /**
- * Round member fields: in / out of the daily report (today screen) and the call-up / release
- * dates (חיילים screen). Company user or admin covering the soldier; RLS checks the same
+ * Round member fields: in / out of the daily report (today screen), the call-up / release
+ * dates (חיילים screen) and the soldier card's details. Company user or admin covering the soldier; RLS checks the same
  * (doch1_members_update), the doch1_members_service_dates check the date order.
  */
 import { z } from "zod";
@@ -77,6 +77,61 @@ export async function setServiceDates(raw: {
         .update(members)
         .set(set)
         .where(and(eq(members.roundId, ctx.round.id), inArray(members.personId, personIds)));
+    });
+  } catch (err) {
+    return { error: actionError(err) };
+  }
+  revalidateDoch1();
+  return { ok: true };
+}
+
+const optText = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max, `עד ${max} תווים`)
+    .transform((v) => v || null)
+    .nullable();
+
+const detailsInput = z.object({
+  personId: uuid,
+  phone: z
+    .string()
+    .trim()
+    .regex(/^[0-9+\-\s]{0,20}$/, "מספר טלפון לא תקין")
+    .transform((v) => v.replace(/\s+/g, "") || null)
+    .nullable(),
+  roleTitle: optText(60),
+  dmhCategory: optText(30),
+  enlistmentStatus: optText(40),
+  arrivalForecast: optText(40),
+  hasDisc: z.boolean().nullable(),
+  notes: optText(500),
+});
+
+export type SoldierDetailsInput = z.input<typeof detailsInput>;
+
+/**
+ * The soldier card's "עריכה": phone and תפקיד בפועל (people) and the round fields (doch1_members).
+ * Company user or admin covering the soldier — people_update and doch1_members_update check the same.
+ */
+export async function updateSoldierDetails(raw: SoldierDetailsInput): Promise<ActionResult> {
+  const ctx = await doch1Ctx();
+  if (!ctx) return NO_ROUND;
+  const parsed = detailsInput.safeParse(raw);
+  if (!parsed.success) return { error: firstIssue(parsed.error) };
+  const { personId, phone, roleTitle, ...round } = parsed.data;
+  try {
+    await withUser(ctx.s.claims, async (tx) => {
+      const [person] = await tx.select({ unitId: people.unitId }).from(people).where(eq(people.id, personId));
+      if (!person || !can(ctx.s.user, "doch1", ["admin", "company_user"], person.unitId, ctx.s.parents)) throw new UserError(NO_PERMISSION.error);
+      const r = await tx
+        .update(members)
+        .set(round)
+        .where(and(eq(members.roundId, ctx.round.id), eq(members.personId, personId)))
+        .returning({ personId: members.personId });
+      if (!r.length) throw new UserError("החייל לא נמצא בסבב");
+      await tx.update(people).set({ phone, roleTitle }).where(eq(people.id, personId));
     });
   } catch (err) {
     return { error: actionError(err) };

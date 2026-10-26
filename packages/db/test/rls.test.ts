@@ -811,6 +811,26 @@ describe("doch1", () => {
     const rows = await db.select().from(auditLog).where(eq(auditLog.tableName, "doch1_days"));
     expect(rows.some((r) => r.actorUserId === plsrClerk.appId)).toBe(true);
   });
+
+  it("change log (doch1_person_log): one soldier the user sees, this round only; audit_log itself stays closed", async () => {
+    const log = (u: TestUser, personId: string, round = roundId) =>
+      as(u, async (tx) => {
+        const r = await tx.execute<{ actor: string | null; table_name: string; before: unknown; after: unknown }>(
+          sql`select * from app.doch1_person_log(${round}::uuid, ${personId}::uuid, 50)`,
+        );
+        return Array.isArray(r) ? r : ((r as { rows: unknown[] }).rows as typeof r);
+      });
+    const clerkView = await log(plsrClerk, p.plsr1Soldier);
+    expect(clerkView.some((r) => r.table_name === "doch1_days" && r.actor === "d1-plsr-clerk@example.com")).toBe(true);
+    expect(clerkView.some((r) => r.table_name === "people")).toBe(true); // the phone change above
+    expect((await log(plsr1Cmdr, p.plsr1Soldier)).length).toBeGreaterThan(0);
+    expect(await log(plsr1Cmdr, p.plsrSoldier)).toHaveLength(0); // company level, outside the platoon
+    expect(await log(plntClerk, p.plsr1Soldier)).toHaveLength(0);
+    expect(await log(stranger, p.plsr1Soldier)).toHaveLength(0);
+    expect(await log(coreAdmin, p.plsr1Soldier)).toHaveLength(0); // core admin without doch1
+    expect((await log(plsrClerk, p.plsr1Soldier, randomUUID())).every((r) => r.table_name === "people")).toBe(true);
+    expect(await as(plsrClerk, (tx) => tx.select().from(auditLog))).toHaveLength(0);
+  });
   describe("doch1 standby", () => {
     const {
       doch1Locations: locations,
