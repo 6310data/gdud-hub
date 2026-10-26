@@ -355,6 +355,23 @@ describe("plan and apply", () => {
     expect((await plan(baseSheet())).questions).toEqual([]);
   });
 
+  it("a blank call-up date keeps the app's; a release date before the sheet's call-up is dropped", async () => {
+    const [s3] = await db.select().from(people).where(eq(people.personalNumber, "7000003"));
+    const member = async () => (await db.select().from(doch1Members).where(eq(doch1Members.personId, s3!.id)))[0]!;
+    const set = (v: { callUpOn: string | null; releasedOn: string | null }) => db.update(doch1Members).set(v).where(eq(doch1Members.personId, s3!.id));
+    const noCallUp = S3();
+    noCallUp[9] = null;
+    const blank = sheet([companyTab("פלסר", [S1(), S2()]), companyTab("פלנט", [noCallUp])]);
+
+    await set({ callUpOn: "2026-09-10", releasedOn: "2026-10-01" });
+    expect(await apply(blank)).toMatchObject({ members: 0 });
+    expect(await member()).toMatchObject({ callUpOn: "2026-09-10", releasedOn: "2026-10-01" });
+
+    await set({ callUpOn: null, releasedOn: "2026-09-01" });
+    await apply(baseSheet());
+    expect(await member()).toMatchObject({ callUpOn: "2026-09-06", releasedOn: null });
+  });
+
   it("an empty cell clears an existing entry", async () => {
     const counts = await apply(sheet([companyTab("פלסר", [S1(["עזה", null]), S2()]), companyTab("פלנט", [S3()])]));
     expect(counts).toMatchObject({ daysCleared: 1, daysWritten: 0 });

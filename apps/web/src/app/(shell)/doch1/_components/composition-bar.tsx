@@ -1,7 +1,7 @@
 import type { Summary } from "@gdud/core";
 
 /** "איפה כולם היום": display groups + missing, as shares of everyone reported or missing (mockup 01 / 06). */
-export function CompositionBar({ summary, scopeName }: { summary: Summary; scopeName: string }) {
+export function CompositionBar({ summary, scopeName, when }: { summary: Summary; scopeName: string; when: string }) {
   const total = summary.reported + summary.missing;
   const segments = [
     ...summary.groups.map((g) => ({ key: g.name, label: g.name, n: g.count, color: g.color })),
@@ -11,11 +11,13 @@ export function CompositionBar({ summary, scopeName }: { summary: Summary; scope
   ].filter((s) => s.n > 0);
   const share = (n: number) => `${total ? Math.round((n / total) * 100) : 0}%`;
   return (
-    <section className="tz-card flex flex-col gap-3 p-4 lg:p-[18px]" aria-label="חלוקת הסד״כ היום">
+    <section className="tz-card flex flex-col gap-3 p-4 lg:p-[18px]" aria-label={`חלוקת הסד״כ ${when}`}>
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <h2 className="tz-headline">איפה כולם היום · {scopeName}</h2>
+        <h2 className="tz-headline">
+          איפה כולם {when} · {scopeName}
+        </h2>
         <span className="tz-footnote">
-          <span className="tz-num">{total.toLocaleString("he-IL")}</span> שאמורים לדווח היום
+          <span className="tz-num">{total.toLocaleString("he-IL")}</span> שאמורים לדווח {when}
         </span>
       </div>
       <div className="flex h-3.5 gap-[3px] overflow-hidden rounded-full bg-fill" role="img" aria-label={segments.map((s) => `${s.label} ${s.n}`).join(", ")}>

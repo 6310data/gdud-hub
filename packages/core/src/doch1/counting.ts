@@ -56,6 +56,25 @@ export interface ReportMember {
   inReport: boolean;
 }
 
+/** A soldier's service in the round (תאריך גיוס / תאריך שחרור). */
+export interface ServiceDates {
+  callUpOn: Day | null;
+  releasedOn: Day | null;
+}
+
+/**
+ * Is the soldier listed on `day`? From the call-up date through the release date, inclusive.
+ * No call-up date = listed on no day: every screen, count and reminder leaves the soldier out.
+ */
+export function inService(m: ServiceDates, day: Day): boolean {
+  return m.callUpOn !== null && m.callUpOn <= day && (m.releasedOn === null || day <= m.releasedOn);
+}
+
+/** Is the soldier listed on any day from `from` to `to` (inclusive)? */
+export function inServiceBetween(m: ServiceDates, from: Day, to: Day): boolean {
+  return m.callUpOn !== null && m.callUpOn <= to && (m.releasedOn === null || from <= m.releasedOn);
+}
+
 /** personId → statusId for one day; a missing key = no entry (= missing report). */
 export type DayStatuses = ReadonlyMap<string, string>;
 

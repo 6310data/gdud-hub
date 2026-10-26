@@ -60,7 +60,17 @@ export default async function Doch1Board({ searchParams }: { searchParams: Promi
 
   const platoonOrder = (id: string | null) => (id ? (unitById.get(id)?.sortOrder ?? 0) + 1 : 0);
   const members: BoardMember[] = data.members
-    .map((m) => ({ personId: m.personId, name: m.name, roleTitle: m.roleTitle, companyId: m.companyId, platoonId: m.platoonId, platoonName: m.platoonName, inReport: m.inReport }))
+    .map((m) => ({
+      personId: m.personId,
+      name: m.name,
+      roleTitle: m.roleTitle,
+      companyId: m.companyId,
+      platoonId: m.platoonId,
+      platoonName: m.platoonName,
+      inReport: m.inReport,
+      callUpOn: m.callUpOn,
+      releasedOn: m.releasedOn,
+    }))
     .sort((a, b) => platoonOrder(a.platoonId) - platoonOrder(b.platoonId) || (a.platoonName ?? "").localeCompare(b.platoonName ?? "", "he"));
   const days: DaysByDay = Object.fromEntries([...data.loaded].map(([d, m]) => [d, Object.fromEntries(m)]));
 

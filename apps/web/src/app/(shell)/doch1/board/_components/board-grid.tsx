@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useCallback, useMemo, useOptimistic, useState, useTransition } from "react";
-import { addDays, fillFromYesterdayPlan, hebrewDayLabel, summarize, type Day, type DayWrite, type StatusDef } from "@gdud/core";
+import { addDays, fillFromYesterdayPlan, hebrewDayLabel, inService, inServiceBetween, summarize, type Day, type DayWrite, type StatusDef } from "@gdud/core";
 import { Avatar, Button, Icon } from "@gdud/ui";
 import { bulkSetStatus, fillFromYesterday, restoreDays, setDayStatus } from "../../_actions/days";
 import { StatusDot } from "../../_components/status-chip";
@@ -17,6 +17,8 @@ export interface BoardMember {
   platoonId: string | null;
   platoonName: string | null;
   inReport: boolean;
+  callUpOn: Day | null;
+  releasedOn: Day | null;
 }
 
 /** day → personId → statusId */
@@ -101,8 +103,12 @@ export function BoardGrid({
 }) {
   const [days, optimistic] = useOptimistic(serverDays, applyWrites);
   // released / deferred soldiers are not expected to report: off the board and out of every count
-  const members = allMembers.filter((m) => m.inReport);
-  const outOfReport = allMembers.length - members.length;
+  const reporting = allMembers.filter((m) => m.inReport);
+  const outOfReport = allMembers.length - reporting.length;
+  // today's counts: soldiers listed today; rows: soldiers listed on any shown day (other days are blank)
+  const members = reporting.filter((m) => inService(m, today));
+  const rows = reporting.filter((m) => inServiceBetween(m, shown[0]!, shown[shown.length - 1]!));
+  const tomorrowMembers = reporting.filter((m) => inService(m, tomorrow));
   const [pending, start] = useTransition();
   const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string>();
@@ -125,7 +131,7 @@ export function BoardGrid({
   const fillPlan = canEdit && todayOpen && inRound(today) ? fillFromYesterdayPlan(members, todayMap, asMap(days[yesterday])) : [];
 
   const platoons: Array<{ key: string; name: string; count: number }> = [];
-  for (const m of members) {
+  for (const m of rows) {
     const key = m.platoonId ?? "company";
     const p = platoons.find((x) => x.key === key);
     if (p) p.count++;
@@ -133,7 +139,7 @@ export function BoardGrid({
   }
 
   const q = query.trim();
-  const visible = members.filter(
+  const visible = rows.filter(
     (m) => (!platoon || (m.platoonId ?? "company") === platoon) && (!q || m.name.includes(q) || (m.roleTitle ?? "").includes(q)),
   );
   const allSelected = visible.length > 0 && visible.every((m) => selected.has(m.personId));
@@ -146,9 +152,9 @@ export function BoardGrid({
   }, [shown, days, statuses]);
 
   const isHome = (id: string | undefined) => !!id && !!byId.get(id)?.homeDay;
-  const leaving = members.filter((m) => todayMap.has(m.personId) && !isHome(todayMap.get(m.personId)) && isHome(tomorrowMap.get(m.personId))).length;
-  const returning = members.filter((m) => isHome(todayMap.get(m.personId)) && tomorrowMap.has(m.personId) && !isHome(tomorrowMap.get(m.personId))).length;
-  const unplanned = members.filter((m) => !tomorrowMap.has(m.personId)).length;
+  const leaving = tomorrowMembers.filter((m) => todayMap.has(m.personId) && !isHome(todayMap.get(m.personId)) && isHome(tomorrowMap.get(m.personId))).length;
+  const returning = tomorrowMembers.filter((m) => isHome(todayMap.get(m.personId)) && tomorrowMap.has(m.personId) && !isHome(tomorrowMap.get(m.personId))).length;
+  const unplanned = tomorrowMembers.filter((m) => !tomorrowMap.has(m.personId)).length;
 
   function run(kind: Busy, writes: DayWrite[], action: () => Promise<{ error?: string } | undefined>) {
     setError(undefined);
@@ -256,7 +262,7 @@ export function BoardGrid({
         {platoons.length > 1 ? (
           <div className="tz-pills" role="toolbar" aria-label="מחלקה">
             <button type="button" className="tz-pill" aria-pressed={platoon === null} onClick={() => setPlatoon(null)}>
-              הכל <span className="tz-pill-count tz-num">{members.length}</span>
+              הכל <span className="tz-pill-count tz-num">{rows.length}</span>
             </button>
             {platoons.map((p) => (
               <button key={p.key} type="button" className="tz-pill" aria-pressed={platoon === p.key} onClick={() => setPlatoon(p.key)}>
@@ -359,6 +365,14 @@ export function BoardGrid({
                         </span>
                       </td>
                       {shown.map((d) => {
+                        if (!inService(m, d)) {
+                          const off = `${m.name} · ${hebrewDayLabel(d)}: ${m.callUpOn && d < m.callUpOn ? "לפני הגיוס" : "אחרי השחרור"}`;
+                          return (
+                            <td key={d}>
+                              <span className="tz-cell tz-cell-plan" aria-label={off} title={off} role="img" />
+                            </td>
+                          );
+                        }
                         const st = byId.get(days[d]?.[m.personId] ?? "");
                         const missing = !st && d <= today;
                         const cls = `tz-cell${d > today ? " tz-cell-plan" : ""}${d === today ? " tz-cell-today" : ""}${missing ? " tz-cell-missing" : ""}`;
@@ -385,7 +399,7 @@ export function BoardGrid({
                 {!visible.length ? (
                   <tr>
                     <td colSpan={shown.length + 2} className="tz-footnote py-6 text-center">
-                      {members.length ? "אין חיילים בסינון הזה." : "אין חיילים בדוח של הפלוגה."}
+                      {rows.length ? "אין חיילים בסינון הזה." : "אין חיילים בדוח של הפלוגה."}
                     </td>
                   </tr>
                 ) : null}
@@ -396,7 +410,7 @@ export function BoardGrid({
                   <td className="tz-board-name tz-footnote">בסד״כ מתוך המוצגים</td>
                   {shown.map((d) => (
                     <td key={d} className="tz-num text-center text-[13px]" style={{ color: d === today ? "var(--primary)" : "var(--ink-muted)" }}>
-                      {visible.filter((m) => byId.get(days[d]?.[m.personId] ?? "")?.countsInSadak).length}
+                      {visible.filter((m) => inService(m, d) && byId.get(days[d]?.[m.personId] ?? "")?.countsInSadak).length}
                     </td>
                   ))}
                 </tr>

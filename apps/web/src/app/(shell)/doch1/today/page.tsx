@@ -3,8 +3,9 @@ import { can, scopesFor } from "@gdud/auth";
 import { addDays, dayRange, hebrewDayLabel, isDay, isDayWritable, israelToday } from "@gdud/core";
 import { withUser } from "@gdud/db";
 import { doch1Access } from "@/lib/doch1/access";
-import { loadActiveRound, loadDays, loadMembers, loadRoundCompanies, loadStatuses, membersUnder } from "@/lib/doch1/data";
+import { listedOn, loadActiveRound, loadDays, loadMembers, loadRoundCompanies, loadStatuses, membersUnder } from "@/lib/doch1/data";
 import { requireModule } from "@/lib/session";
+import { DayNav } from "../_components/day-nav";
 import { PushToggle } from "../_components/push-toggle";
 import { TodayList, type DaysByDay, type TodayMember } from "./_components/today-list";
 
@@ -47,9 +48,11 @@ export default async function Doch1Today({ searchParams }: { searchParams: Promi
 
   const data = await withUser(s.claims, async (tx) => {
     const [all, statuses] = await Promise.all([loadMembers(tx, round.id, s.units), loadStatuses(tx, round.id, { includeInactive: true })]);
-    const members = membersUnder(all, unitId, s.units);
+    const under = membersUnder(all, unitId, s.units);
+    // only soldiers called up by `day` and not released before it
+    const members = listedOn(under, day);
     const loaded = await loadDays(tx, round.id, dayRange(yesterday, lastDay), { personIds: members.map((m) => m.personId) });
-    return { members, statuses, loaded };
+    return { members, statuses, loaded, hidden: under.length - members.length, companyId: under[0]?.companyId ?? null };
   });
 
   const platoonOrder = (id: string | null) => (id ? (unitById.get(id)?.sortOrder ?? 0) + 1 : 0);
@@ -78,11 +81,15 @@ export default async function Doch1Today({ searchParams }: { searchParams: Promi
         </span>
         <h1 className="tz-large-title">{day === today ? "דוח 1 של היום" : `דוח 1 · ${dayLabel}`}</h1>
         {access.reportScopes.length ? <PushToggle /> : null}
-        {day !== today ? (
-          <Link href={`/doch1/today?unit=${unitId}`} className="text-[15px] text-primary no-underline">
-            חזרה להיום
-          </Link>
+        {data.hidden ? (
+          <p className="tz-footnote m-0">
+            {data.hidden === 1 ? "חייל אחד לא מוצג" : `${data.hidden} חיילים לא מוצגים`} ביום הזה: בלי תאריך גיוס, לפני הגיוס או אחרי השחרור.{" "}
+            <Link href={`/doch1/soldiers${data.companyId ? `?unit=${data.companyId}` : ""}`} className="text-primary no-underline">
+              לתאריכי הגיוס
+            </Link>
+          </p>
         ) : null}
+        <DayNav day={day} today={today} min={round.startsOn} max={round.endsOn} path="/doch1/today" params={{ unit: unitId }} />
       </div>
       {scopes.length > 1 ? (
         <nav className="tz-pills" aria-label="מסגרת">

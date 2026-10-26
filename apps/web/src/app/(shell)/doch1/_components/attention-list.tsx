@@ -10,7 +10,7 @@ export interface MissingByCompany {
 const NAMES_SHOWN = 4;
 
 /** "דורש טיפול היום" (mockup 01 / 06): who has no status today, per company, each row opens the company's report. */
-export function AttentionList({ items }: { items: MissingByCompany[] }) {
+export function AttentionList({ items, when, dayQuery }: { items: MissingByCompany[]; when: string; dayQuery: string }) {
   const total = items.reduce((n, x) => n + x.people.length, 0);
   if (!total) {
     return (
@@ -21,7 +21,7 @@ export function AttentionList({ items }: { items: MissingByCompany[] }) {
           </span>
           <span className="tz-row-body">
             <span className="tz-row-title">
-              כל הפלוגות דיווחו היום
+              כל הפלוגות דיווחו {when}
               <span className="tz-row-sub">אין חיילים ברשימה בלי סטטוס</span>
             </span>
           </span>
@@ -38,7 +38,7 @@ export function AttentionList({ items }: { items: MissingByCompany[] }) {
         </span>
         <span className="tz-row-body">
           <span className="tz-row-title">
-            ברשימה ואין להם סטטוס היום
+            ברשימה ואין להם סטטוס {when}
             <span className="tz-row-sub">{sorted.map((x) => `${x.name} ${x.people.length}`).join(" · ")}</span>
           </span>
           <span className="tz-row-value tz-num font-semibold" style={{ color: "var(--danger)" }}>
@@ -47,7 +47,7 @@ export function AttentionList({ items }: { items: MissingByCompany[] }) {
         </span>
       </div>
       {sorted.map((x) => (
-        <Link key={x.unitId} href={`/doch1/today?unit=${x.unitId}`} className="tz-row">
+        <Link key={x.unitId} href={`/doch1/today?unit=${x.unitId}${dayQuery}`} className="tz-row">
           <span className="tz-tile" style={{ background: "var(--tile-neutral)" }}>
             <Icon name="people" size={17} />
           </span>

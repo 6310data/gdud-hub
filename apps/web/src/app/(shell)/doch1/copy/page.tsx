@@ -3,8 +3,9 @@ import { scopesFor } from "@gdud/auth";
 import { hebrewDayLabel, isDay, israelToday, missingMembers, sheetColumnLines, sheetRowAnchors } from "@gdud/core";
 import { withUser } from "@gdud/db";
 import { doch1Access } from "@/lib/doch1/access";
-import { loadActiveRound, loadDays, loadMembers, loadRoundCompanies, loadStatuses } from "@/lib/doch1/data";
+import { listedOn, loadActiveRound, loadDays, loadMembers, loadRoundCompanies, loadStatuses } from "@/lib/doch1/data";
 import { requireModule } from "@/lib/session";
+import { DayNav } from "../_components/day-nav";
 import { Panel } from "../_components/panel";
 import { CopyColumn } from "./_components/copy-column";
 
@@ -22,13 +23,14 @@ export default async function Doch1Copy({ searchParams }: { searchParams: Promis
   const s = await requireModule("doch1");
   if (!doch1Access(s).canCopy) notFound();
   const sp = await searchParams;
-  const day = sp.day && isDay(sp.day) ? sp.day : israelToday(new Date());
+  const today = israelToday(new Date());
 
   const base = await withUser(s.claims, async (tx) => {
     const round = await loadActiveRound(tx);
     return round ? { round, companies: await loadRoundCompanies(tx, round.id) } : null;
   });
   if (!base) return null; // the layout shows "אין סבב פעיל"
+  const day = sp.day && isDay(sp.day) && sp.day >= base.round.startsOn && sp.day <= base.round.endsOn ? sp.day : today;
   const roundCompanies = base.companies.filter((c) => c.active).map((c) => c.unitId);
   const access = doch1Access(s, roundCompanies);
   const unitById = new Map(s.units.map((u) => [u.id, u]));
@@ -54,9 +56,11 @@ export default async function Doch1Copy({ searchParams }: { searchParams: Promis
   const { lines, firstRow } = sheetColumnLines(
     data.members.map((m) => ({ sheetRow: inSheet(m) ? m.sheetRow : null, value: sheetValue.get(data.day.get(m.personId) ?? "") ?? "" })),
   );
-  const notInSheet = data.members.filter((m) => !inSheet(m));
+  // a soldier not listed that day (before call-up / after release) keeps their sheet row and value, but isn't missing
+  const listed = listedOn(data.members, day);
+  const notInSheet = listed.filter((m) => !inSheet(m));
   const anchors = sheetRowAnchors(data.members.map((m) => ({ sheetRow: inSheet(m) ? m.sheetRow : null, name: m.name })));
-  const missing = missingMembers(data.members, data.day).length;
+  const missing = missingMembers(listed, data.day).length;
 
   return (
     <div className="mx-auto flex w-full max-w-[640px] flex-col gap-[22px]">
@@ -65,6 +69,7 @@ export default async function Doch1Copy({ searchParams }: { searchParams: Promis
           {unitById.get(unitId)!.name} · {hebrewDayLabel(day)}
         </span>
         <h1 className="tz-title">העתקה לגיליון</h1>
+        <DayNav day={day} today={today} min={base.round.startsOn} max={base.round.endsOn} path="/doch1/copy" params={{ unit: unitId }} />
       </div>
 
       <form className="tz-card flex flex-wrap items-end gap-3 p-4" action="/doch1/copy">
@@ -78,10 +83,7 @@ export default async function Doch1Copy({ searchParams }: { searchParams: Promis
             ))}
           </select>
         </label>
-        <label className="tz-field">
-          <span className="tz-label">יום</span>
-          <input type="date" name="day" defaultValue={day} min={base.round.startsOn} max={base.round.endsOn} className="tz-input w-auto" />
-        </label>
+        {day !== today ? <input type="hidden" name="day" value={day} /> : null}
         <button className="tz-btn tz-btn-tinted tz-btn-sm">הצגה</button>
       </form>
 

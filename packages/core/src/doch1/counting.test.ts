@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   fillFromYesterdayPlan,
+  inService,
+  inServiceBetween,
   missingMembers,
   planBulkWrite,
   statusFlagsChanged,
@@ -97,5 +99,26 @@ describe("statusFlagsChanged", () => {
   it("is false when only name, color or group differ", () => {
     const renamed: StatusDef = { ...a, name: "x", color: "#000000", displayGroup: "y" };
     expect(statusFlagsChanged(a, renamed)).toBe(false);
+  });
+});
+
+describe("inService", () => {
+  const m = { callUpOn: "2026-09-06", releasedOn: "2026-10-20" };
+  it("lists a soldier from the call-up date through the release date", () => {
+    expect(inService(m, "2026-09-05")).toBe(false);
+    expect(inService(m, "2026-09-06")).toBe(true);
+    expect(inService(m, "2026-10-20")).toBe(true);
+    expect(inService(m, "2026-10-21")).toBe(false);
+    expect(inService({ ...m, releasedOn: null }, "2026-12-10")).toBe(true);
+  });
+  it("never lists a soldier without a call-up date", () => {
+    expect(inService({ callUpOn: null, releasedOn: null }, "2026-10-20")).toBe(false);
+    expect(inServiceBetween({ callUpOn: null, releasedOn: null }, "2026-08-23", "2026-12-10")).toBe(false);
+  });
+  it("inServiceBetween is true when any day of the range is listed", () => {
+    expect(inServiceBetween(m, "2026-08-30", "2026-09-06")).toBe(true);
+    expect(inServiceBetween(m, "2026-08-30", "2026-09-05")).toBe(false);
+    expect(inServiceBetween(m, "2026-10-20", "2026-10-30")).toBe(true);
+    expect(inServiceBetween(m, "2026-10-21", "2026-10-30")).toBe(false);
   });
 });

@@ -8,7 +8,7 @@ import "server-only";
  *            doch1 company_user / platoon_commander membership get "<unit> · חסרים N דיווחים להיום"
  *   request  "תזכורת" from the overview: the same message to that company's users, right away
  */
-import { isDue, israelClock, israelToday, reminderMessages, type ReminderMessage, type ReminderRecipient } from "@gdud/core";
+import { inService, isDue, israelClock, israelToday, reminderMessages, type ReminderMessage, type ReminderRecipient } from "@gdud/core";
 import { and, eq, inArray, isNull, schema, systemDb } from "@gdud/db";
 import { sendPush } from "./push";
 
@@ -83,7 +83,7 @@ export async function runReminderJob(now: Date): Promise<ReminderJobResult> {
 
   /* missing reports today, counted into every unit above the soldier */
   const memberRows = await db
-    .select({ personId: members.personId, inReport: members.inReport, unitId: people.unitId })
+    .select({ personId: members.personId, inReport: members.inReport, callUpOn: members.callUpOn, releasedOn: members.releasedOn, unitId: people.unitId })
     .from(members)
     .innerJoin(people, eq(people.id, members.personId))
     .where(eq(members.roundId, round.id));
@@ -92,7 +92,7 @@ export async function runReminderJob(now: Date): Promise<ReminderJobResult> {
   );
   const missingByUnit = new Map<string, number>();
   for (const m of memberRows) {
-    if (!m.inReport || reported.has(m.personId) || !inRound(m.unitId)) continue;
+    if (!m.inReport || !inService(m, today) || reported.has(m.personId) || !inRound(m.unitId)) continue;
     for (const u of lineage(m.unitId)) missingByUnit.set(u, (missingByUnit.get(u) ?? 0) + 1);
   }
   const gone = new Set<string>();

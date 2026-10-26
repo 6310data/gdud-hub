@@ -3,7 +3,7 @@ import "server-only";
  * דוח 1 read models. Every loader takes the caller's `withUser` transaction, so what comes
  * back is already filtered by RLS (a platoon commander sees their platoon).
  */
-import { byHe, placement, type Day, type ReportMember, type StatusDef, type UnitNode } from "@gdud/core";
+import { byHe, inService, inServiceBetween, placement, type Day, type ReportMember, type ServiceDates, type StatusDef, type UnitNode } from "@gdud/core";
 import { and, asc, eq, inArray, schema, type Tx } from "@gdud/db";
 
 const { people, doch1Rounds: rounds, doch1RoundCompanies: roundCompanies, doch1Statuses: statuses } = schema;
@@ -75,7 +75,7 @@ export async function loadStatuses(tx: Tx, roundId: string, opts: { includeInact
   return rows.map(toStatusDef);
 }
 
-export interface MemberVM extends ReportMember {
+export interface MemberVM extends ReportMember, ServiceDates {
   name: string;
   roleTitle: string | null;
   platoonName: string | null;
@@ -100,7 +100,10 @@ export async function loadRoundCompanies(tx: Tx, roundId: string): Promise<Round
     .where(eq(roundCompanies.roundId, roundId));
 }
 
-/** Round members in the active round companies (company / platoon from the soldier's current unit), by name. */
+/**
+ * Round members in the active round companies (company / platoon from the soldier's current unit), by name.
+ * Every member, called up or not: screens of a day keep only `listedOn(members, day)`.
+ */
 export async function loadMembers(tx: Tx, roundId: string, units: UnitNode[]): Promise<MemberVM[]> {
   const byId = new Map(units.map((u) => [u.id, u]));
   const activeCompanies = new Set((await loadRoundCompanies(tx, roundId)).filter((c) => c.active).map((c) => c.unitId));
@@ -108,6 +111,8 @@ export async function loadMembers(tx: Tx, roundId: string, units: UnitNode[]): P
     .select({
       personId: members.personId,
       inReport: members.inReport,
+      callUpOn: members.callUpOn,
+      releasedOn: members.releasedOn,
       sheetTab: members.sheetTab,
       sheetRow: members.sheetRow,
       locationId: members.locationId,
@@ -128,6 +133,8 @@ export async function loadMembers(tx: Tx, roundId: string, units: UnitNode[]): P
       platoonId: platoon?.id ?? null,
       platoonName: platoon?.name ?? null,
       inReport: r.inReport,
+      callUpOn: r.callUpOn,
+      releasedOn: r.releasedOn,
       name: r.name,
       roleTitle: r.roleTitle,
       unitId: r.unitId,
@@ -137,6 +144,16 @@ export async function loadMembers(tx: Tx, roundId: string, units: UnitNode[]): P
     });
   }
   return out.sort((a, b) => byHe(a.name, b.name));
+}
+
+/** Members listed on `day` (called up, not yet released). */
+export function listedOn<T extends ServiceDates>(list: readonly T[], day: Day): T[] {
+  return list.filter((m) => inService(m, day));
+}
+
+/** Members listed on any day from `from` to `to`. */
+export function listedBetween<T extends ServiceDates>(list: readonly T[], from: Day, to: Day): T[] {
+  return list.filter((m) => inServiceBetween(m, from, to));
 }
 
 /** day → (personId → statusId) for the given days (optionally only these soldiers). */

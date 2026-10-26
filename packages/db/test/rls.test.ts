@@ -758,6 +758,16 @@ describe("doch1", () => {
     expect(await as(plntClerk, (tx) => tx.update(members).set({ inReport: false }).where(eq(members.personId, p.plsrSoldier)).returning())).toHaveLength(0);
   });
 
+  it("a company user sets call-up and release dates; a platoon commander cannot; release before call-up is rejected", async () => {
+    const set = (u: TestUser, v: { callUpOn: string | null; releasedOn: string | null }, personId = p.plsr1Soldier) =>
+      as(u, (tx) => tx.update(members).set(v).where(eq(members.personId, personId)).returning());
+    expect(await set(plsr1Cmdr, { callUpOn: "2026-09-06", releasedOn: null })).toHaveLength(0);
+    expect(await set(plntClerk, { callUpOn: "2026-09-06", releasedOn: null })).toHaveLength(0);
+    expect(await set(plsrClerk, { callUpOn: "2026-09-06", releasedOn: "2026-10-01" })).toHaveLength(1);
+    await rejects(set(plsrClerk, { callUpOn: "2026-09-06", releasedOn: "2026-09-01" }));
+    expect(await set(plsrClerk, { callUpOn: null, releasedOn: null })).toHaveLength(1);
+  });
+
   it("push subscriptions are private to their owner", async () => {
     await as(plsrClerk, (tx) => tx.insert(pushSubs).values({ endpoint: "https://push.example/1", p256dh: "k", auth: "a" }));
     expect(await as(plntClerk, (tx) => tx.select().from(pushSubs))).toHaveLength(0);

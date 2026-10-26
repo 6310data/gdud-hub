@@ -18,14 +18,14 @@ function KpiCard({ color, label, value, foot, danger }: { color: string; label: 
 }
 
 /** בסד״כ, one card per display group, חסרי דיווח (mockup screens 01 / 06). */
-export function KpiRow({ summary }: { summary: Summary }) {
+export function KpiRow({ summary, when }: { summary: Summary; when: string }) {
   return (
-    <section aria-label="מדדי היום" className="grid grid-cols-2 gap-3 lg:grid-cols-[repeat(auto-fit,minmax(170px,1fr))]">
-      <KpiCard color="var(--primary)" label="בסד״כ היום" value={summary.inSadak} foot={`מתוך ${summary.roster.toLocaleString("he-IL")} ברשימה`} />
+    <section aria-label={`מדדי ${when}`} className="grid grid-cols-2 gap-3 lg:grid-cols-[repeat(auto-fit,minmax(170px,1fr))]">
+      <KpiCard color="var(--primary)" label={`בסד״כ ${when}`} value={summary.inSadak} foot={`מתוך ${summary.roster.toLocaleString("he-IL")} ברשימה`} />
       {summary.groups.map((g) => (
         <KpiCard key={g.name} color={g.color} label={g.name} value={g.count} foot={`${pct(g.count, summary.inSadak)}% מהסד״כ`} />
       ))}
-      <KpiCard color="var(--danger)" label="חסרי דיווח" value={summary.missing} foot="ברשימה ואין להם סטטוס היום" danger />
+      <KpiCard color="var(--danger)" label="חסרי דיווח" value={summary.missing} foot={`ברשימה ואין להם סטטוס ${when}`} danger />
     </section>
   );
 }

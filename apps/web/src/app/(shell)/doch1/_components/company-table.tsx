@@ -50,7 +50,20 @@ function MissingCell({ n }: { n: number }) {
 }
 
 /** "מצב לפי פלוגה" (mockup 01): one row per company, a column per display group, a total row. */
-export function CompanyTable({ rows, total, groupNames, isAdmin }: { rows: CompanySummary[]; total: Summary; groupNames: string[]; isAdmin: boolean }) {
+export function CompanyTable({
+  rows,
+  total,
+  groupNames,
+  isAdmin,
+  dayQuery,
+}: {
+  rows: CompanySummary[];
+  total: Summary;
+  groupNames: string[];
+  isAdmin: boolean;
+  /** "" for today, else "&day=…" */
+  dayQuery: string;
+}) {
   const groupCount = (s: Summary, name: string) => s.groups.find((g) => g.name === name)?.count ?? 0;
   return (
     <div className="tz-table-wrap">
@@ -72,7 +85,7 @@ export function CompanyTable({ rows, total, groupNames, isAdmin }: { rows: Compa
           {rows.map((r) => (
             <tr key={r.unitId} className="tz-hover">
               <th scope="row" className="font-semibold">
-                <Link href={`/doch1/today?unit=${r.unitId}`} className="tz-cell-link">
+                <Link href={`/doch1/today?unit=${r.unitId}${dayQuery}`} className="tz-cell-link">
                   {r.name}
                 </Link>
               </th>
@@ -85,9 +98,9 @@ export function CompanyTable({ rows, total, groupNames, isAdmin }: { rows: Compa
               <Completion value={r.summary.completion} />
               <td>
                 <span className="flex items-center justify-end gap-1">
-                  {isAdmin && r.summary.missing ? <ReminderButton unitId={r.unitId} name={r.name} /> : null}
+                  {isAdmin && !dayQuery && r.summary.missing ? <ReminderButton unitId={r.unitId} name={r.name} /> : null}
                   <Link
-                    href={`/doch1/today?unit=${r.unitId}`}
+                    href={`/doch1/today?unit=${r.unitId}${dayQuery}`}
                     aria-label={`דוח 1 של ${r.name}`}
                     className="grid size-8 place-items-center rounded-lg text-[var(--chevron)] hover:bg-fill"
                   >

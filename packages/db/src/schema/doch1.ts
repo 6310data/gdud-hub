@@ -141,7 +141,10 @@ export const doch1Members = pgTable(
     inReport: boolean("in_report").notNull().default(true),
     dmhCategory: text("dmh_category"),
     arrivalForecast: text("arrival_forecast"),
+    /** תאריך גיוס: the soldier is listed from this day on; null = not called up (listed nowhere) */
     callUpOn: day("call_up_on"),
+    /** תאריך שחרור: the last day the soldier is listed; null = not released */
+    releasedOn: day("released_on"),
     enlistmentStatus: text("enlistment_status"),
     hasDisc: boolean("has_disc"),
     notes: text("notes"),
@@ -155,6 +158,7 @@ export const doch1Members = pgTable(
   (t) => [
     primaryKey({ columns: [t.roundId, t.personId] }),
     check("doch1_members_sheet_row", sql`${t.sheetRow} > 0`),
+    check("doch1_members_service_dates", sql`${t.releasedOn} >= ${t.callUpOn}`),
     index("doch1_members_person_idx").on(t.personId),
   ],
 ).enableRLS();
