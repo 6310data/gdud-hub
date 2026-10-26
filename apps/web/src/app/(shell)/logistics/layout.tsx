@@ -33,7 +33,8 @@ export default async function LogisticsLayout({ children }: { children: React.Re
       search={{ action: "/logistics/search", placeholder: "חיפוש חייל, צ׳ או פריט" }}
       groups={[{ items: main }, ...(actions.length ? [{ title: "פעולות", items: actions }] : [])]}
       user={{ name: displayName(s.user, s.claims), email: s.user.email, role: role?.role, roleTone: role?.tone }}
-      phoneTabs={access.isAdmin ? ["/logistics", "/logistics/sign", "/logistics/return", "/logistics/people"] : undefined}
+      // phone tab bar: four tabs, the rest (פלוגות, לוג, החתמה, זיכוי, ייבוא) under "עוד"
+      phoneTabs={["/logistics", "/logistics/stock", "/logistics/storage", "/logistics/summary"]}
     >
       {children}
     </AppShell>
