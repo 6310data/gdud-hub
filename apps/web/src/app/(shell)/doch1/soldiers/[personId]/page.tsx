@@ -104,6 +104,7 @@ export default async function Doch1Soldier({ params, searchParams }: { params: P
       status: (id) => statusById.get(id)?.name,
       location: (id) => data.locations.find((l) => l.id === id)?.name,
       unit: (id) => unitById.get(id)?.name,
+      option: (id) => optionName.get(id),
     });
     return lines.length ? [{ key: `${r.at.getTime()}-${i}`, when: when(r.at, today), actor: r.actor, lines }] : [];
   });

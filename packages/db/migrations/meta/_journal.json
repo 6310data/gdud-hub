@@ -120,6 +120,13 @@
       "when": 1793099728693,
       "tag": "0016_doch1_round_planning_security",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793102682698,
+      "tag": "0017_doch1_drop_member_text_fields",
+      "breakpoints": true
     }
   ]
 }

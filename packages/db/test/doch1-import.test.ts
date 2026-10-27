@@ -17,6 +17,7 @@ import {
   parseSheet,
   planSheetImport,
   readWorkbook,
+  SheetImportError,
   type Cell,
   type ImportMappings,
   type ParsedSheet,
@@ -62,9 +63,9 @@ const soldier = (pn: Cell, first: string, last: string, platoon: string, days: [
   extra.role ?? "לוחם",
   extra.dmh ?? "לוחם",
   extra.phone ?? "0500000001",
-  "מגיע מלא",
+  extra.arrival === undefined ? "מגיע מלא" : extra.arrival,
   d("2026-09-06"),
-  "התייצב",
+  extra.enlistment === undefined ? "התייצב" : extra.enlistment,
   extra.disc ?? "יש",
   days[0],
   days[1],
@@ -328,7 +329,7 @@ describe("plan and apply", () => {
     const counts = await asUser(admin, (tx) =>
       applySheetImport(tx, roundId, baseSheet(), m, (phase, done, total) => progress.push(total === undefined ? phase : `${phase} ${done}/${total}`)),
     );
-    expect(counts).toMatchObject({ newPeople: 3, updatedPeople: 0, members: 3, daysWritten: 5, daysCleared: 0, statusesCreated: 3, platoonsCreated: 1 });
+    expect(counts).toMatchObject({ newPeople: 3, updatedPeople: 0, members: 3, daysWritten: 5, daysCleared: 0, statusesCreated: 3, platoonsCreated: 1, optionsCreated: 2 });
     expect(progress).toEqual(["match", "structure", "people 0/3", "people 3/3", "members 0/3", "members 3/3", "days 0/5", "days 5/5", "standby 0/0", "mappings"]);
     const zero = await dayRow("7000002", "2026-10-20");
     const [st] = await db.select().from(doch1Statuses).where(eq(doch1Statuses.id, zero!.statusId));
@@ -341,7 +342,9 @@ describe("plan and apply", () => {
     const [s1] = await db.select().from(people).where(eq(people.personalNumber, "7000001"));
     expect(s1).toMatchObject({ fullName: "דנה בדויה", unitId: ids.plsr1, roleTitle: "לוחם", phone: "0500000001" });
     const [m1] = await db.select().from(doch1Members).where(eq(doch1Members.personId, s1!.id));
-    expect(m1).toMatchObject({ sheetTab: "פלסר", sheetRow: 4, dmhCategory: "לוחם", callUpOn: "2026-09-06", hasDisc: true, enlistmentStatus: "התייצב" });
+    expect(m1).toMatchObject({ sheetTab: "פלסר", sheetRow: 4, dmhCategory: "לוחם", callUpOn: "2026-09-06", hasDisc: true });
+    const [enlisted] = await db.select().from(schema.doch1FieldOptions).where(eq(schema.doch1FieldOptions.id, m1!.enlistmentOptionId!));
+    expect(enlisted).toMatchObject({ field: "enlistment", name: "התייצב", effect: "pending" });
     const rc = await db.select().from(doch1RoundCompanies).where(eq(doch1RoundCompanies.roundId, roundId));
     expect(rc.map((r) => r.unitId).sort()).toEqual([ids.plsr, ids.plnt, ids.pltz].sort());
   });
@@ -481,6 +484,92 @@ describe("plan and apply", () => {
       expect((await plan(newTab())).questions).toEqual([]);
       expect(await apply(newTab())).toMatchObject({ companiesCreated: 0, platoonsCreated: 0, newPeople: 0 });
     });
+  });
+});
+
+describe("צפי הגעה and סטטוס גיוס", () => {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const { units, people, appUsers, memberships, doch1Rounds, doch1Members, doch1FieldOptions: options } = schema;
+  let db: ReturnType<typeof drizzle<typeof schema>>;
+  let roundId = "";
+  const admin = { sub: randomUUID(), email: "values-admin@example.com" };
+  const sheet = (rows: Cell[][]): ParsedSheet => parseSheet([dropdowns(), companyTab("פלסר", rows)]);
+  const S = (pn: number, arrival: Cell, enlistment: Cell = "התייצב", days: [Cell, Cell] = ["עזה", "עזה"]) =>
+    soldier(pn, "שם", `בדוי ${pn}`, "", days, { arrival, enlistment });
+  const asAdmin = <T>(fn: (tx: Tx) => Promise<T>) => runAsUser(db as never, { sub: admin.sub, email: admin.email }, fn);
+  const plan = (parsed: ParsedSheet, m: Partial<ImportMappings> = {}) => asAdmin((tx) => planSheetImport(tx, roundId, parsed, m));
+  const apply = (parsed: ParsedSheet, m: Partial<ImportMappings> = {}) =>
+    asAdmin((tx) => applySheetImport(tx, roundId, parsed, { tabs: {}, platoons: {}, statuses: {}, ...m }));
+  const member = async (pn: number) => {
+    const [p] = await db.select().from(people).where(eq(people.personalNumber, String(pn)));
+    const [m] = await db.select().from(doch1Members).where(eq(doch1Members.personId, p!.id));
+    const name = async (id: string | null) => (id ? (await db.select().from(options).where(eq(options.id, id)))[0] : undefined);
+    return { arrival: await name(m!.arrivalOptionId), enlistment: await name(m!.enlistmentOptionId) };
+  };
+
+  beforeAll(async () => {
+    const pg = new PGlite();
+    await pg.exec(SUPABASE_SHIM_SQL);
+    db = drizzle(pg, { schema });
+    await migrate(db, { migrationsFolder: path.join(here, "../migrations") });
+    const [bat] = await db.insert(units).values({ kind: "battalion", name: "גדוד" }).returning();
+    await db.insert(units).values({ parentId: bat!.id, kind: "company", name: "פלס״ר" });
+    const [u] = await db.insert(appUsers).values({ email: admin.email, authUserId: admin.sub }).returning();
+    await db.insert(memberships).values({ userId: u!.id, module: "doch1", role: "admin", unitId: null });
+    const [round] = await db.insert(doch1Rounds).values({ name: "סבב 7", startsOn: "2026-08-23", endsOn: "2026-12-10", state: "active" }).returning();
+    roundId = round!.id;
+  });
+
+  it("a round without values gets every value in the file, as arriving / pending", async () => {
+    const counts = await apply(sheet([S(8000001, "מגיע"), S(8000002, "מגיע", "בדרך")]));
+    expect(counts.optionsCreated).toBe(3);
+    expect(await member(8000002)).toMatchObject({
+      arrival: { field: "arrival", name: "מגיע", effect: "arriving" },
+      enlistment: { field: "enlistment", name: "בדרך", effect: "pending" },
+    });
+  });
+
+  it("an unknown value is a question; answering 'create' with an effect creates it and is remembered", async () => {
+    const parsed = sheet([S(8000001, "מגיע"), S(8000002, "לא מגיע", "", ["עזה", null])]);
+    const p = await plan(parsed);
+    expect(p.questions).toEqual([
+      expect.objectContaining({ kind: "arrival", key: "לא מגיע", label: "לא מגיע", suggestion: "create:arriving", options: [expect.objectContaining({ label: "מגיע" })] }),
+    ]);
+    const counts = await apply(parsed, { arrival: { "לא מגיע": "create:not_arriving" } });
+    expect(counts.optionsCreated).toBe(1);
+    expect((await member(8000002)).arrival).toMatchObject({ name: "לא מגיע", effect: "not_arriving" });
+    expect((await plan(parsed)).questions).toEqual([]);
+  });
+
+  it("a blank cell clears the value: the sheet wins", async () => {
+    expect((await member(8000002)).enlistment).toBeUndefined();
+  });
+
+  it("a value mapped to an existing one, and a spelling that only differs in spacing, match it", async () => {
+    const [arriving] = await db.select().from(options).where(eq(options.name, "מגיע"));
+    const parsed = sheet([S(8000001, "מגיע  "), S(8000002, "מגיע חלקית")]);
+    parsed.tabs[0]!.rows[0]!.arrivalForecast = "מגיע  "; // cells are trimmed when read; spacing inside still matches
+    expect((await plan(parsed)).questions.map((q) => q.key)).toEqual(["מגיע חלקית"]);
+    await apply(parsed, { arrival: { "מגיע חלקית": arriving!.id } });
+    expect((await member(8000002)).arrival).toMatchObject({ name: "מגיע" });
+    expect((await plan(parsed)).questions).toEqual([]);
+  });
+
+  it("a value of the other list is not a valid answer", async () => {
+    const [enlisted] = await db.select().from(options).where(eq(options.name, "התייצב"));
+    const p = await plan(sheet([S(8000003, "אולי")]), { arrival: { אולי: enlisted!.id } });
+    expect(p.questions.map((q) => q.key)).toEqual(["אולי"]);
+  });
+
+  it("warns about soldiers marked not arriving who have days in the sheet", async () => {
+    const p = await plan(sheet([S(8000001, "מגיע"), S(8000002, "לא מגיע", "", ["עזה", "רענון"])]));
+    expect(p.warnings.some((w) => w.includes("לא מגיע") && w.includes("בדוי 8000002"))).toBe(true);
+  });
+
+  it("never imports into a round that is being planned", async () => {
+    await db.update(doch1Rounds).set({ state: "planning" }).where(eq(doch1Rounds.id, roundId));
+    await expect(plan(sheet([S(8000001, "מגיע")]))).rejects.toThrow(SheetImportError);
+    await db.update(doch1Rounds).set({ state: "active" }).where(eq(doch1Rounds.id, roundId));
   });
 });
 

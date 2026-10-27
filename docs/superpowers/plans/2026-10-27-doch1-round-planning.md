@@ -159,7 +159,7 @@ export function callUpBrigadeText(input: { battalionName: string; day: Day; tota
 - Modify: `packages/db/src/schema/doch1.ts` + create `packages/db/migrations/0017_doch1_drop_member_text_fields.sql` (generated: drop `arrival_forecast`, `enlistment_status`; revoke is implicit)
 
 - [ ] **Step 1: Failing import tests:** an unknown column-I value is a question; answering "ליצור / לא מגיע" creates the option with that effect and sets it on the member; re-import with the remembered answer asks nothing; a blank cell clears the value (the sheet wins); a not-arriving soldier with day cells → a warning; the import doesn't touch a `planning` round's members.
-- [ ] **Step 2:** Implement; the mapping kinds are `arrival` and `enlistment`, keyed by the trimmed sheet value.
+- [ ] **Step 2:** Implement; the mapping kinds are `arrival` and `enlistment`, keyed by the canonical text (`canonicalName`). A round with an empty list takes every value in the file (arriving / pending), like statuses on a first import. The soldier's change log (`changes.ts`) shows the new columns by the value's name.
 - [ ] **Step 3:** Drop the text columns (schema + generate `0017`); fix any remaining reader (typecheck).
 - [ ] **Step 4:** `pnpm test && pnpm typecheck && pnpm lint`.
 - [ ] **Step 5: Commit** `feat(doch1): the sheet import maps צפי הגעה and סטטוס גיוס to the value lists`.

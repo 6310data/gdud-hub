@@ -37,6 +37,8 @@ const mappingsInput = z.object({
   platoons: answers.optional(),
   statuses: answers.optional(),
   locations: answers.optional(),
+  arrival: answers.optional(),
+  enlistment: answers.optional(),
 });
 
 /** The importer's own checks (open questions, missing core role) carry messages meant for the admin. */
@@ -94,7 +96,14 @@ export async function POST(request: NextRequest) {
       emit.phase("match");
       return withUser(ctx.s.claims, (tx) => planSheetImport(tx, ctx.round.id, parsed, mappings));
     }
-    const full: ImportMappings = { tabs: mappings.tabs ?? {}, platoons: mappings.platoons ?? {}, statuses: mappings.statuses ?? {}, locations: mappings.locations ?? {} };
+    const full: ImportMappings = {
+      tabs: mappings.tabs ?? {},
+      platoons: mappings.platoons ?? {},
+      statuses: mappings.statuses ?? {},
+      locations: mappings.locations ?? {},
+      arrival: mappings.arrival ?? {},
+      enlistment: mappings.enlistment ?? {},
+    };
     const counts = await withUser(ctx.s.claims, (tx) => applySheetImport(tx, ctx.round.id, parsed, full, emit.phase));
     revalidateDoch1();
     return counts;

@@ -1,7 +1,7 @@
 /**
  * Resolve a parsed round sheet against the database: which tab is which company, which
- * platoon text is which unit, which day value is which status, which שבצ״ק מיקום is which
- * location (standby.ts) — and what an import would
+ * platoon text is which unit, which day value is which status, which צפי הגעה / סטטוס גיוס text
+ * is which value of the round's lists, which שבצ״ק מיקום is which location (standby.ts) — and what an import would
  * change. planSheetImport() only reads; applySheetImport() (apply.ts) runs the same
  * resolution and then writes. Everything runs in the caller's RLS transaction.
  */
@@ -12,7 +12,12 @@ import * as schema from "../schema/index";
 import type { ParsedRow, ParsedSheet, ParsedTab, StatusGroup } from "./parse";
 import { resolveStandby, standbyChanges, type LocationAnswer, type StandbyResolution } from "./standby";
 
-const { units, people, doch1Rounds, doch1RoundCompanies, doch1Statuses, doch1Members, doch1Days, doch1ImportMappings } = schema;
+const { units, people, doch1Rounds, doch1RoundCompanies, doch1Statuses, doch1Members, doch1Days, doch1ImportMappings, doch1FieldOptions } = schema;
+
+export type OptionField = schema.FieldOptionField;
+const OPTION_FIELDS: readonly OptionField[] = ["arrival", "enlistment"];
+/** What a value created by the import does until the admin changes it in settings. */
+const DEFAULT_EFFECT = { arrival: "arriving", enlistment: "pending" } as const satisfies Record<OptionField, schema.FieldOptionEffect>;
 
 export interface ImportMappings {
   /** tab key → company unit id ("create" = a new company named after the tab) */
@@ -23,10 +28,14 @@ export interface ImportMappings {
   statuses: Record<string, string | "create">;
   /** שבצ״ק מיקום (canonical) → location id, `create:<kind>` or "ignore" */
   locations?: Record<string, LocationAnswer>;
+  /** צפי הגעה text (canonical) → value id of the round's list, or `create:<effect>` */
+  arrival?: Record<string, string>;
+  /** סטטוס גיוס text (canonical) → value id, or `create:<effect>` */
+  enlistment?: Record<string, string>;
 }
 
 export interface MappingQuestion {
-  kind: "tab" | "platoon" | "status" | "location";
+  kind: "tab" | "platoon" | "status" | "location" | OptionField;
   key: string;
   label: string;
   suggestion: string | null;
@@ -51,6 +60,8 @@ export interface ImportCounts {
   /** soldiers added to, removed from or with a new role on a team */
   teamMembersChanged: number;
   vehiclesCreated: number;
+  /** צפי הגעה / סטטוס גיוס values added to the round's lists */
+  optionsCreated: number;
 }
 
 export interface SheetImportPlan {
@@ -91,6 +102,15 @@ export interface NewStatus {
   groups: StatusGroup[];
 }
 
+export interface NewOption {
+  field: OptionField;
+  /** canonical text (the mapping key) */
+  key: string;
+  name: string;
+  effect: schema.FieldOptionEffect;
+  sortOrder: number;
+}
+
 export interface Resolution {
   round: { id: string; startsOn: Day; endsOn: Day };
   questions: MappingQuestion[];
@@ -107,6 +127,9 @@ export interface Resolution {
   /** value → status id or "create"; only answered values */
   statusMap: Map<string, string | "create">;
   newStatuses: NewStatus[];
+  /** per list: canonical text → value id or `create:<effect>`; only answered texts */
+  optionMap: Record<OptionField, Map<string, string>>;
+  newOptions: NewOption[];
   roundCompanies: Map<string, { active: boolean; appFrom: Day | null }>;
   existingPeople: Map<string, PersonRow>;
   existingMembers: Map<string, MemberRow>;
@@ -127,13 +150,17 @@ function descendantsOf(companyId: string, all: readonly UnitRow[]): UnitRow[] {
   return all.filter((u) => u.id !== companyId && placement(u.id, byId).company?.id === companyId);
 }
 
-async function loadSaved(tx: Tx, roundId: string): Promise<Record<"company" | "platoon" | "status" | "location", Map<string, string | null>>> {
+type SavedKind = "company" | "platoon" | "status" | "location" | OptionField;
+
+async function loadSaved(tx: Tx, roundId: string): Promise<Record<SavedKind, Map<string, string | null>>> {
   const rows = await tx.select().from(doch1ImportMappings).where(eq(doch1ImportMappings.roundId, roundId));
   const out = {
     company: new Map<string, string | null>(),
     platoon: new Map<string, string | null>(),
     status: new Map<string, string | null>(),
     location: new Map<string, string | null>(),
+    arrival: new Map<string, string | null>(),
+    enlistment: new Map<string, string | null>(),
   };
   for (const r of rows) out[r.kind as keyof typeof out]?.set(r.sourceKey, r.targetId);
   return out;
@@ -148,6 +175,8 @@ async function inChunks<T, R>(items: readonly T[], fn: (chunk: T[]) => Promise<R
 export async function resolveSheetImport(tx: Tx, roundId: string, parsed: ParsedSheet, mappings: Partial<ImportMappings>): Promise<Resolution> {
   const [round] = await tx.select().from(doch1Rounds).where(eq(doch1Rounds.id, roundId));
   if (!round) throw new SheetImportError("הסבב לא נמצא");
+  // the sheet belongs to the running round; the next one is built from the battalion's list
+  if (round.state === "planning") throw new SheetImportError("אי אפשר לייבא את הגיליון לסבב שבתכנון.");
   const allUnits: UnitRow[] = await tx
     .select({ id: units.id, parentId: units.parentId, kind: units.kind, name: units.name, active: units.active })
     .from(units);
@@ -304,6 +333,56 @@ export async function resolveSheetImport(tx: Tx, roundId: string, parsed: Parsed
     if (answer === "create") newStatuses.push({ value, sortOrder: nextSort++, groups: hints.get(value) ?? [] });
   }
 
+  /* צפי הגעה / סטטוס גיוס: every distinct text → a value of the round's list */
+  const optionRows = await tx.select().from(doch1FieldOptions).where(eq(doch1FieldOptions.roundId, roundId));
+  const optionMap: Resolution["optionMap"] = { arrival: new Map(), enlistment: new Map() };
+  const newOptions: NewOption[] = [];
+  for (const field of OPTION_FIELDS) {
+    const list = optionRows.filter((o) => o.field === field).sort((a, b) => a.sortOrder - b.sortOrder);
+    const effects: readonly string[] = schema.FIELD_OPTION_EFFECTS[field];
+    const valid = (id: string | null | undefined) => (id && list.some((o) => o.id === id) ? id : undefined);
+    const create = (a: string | undefined) => (a?.startsWith("create:") && effects.includes(a.slice(7)) ? a : undefined);
+    const byKey = new Map(list.map((o) => [canonicalName(o.name), o.id]));
+    const texts = new Map<string, string>();
+    for (const c of chosen) {
+      const text = optionText(c.row, field);
+      if (text && !texts.has(canonicalName(text))) texts.set(canonicalName(text), text);
+    }
+    let sortOrder = list.length ? Math.max(...list.map((o) => o.sortOrder)) + 1 : 0;
+    for (const [key, text] of texts) {
+      const given = mappings[field]?.[key];
+      const answer =
+        create(given) ?? valid(given) ?? valid(saved[field].get(key)) ?? byKey.get(key)
+        // a round without values takes the file's, like statuses on a first import
+        ?? (list.length === 0 ? `create:${DEFAULT_EFFECT[field]}` : undefined);
+      if (!answer) {
+        questions.push({
+          kind: field,
+          key,
+          label: text,
+          suggestion: `create:${DEFAULT_EFFECT[field]}`,
+          options: list.map((o) => ({ id: o.id, label: o.name })),
+        });
+        continue;
+      }
+      optionMap[field].set(key, answer);
+      if (answer.startsWith("create:")) {
+        newOptions.push({ field, key, name: text.slice(0, 30), effect: answer.slice(7) as schema.FieldOptionEffect, sortOrder: sortOrder++ });
+      }
+    }
+  }
+  const notArriving = new Set(optionRows.filter((o) => o.effect === "not_arriving").map((o) => o.id));
+  const hidden = chosen.filter((c) => {
+    const a = c.row.arrivalForecast ? optionMap.arrival.get(canonicalName(c.row.arrivalForecast)) : undefined;
+    return (a === "create:not_arriving" || (!!a && notArriving.has(a))) && [...c.row.days].some(([day, v]) => !!v && inRound(day));
+  });
+  if (hidden.length) {
+    const names = hidden.slice(0, 5).map((c) => [c.row.firstName, c.row.lastName].filter(Boolean).join(" ") || c.row.personalNumber);
+    warnings.push(
+      `${hidden.length} חיילים מסומנים בצפי הגעה ״לא מגיע״ אבל יש להם ימים בגיליון, והם לא יופיעו באף יום: ${names.join(", ")}${hidden.length > 5 ? "…" : ""}`,
+    );
+  }
+
   /* what exists now */
   const numbers = chosen.map((c) => c.row.personalNumber);
   const existingPeople = new Map(
@@ -344,6 +423,8 @@ export async function resolveSheetImport(tx: Tx, roundId: string, parsed: Parsed
     platoonText,
     statusMap,
     newStatuses,
+    optionMap,
+    newOptions,
     roundCompanies,
     existingPeople,
     existingMembers,
@@ -352,6 +433,11 @@ export async function resolveSheetImport(tx: Tx, roundId: string, parsed: Parsed
     units: allUnits,
     standby,
   };
+}
+
+/** The row's text for a value list (sheet column I / K). */
+export function optionText(row: ParsedRow, field: OptionField): string {
+  return (field === "arrival" ? row.arrivalForecast : row.enlistmentStatus).trim();
 }
 
 /** personal number → company, for the soldiers the import keeps */
@@ -372,9 +458,9 @@ export interface PersonFields {
 export interface MemberFields {
   personId: string;
   dmhCategory: string | null;
-  arrivalForecast: string | null;
+  arrivalOptionId: string | null;
   callUpOn: Day | null;
-  enlistmentStatus: string | null;
+  enlistmentOptionId: string | null;
   hasDisc: boolean | null;
   notes: string | null;
   sheetTab: string;
@@ -410,11 +496,15 @@ export interface DayChanges {
   members: MemberFields[];
 }
 
-/** Members to upsert and day cells to write / clear. `personOf` maps a personal number to the person id. */
+/**
+ * Members to upsert and day cells to write / clear. `personOf` maps a personal number to the person
+ * id; `optionOf` a list's canonical text to a value id (undefined = an open question).
+ */
 export function dayChanges(
   res: Resolution,
   personOf: (personalNumber: string) => string,
   statusOf: (value: string) => string | undefined,
+  optionOf: (field: OptionField, key: string) => string | undefined,
 ): DayChanges {
   const writes: DayChanges["writes"] = [];
   const clears: DayChanges["clears"] = [];
@@ -424,13 +514,18 @@ export function dayChanges(
     const r = c.row;
     const personId = personOf(r.personalNumber);
     const had = res.existingMembers.get(personId);
+    // the sheet wins: a blank cell clears the value; an unanswered one keeps what is there
+    const option = (field: OptionField, current: string | null | undefined) => {
+      const text = optionText(r, field);
+      return text ? (optionOf(field, canonicalName(text)) ?? current ?? null) : null;
+    };
     const member: MemberFields = {
       personId,
       dmhCategory: r.dmhCategory || null,
-      arrivalForecast: r.arrivalForecast || null,
+      arrivalOptionId: option("arrival", had?.arrivalOptionId),
       // a blank call-up date in the sheet keeps the one entered in the app
       callUpOn: r.callUpOn ?? had?.callUpOn ?? null,
-      enlistmentStatus: r.enlistmentStatus || null,
+      enlistmentOptionId: option("enlistment", had?.enlistmentOptionId),
       hasDisc: r.hasDisc,
       notes: r.notes || null,
       sheetTab: c.tab.tabName,
@@ -489,6 +584,10 @@ export async function planSheetImport(tx: Tx, roundId: string, parsed: ParsedShe
       const t = res.statusMap.get(value);
       return t === "create" ? `new:${value}` : t;
     },
+    (field, key) => {
+      const t = res.optionMap[field].get(key);
+      return t?.startsWith("create:") ? `new:${field}:${key}` : t;
+    },
   );
   const createdPlatoons = new Set([...res.platoonMap].filter(([, v]) => v === "create").map(([k]) => k));
   const sb = standbyChanges(
@@ -517,6 +616,7 @@ export async function planSheetImport(tx: Tx, roundId: string, parsed: ParsedShe
       teamsCreated: sb.newTeams.length,
       teamMembersChanged: sb.addMembers.length + sb.removeMembers.length + sb.roleUpdates.length,
       vehiclesCreated: sb.newVehicles.length,
+      optionsCreated: res.newOptions.length,
     },
   };
 }

@@ -67,7 +67,7 @@ function Elapsed({ since }: { since: number }) {
 }
 
 type Answers = Record<MappingQuestion["kind"], Record<string, string>>;
-const NO_ANSWERS: Answers = { tab: {}, platoon: {}, status: {}, location: {} };
+const NO_ANSWERS: Answers = { tab: {}, platoon: {}, status: {}, location: {}, arrival: {}, enlistment: {} };
 
 const SPECIAL: Record<MappingQuestion["kind"], Array<{ id: string; label: string }>> = {
   tab: [
@@ -85,12 +85,25 @@ const SPECIAL: Record<MappingQuestion["kind"], Array<{ id: string; label: string
     { id: "create:outside", label: "ליצור מיקום · בחוץ" },
     { id: "ignore", label: "לא לייבא (בלי מיקום)" },
   ],
+  // a new value's meaning; the settings screen changes it later
+  arrival: [
+    { id: "create:arriving", label: "ליצור ערך · מגיע" },
+    { id: "create:not_arriving", label: "ליצור ערך · לא מגיע (לא מופיע בסבב)" },
+  ],
+  enlistment: [
+    { id: "create:arrived", label: "ליצור ערך · התייצב" },
+    { id: "create:pending", label: "ליצור ערך · ממתין" },
+    { id: "create:postponed", label: "ליצור ערך · נדחה" },
+    { id: "create:released", label: "ליצור ערך · שוחרר" },
+  ],
 };
 const KIND_TITLE: Record<MappingQuestion["kind"], string> = {
   tab: "לשונית",
   platoon: "מחלקה",
   status: "ערך בגיליון",
   location: "מיקום בשבצ״ק",
+  arrival: "צפי הגעה",
+  enlistment: "סטטוס גיוס",
 };
 
 function CountsCard({ counts, title }: { counts: ImportCounts; title: string }) {
@@ -109,6 +122,7 @@ function CountsCard({ counts, title }: { counts: ImportCounts; title: string }) 
     ["צוותי כוננות חדשים", counts.teamsCreated],
     ["שינויים בצוותי כוננות", counts.teamMembersChanged],
     ["רכבים חדשים", counts.vehiclesCreated],
+    ["ערכי צפי הגעה / סטטוס גיוס חדשים", counts.optionsCreated],
   ];
   return (
     <section className="flex flex-col gap-1.5">
@@ -148,13 +162,30 @@ export function ImportFlow({ roundName }: { roundName: string }) {
   const formData = (current: Answers) => {
     const fd = new FormData();
     fd.set("file", file!);
-    fd.set("mappings", JSON.stringify({ tabs: current.tab, platoons: current.platoon, statuses: current.status, locations: current.location }));
+    fd.set(
+      "mappings",
+      JSON.stringify({
+        tabs: current.tab,
+        platoons: current.platoon,
+        statuses: current.status,
+        locations: current.location,
+        arrival: current.arrival,
+        enlistment: current.enlistment,
+      }),
+    );
     return fd;
   };
 
   /** Questions keep their suggestion as the default answer. */
   const withDefaults = (p: SheetImportPlan, current: Answers): Answers => {
-    const next: Answers = { tab: { ...current.tab }, platoon: { ...current.platoon }, status: { ...current.status }, location: { ...current.location } };
+    const next: Answers = {
+      tab: { ...current.tab },
+      platoon: { ...current.platoon },
+      status: { ...current.status },
+      location: { ...current.location },
+      arrival: { ...current.arrival },
+      enlistment: { ...current.enlistment },
+    };
     for (const q of p.questions) if (next[q.kind][q.key] === undefined && q.suggestion) next[q.kind][q.key] = q.suggestion;
     return next;
   };
