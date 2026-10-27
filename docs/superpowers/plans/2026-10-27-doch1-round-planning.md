@@ -41,7 +41,7 @@
 - Modify: `packages/db/test/rls.test.ts` (new `describe("doch1 round planning")` inside `describe("doch1")`)
 
 **Interfaces produced:**
-- `doch1_rounds.state text not null default 'planning' check in ('planning','active','closed')`; `active boolean generated always as (state = 'active') stored`; unique partial indexes `doch1_rounds_one_active` (kept) and `doch1_rounds_one_planning`.
+- `doch1_rounds.state text not null default 'closed' check in ('planning','active','closed')` (default `closed`, so a plain insert never collides with the one-planning index; the settings screen sets `planning` explicitly); `active boolean generated always as (state = 'active') stored`; unique partial indexes `doch1_rounds_one_active` (kept) and `doch1_rounds_one_planning`.
 - `doch1_field_options(id uuid pk, round_id uuid fk cascade, field text, name text, effect text, sort_order int, created_at, updated_at)`; unique `(round_id, field, name)`; unique `(round_id, id)` for composite FKs; check `(field = 'arrival' and effect in ('arriving','not_arriving')) or (field = 'enlistment' and effect in ('arrived','pending','postponed','released'))`; check `length(name) between 1 and 30`.
 - `doch1_members`: `arrival_option_id uuid`, `enlistment_option_id uuid` (each a composite FK `(round_id, x)` → `doch1_field_options(round_id, id)`, on delete set null on the column only — use a trigger if Postgres 15 `ON DELETE SET NULL (col)` isn't available in PGlite), `planned_unit_id uuid fk units on delete set null`.
 - `doch1_import_mappings_kind` check adds `'arrival'`, `'enlistment'`.
@@ -56,14 +56,14 @@
   - two rounds with `state='active'` → unique violation; two `planning` → unique violation; `update doch1_rounds set active = true` → error;
   - an audit row is written for an option insert.
 - [ ] **Step 2:** Run `pnpm --filter @gdud/db test` → the new tests fail.
-- [ ] **Step 3: Schema + generated migration.** Edit `schema/doch1.ts`, then run `pnpm --filter @gdud/db generate`. Hand-edit `0015` for the rounds change, in this order: add `state` (default `'planning'`); `update doch1_rounds set state = case when active then 'active' else 'closed' end`; drop index `doch1_rounds_one_active`; drop column `active`; add `active boolean generated always as (state = 'active') stored`; recreate `doch1_rounds_one_active`; create `doch1_rounds_one_planning`. In Drizzle: `active: boolean("active").generatedAlwaysAs(sql\`state = 'active'\`)`.
+- [ ] **Step 3: Schema + generated migration.** Edit `schema/doch1.ts`, then run `pnpm --filter @gdud/db generate`. Hand-edit `0015` for the rounds change, in this order: add `state` (default `'closed'`); `update doch1_rounds set state = case when active then 'active' else 'closed' end`; drop index `doch1_rounds_one_active`; drop column `active`; add `active boolean generated always as (state = 'active') stored`; recreate `doch1_rounds_one_active`; create `doch1_rounds_one_planning`. In Drizzle: `active: boolean("active").generatedAlwaysAs(sql\`state = 'active'\`)`.
 - [ ] **Step 4: `0016` security migration.**
   - Backfill: for each round, insert distinct non-blank `arrival_forecast` values as `arrival`/`arriving` and `enlistment_status` values as `enlistment`/`pending` (sort by name), then set the two option ids on the members.
   - RLS on `doch1_field_options`: select = in doch1 (`app.has_module('doch1')`, as the statuses policies do); insert/update/delete = battalion doch1 admin (copy the `doch1_statuses_*` policy expressions). Grants, `touch_updated_at`, `audit` triggers.
   - `grant update (arrival_option_id, enlistment_option_id, planned_unit_id) on doch1_members to authenticated`.
   - Trigger `app.doch1_member_options_guard()` (before insert/update of the option columns): the option's `field` matches the column, else `raise … errcode 'GD003'`.
   - Trigger `app.doch1_member_planned_unit_guard()` (before update of `planned_unit_id`): only the battalion doch1 admin may change it, else `GD004` (copy `app.doch1_member_location_guard` from `0008`).
-- [ ] **Step 5:** `pnpm --filter @gdud/db test` → green. `pnpm typecheck` → **the web app fails** where it writes `rounds.active` (`_actions/settings.ts:55-60`). That's fixed in Task 3; leave it failing only within this branch and move on.
+- [ ] **Step 5:** `pnpm --filter @gdud/db test` → green. `pnpm typecheck` fails where the web app writes `rounds.active` (`_actions/settings.ts` `saveRound`): map the existing "פעיל" checkbox to `state` `active` / `closed` so the branch stays green; Task 3 replaces that UI.
 - [ ] **Step 6: Commit** `feat(doch1): round state, צפי הגעה / סטטוס גיוס value lists`.
 
 ### Task 2: Core — listing rule, roster diff, call-up summary

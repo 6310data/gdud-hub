@@ -300,7 +300,7 @@ describe("plan and apply", () => {
     ]);
     const [round] = await db
       .insert(doch1Rounds)
-      .values({ name: "סבב 7", startsOn: "2026-08-23", endsOn: "2026-12-10", active: true })
+      .values({ name: "סבב 7", startsOn: "2026-08-23", endsOn: "2026-12-10", state: "active" })
       .returning();
     roundId = round!.id;
     await db.insert(doch1RoundCompanies).values({ roundId, unitId: ids.pltz, active: false });
@@ -554,7 +554,7 @@ describe("שבצ״ק import", () => {
       { userId: u!.id, module: "doch1", role: "admin", unitId: null },
       { userId: u!.id, module: "core", role: "admin", unitId: null },
     ]);
-    const [round] = await db.insert(doch1Rounds).values({ name: "סבב 7", startsOn: "2026-08-23", endsOn: "2026-12-10", active: true }).returning();
+    const [round] = await db.insert(doch1Rounds).values({ name: "סבב 7", startsOn: "2026-08-23", endsOn: "2026-12-10", state: "active" }).returning();
     roundId = round!.id;
     const [loc] = await db.insert(doch1Locations).values({ roundId, name: "מוצב 131", kind: "outpost" }).returning();
     const [type] = await db.insert(doch1StandbyTypes).values({ roundId, name: "עתודת גדוד", level: "battalion", size: 8 }).returning();

@@ -628,7 +628,7 @@ describe("doch1", () => {
 
     const [round] = await db
       .insert(rounds)
-      .values({ name: "סבב בדיקה", startsOn: addDays(today, -30), endsOn: addDays(today, 30), lockAt: "23:59:59", active: true })
+      .values({ name: "סבב בדיקה", startsOn: addDays(today, -30), endsOn: addDays(today, 30), lockAt: "23:59:59", state: "active" })
       .returning();
     roundId = round!.id;
     await db.insert(roundCompanies).values([
@@ -950,6 +950,107 @@ describe("doch1", () => {
     it("standby writes are audited", async () => {
       const rows = await db.select().from(auditLog).where(eq(auditLog.tableName, "doch1_standby_members"));
       expect(rows.some((r) => r.actorUserId === plsrClerk.appId)).toBe(true);
+    });
+  });
+
+  describe("doch1 round planning", () => {
+    const { doch1FieldOptions: options } = schema;
+    const opt = { arriving: "", notArriving: "", arrived: "" };
+
+    const setMember = (u: TestUser, personId: string, v: Partial<typeof members.$inferInsert>) =>
+      as(u, (tx) =>
+        tx
+          .update(members)
+          .set(v)
+          .where(and(eq(members.roundId, roundId), eq(members.personId, personId)))
+          .returning(),
+      );
+
+    beforeAll(async () => {
+      const rows = await as(d1Admin, (tx) =>
+        tx
+          .insert(options)
+          .values([
+            { roundId, field: "arrival", name: "מגיע", effect: "arriving" },
+            { roundId, field: "arrival", name: "לא מגיע", effect: "not_arriving", sortOrder: 1 },
+            { roundId, field: "enlistment", name: "התייצב", effect: "arrived" },
+          ])
+          .returning(),
+      );
+      opt.arriving = rows[0]!.id;
+      opt.notArriving = rows[1]!.id;
+      opt.arrived = rows[2]!.id;
+    });
+
+    it("value lists: everyone in doch1 reads them, only the battalion admin writes", async () => {
+      expect(await as(plsrClerk, (tx) => tx.select().from(options))).toHaveLength(3);
+      expect(await as(stranger, (tx) => tx.select().from(options))).toHaveLength(0);
+      await rejects(as(plsrClerk, (tx) => tx.insert(options).values({ roundId, field: "arrival", name: "x", effect: "arriving" })));
+      expect(await as(plsrClerk, (tx) => tx.update(options).set({ name: "y" }).where(eq(options.id, opt.arriving)).returning())).toHaveLength(0);
+      expect(await as(plsrClerk, (tx) => tx.delete(options).where(eq(options.id, opt.arriving)).returning())).toHaveLength(0);
+      // an effect of the other list
+      await rejects(as(d1Admin, (tx) => tx.insert(options).values({ roundId, field: "arrival", name: "z", effect: "arrived" })));
+      // the same name twice in one list
+      await rejects(as(d1Admin, (tx) => tx.insert(options).values({ roundId, field: "arrival", name: "מגיע", effect: "arriving" })));
+      const audit = await db.select().from(auditLog).where(eq(auditLog.tableName, "doch1_field_options"));
+      expect(audit.some((r) => r.actorUserId === d1Admin.appId)).toBe(true);
+    });
+
+    it("a company user sets צפי הגעה and סטטוס גיוס for their own soldiers only", async () => {
+      expect(await setMember(plsrClerk, p.plsr1Soldier, { arrivalOptionId: opt.notArriving })).toHaveLength(1);
+      expect(await setMember(plsrClerk, p.plsr1Soldier, { enlistmentOptionId: opt.arrived })).toHaveLength(1);
+      expect(await setMember(plntClerk, p.plsr1Soldier, { arrivalOptionId: opt.arriving })).toHaveLength(0);
+      expect(await setMember(plsr1Cmdr, p.plsr1Soldier, { arrivalOptionId: opt.arriving })).toHaveLength(0);
+      expect(await setMember(d1Viewer, p.plsr1Soldier, { arrivalOptionId: opt.arriving })).toHaveLength(0);
+      expect(await setMember(plsrClerk, p.plsr1Soldier, { arrivalOptionId: null })).toHaveLength(1);
+    });
+
+    it("a value of the other list or of another round is rejected", async () => {
+      const wrongList = setMember(d1Admin, p.plsr1Soldier, { arrivalOptionId: opt.arrived });
+      expect(await wrongList.then(() => "ok", pgCodeOf)).toBe("GD003");
+      const [other] = await db.insert(rounds).values({ name: "סבב אחר לצפי", startsOn: today, endsOn: today }).returning();
+      const [foreign] = await db.insert(options).values({ roundId: other!.id, field: "arrival", name: "מגיע", effect: "arriving" }).returning();
+      await rejects(setMember(d1Admin, p.plsr1Soldier, { arrivalOptionId: foreign!.id }));
+    });
+
+    it("deleting a value in use leaves the soldier's field blank", async () => {
+      const [tmp] = await as(d1Admin, (tx) =>
+        tx.insert(options).values({ roundId, field: "arrival", name: "זמני", effect: "arriving" }).returning(),
+      );
+      await setMember(plsrClerk, p.plsr1Soldier, { arrivalOptionId: tmp!.id });
+      await as(d1Admin, (tx) => tx.delete(options).where(eq(options.id, tmp!.id)));
+      const [m] = await db.select().from(members).where(and(eq(members.roundId, roundId), eq(members.personId, p.plsr1Soldier)));
+      expect(m!.arrivalOptionId).toBeNull();
+      expect(m!.roundId).toBe(roundId);
+    });
+
+    it("a pending company move is set by the battalion admin only", async () => {
+      const byClerk = setMember(plsrClerk, p.plsr1Soldier, { plannedUnitId: ids.plnt });
+      expect(await byClerk.then(() => "ok", pgCodeOf)).toBe("GD004");
+      expect(await setMember(d1Admin, p.plsr1Soldier, { plannedUnitId: ids.plnt })).toHaveLength(1);
+      // the clerk can still edit other fields of a soldier with a pending move
+      expect(await setMember(plsrClerk, p.plsr1Soldier, { notes: "עובר" })).toHaveLength(1);
+      expect(await setMember(d1Admin, p.plsr1Soldier, { plannedUnitId: null })).toHaveLength(1);
+    });
+
+    it("round state: one active and one planning at most; `active` follows the state and can't be written", async () => {
+      const [main] = await db.select().from(rounds).where(eq(rounds.id, roundId));
+      expect(main!.active).toBe(true);
+      const [planning] = await as(d1Admin, (tx) =>
+        tx.insert(rounds).values({ name: "סבב הבא", startsOn: today, endsOn: today, state: "planning" }).returning(),
+      );
+      expect(planning!.active).toBe(false);
+      await rejects(as(d1Admin, (tx) => tx.insert(rounds).values({ name: "סבב נוסף", startsOn: today, endsOn: today, state: "planning" })));
+      await rejects(as(d1Admin, (tx) => tx.insert(rounds).values({ name: "סבב פעיל", startsOn: today, endsOn: today, state: "active" })));
+      await rejects(as(d1Admin, (tx) => tx.execute(sql`update public.doch1_rounds set active = true where id = ${planning!.id}::uuid`)));
+      await rejects(as(d1Admin, (tx) => tx.update(rounds).set({ state: "draft" as never }).where(eq(rounds.id, planning!.id))));
+      expect(await as(plsrClerk, (tx) => tx.update(rounds).set({ state: "active" }).where(eq(rounds.id, planning!.id)).returning())).toHaveLength(0);
+      await db.delete(rounds).where(eq(rounds.id, planning!.id));
+    });
+
+    it("reminder requests carry a kind", async () => {
+      await as(d1Admin, (tx) => tx.insert(reminderRequests).values({ roundId, unitId: ids.plsr, kind: "arrival" }));
+      await rejects(as(d1Admin, (tx) => tx.insert(reminderRequests).values({ roundId, unitId: ids.plsr, kind: "x" as never })));
     });
   });
 });

@@ -49,14 +49,15 @@ export async function saveRound(_: ActionResult, fd: FormData): Promise<ActionRe
   if (!s) return NO_PERMISSION;
   const parsed = roundInput.safeParse(Object.fromEntries(fd));
   if (!parsed.success) return { error: firstIssue(parsed.error) };
-  const { id, ...values } = parsed.data;
+  const { id, active, ...rest } = parsed.data;
+  const values = { ...rest, state: active ? ("active" as const) : ("closed" as const) };
   try {
     await withUser(s.claims, async (tx) => {
-      // one active round: deactivate the others first (partial unique index)
-      if (values.active) {
+      // one active round: close the others first (partial unique index)
+      if (active) {
         await tx
           .update(rounds)
-          .set({ active: false })
+          .set({ state: "closed" })
           .where(id ? and(eq(rounds.active, true), ne(rounds.id, id)) : eq(rounds.active, true));
       }
       if (id) {
