@@ -952,4 +952,46 @@ describe("doch1", () => {
       expect(rows.some((r) => r.actorUserId === plsrClerk.appId)).toBe(true);
     });
   });
+
+  describe("doch1 reports", () => {
+    const { doch1DmhCategories: categories, doch1ReportGroups: groups, doch1Locations: locations } = schema;
+    let camp = "";
+
+    beforeAll(async () => {
+      const [loc] = await db.insert(locations).values({ roundId, name: "מחנה", kind: "camp" }).returning();
+      camp = loc!.id;
+    });
+
+    it("only battalion admins manage the דמ״ח categories and the 10א groups; every doch1 user reads them", async () => {
+      for (const u of [plsrClerk, plsr1Cmdr, d1Viewer]) {
+        await rejects(as(u, (tx) => tx.insert(categories).values({ roundId, name: "לוחם" })));
+        await rejects(as(u, (tx) => tx.insert(groups).values({ roundId, name: "מכלול", unitIds: [ids.plsr1] })));
+      }
+      const [cat] = await as(d1Admin, (tx) => tx.insert(categories).values({ roundId, name: "מט״ב", listed: true }).returning());
+      const [grp] = await as(d1Admin, (tx) => tx.insert(groups).values({ roundId, name: "מכלול", commander: "סמג״ד", unitIds: [ids.plsr1] }).returning());
+      expect(await as(plsr1Cmdr, (tx) => tx.select().from(categories))).toHaveLength(1);
+      expect(await as(d1Viewer, (tx) => tx.select().from(groups))).toHaveLength(1);
+      expect(await as(stranger, (tx) => tx.select().from(categories))).toHaveLength(0);
+      expect(await as(stranger, (tx) => tx.select().from(groups))).toHaveLength(0);
+      expect(await as(plsrClerk, (tx) => tx.update(categories).set({ listed: false }).where(eq(categories.id, cat!.id)).returning())).toHaveLength(0);
+      expect(await as(plsrClerk, (tx) => tx.delete(groups).where(eq(groups.id, grp!.id)).returning())).toHaveLength(0);
+      expect(await as(d1Admin, (tx) => tx.update(groups).set({ unitIds: [ids.plsr] }).where(eq(groups.id, grp!.id)).returning())).toHaveLength(1);
+    });
+
+    it("a status's camp: set by the admin, a location of the same round", async () => {
+      expect(await as(plsrClerk, (tx) => tx.update(statuses).set({ locationId: camp }).where(eq(statuses.id, st.A)).returning())).toHaveLength(0);
+      expect(await as(d1Admin, (tx) => tx.update(statuses).set({ locationId: camp }).where(eq(statuses.id, st.A)).returning())).toHaveLength(1);
+      const [other] = await db.insert(rounds).values({ name: "סבב אחר", startsOn: today, endsOn: today }).returning();
+      const [foreign] = await db.insert(locations).values({ roundId: other!.id, name: "מחנה", kind: "camp" }).returning();
+      await rejects(as(d1Admin, (tx) => tx.update(statuses).set({ locationId: foreign!.id }).where(eq(statuses.id, st.A))));
+      await as(d1Admin, (tx) => tx.update(statuses).set({ locationId: null }).where(eq(statuses.id, st.A)));
+    });
+
+    it("report settings writes are audited", async () => {
+      for (const table of ["doch1_dmh_categories", "doch1_report_groups"]) {
+        const rows = await db.select().from(auditLog).where(eq(auditLog.tableName, table));
+        expect(rows.some((r) => r.actorUserId === d1Admin.appId)).toBe(true);
+      }
+    });
+  });
 });

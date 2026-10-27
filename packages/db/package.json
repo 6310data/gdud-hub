@@ -8,7 +8,8 @@
     "./schema": "./src/schema/index.ts",
     "./doch1-import": "./src/doch1-import/index.ts",
     "./logistics-sheet": "./src/logistics-sheet/index.ts",
-    "./logistics-sheet/preview": "./src/logistics-sheet/preview.ts"
+    "./logistics-sheet/preview": "./src/logistics-sheet/preview.ts",
+    "./xlsx": "./src/xlsx.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
