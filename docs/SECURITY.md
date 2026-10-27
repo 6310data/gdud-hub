@@ -27,6 +27,7 @@ The app holds personal data about soldiers. Check with the unit's ביטחון �
 ## Approvals
 
 - doch1 (דוח 1), 2026-10-22: ביטחון מידע approval for soldier names, personal numbers and phones, outposts, standby readiness and vehicle numbers carries over from the approved Google Sheet "דוח 1 - סבב שביעי". Recorded by the battalion admin.
+- kesher (מחלקת קשר), 2026-10-27: ביטחון מידע approval for which soldier (from the דוח 1 list) holds which communications device, kesher roles and frames, device serial numbers, company holdings and vehicle numbers, carried over from the approved Google Sheet "פיזור ושליטה מחלקת קשר". The sheet's emails and access codes are not imported. Confirmed by the user in the kesher design (docs/superpowers/specs/2026-10-27-kesher-design.md).
 
 ## Accounts to protect (2-step verification on all)
 
