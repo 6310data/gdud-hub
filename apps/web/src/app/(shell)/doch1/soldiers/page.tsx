@@ -1,10 +1,14 @@
 import Link from "next/link";
 import { can } from "@gdud/auth";
 import { israelToday } from "@gdud/core";
-import { withUser } from "@gdud/db";
+import { and, eq, isNull, schema, withUser } from "@gdud/db";
+import { ActionButton } from "@/components/action-button";
 import { loadActiveRound, loadFieldOptions, loadMembers, loadRoundCompanies } from "@/lib/doch1/data";
 import { requireModule } from "@/lib/session";
+import { fillCallUpFromReports } from "../_actions/members";
 import { SoldiersBoard, type SoldierVM } from "./_components/soldiers-board";
+
+const { doch1Members: members, doch1Days: days } = schema;
 
 export const metadata = { title: "דוח 1 · חיילים" };
 
@@ -21,8 +25,18 @@ export default async function Doch1Soldiers({ searchParams }: { searchParams: Pr
   const data = await withUser(s.claims, async (tx) => {
     const round = await loadActiveRound(tx);
     if (!round) return null;
-    const [companies, members, options] = await Promise.all([loadRoundCompanies(tx, round.id), loadMembers(tx, round.id, s.units), loadFieldOptions(tx, round.id)]);
-    return { round, companies, members, options };
+    const [companies, roster, options, reported] = await Promise.all([
+      loadRoundCompanies(tx, round.id),
+      loadMembers(tx, round.id, s.units),
+      loadFieldOptions(tx, round.id),
+      // soldiers without a call-up date who already have reported days
+      tx
+        .selectDistinct({ personId: days.personId })
+        .from(days)
+        .innerJoin(members, and(eq(members.roundId, days.roundId), eq(members.personId, days.personId)))
+        .where(and(eq(days.roundId, round.id), isNull(members.callUpOn))),
+    ]);
+    return { round, companies, members: roster, options, reported: new Set(reported.map((r) => r.personId)) };
   });
   if (!data) return null; // the layout shows "אין סבב פעיל"
 
@@ -52,6 +66,8 @@ export default async function Doch1Soldiers({ searchParams }: { searchParams: Pr
       editable: can(s.user, "doch1", ["admin", "company_user"], m.unitId, s.parents),
     }));
 
+  const fillable = rows.filter((m) => m.editable && !m.callUpOn && data.reported.has(m.personId)).map((m) => m.personId);
+
   return (
     <div className="mx-auto flex w-full max-w-[760px] flex-col gap-3">
       <div className="flex flex-col gap-1">
@@ -71,6 +87,14 @@ export default async function Doch1Soldiers({ searchParams }: { searchParams: Pr
             </Link>
           ))}
         </nav>
+      ) : null}
+      {fillable.length ? (
+        <div className="tz-alert m-0 flex flex-wrap items-center justify-between gap-2">
+          <span>
+            {fillable.length === 1 ? "לחייל אחד" : <><span className="tz-num">{fillable.length}</span> חיילים</>} אין תאריך גיוס אבל יש דיווחים בסבב. תאריך הגיוס שלהם יהיה יום הדיווח הראשון.
+          </span>
+          <ActionButton action={fillCallUpFromReports.bind(null, { personIds: fillable })} label="השלמת תאריך גיוס" variant="tinted" />
+        </div>
       ) : null}
       <SoldiersBoard key={unit.id} rows={rows} today={israelToday(new Date())} initialFilter={sp.show ?? "all"} back={`/doch1/soldiers?unit=${unit.id}`} />
     </div>

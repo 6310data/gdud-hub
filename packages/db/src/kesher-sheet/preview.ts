@@ -16,7 +16,7 @@ export const MSG = {
 /** Change kind → the chip in the preview (kinds not listed show their group). */
 export const KIND_LABEL: Record<string, string> = {
   "item.add": "פריט חדש",
-  "item.brigade": "מלאי חטיבה",
+  "item.brigade": "מלאי כללי",
   "serial.update": "מיקום / פרטים",
   "serial.delete": "מחיקה",
   "signer.set": "חותם על הפלוגה",

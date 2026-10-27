@@ -15,7 +15,7 @@ export const metadata = { title: "מחלקת קשר" };
 
 const DAY_MS = 86_400_000;
 
-/** סקירה (mockup #/home). Phase 1: read-only — the action buttons arrive with החתמה / זיכוי / דוח צ׳. */
+/** סקירה (mockup #/home). The action buttons arrive with החתמה / זיכוי; a company without a fresh דוח צ׳ links to /kesher/check. */
 export default async function KesherOverview() {
   const s = await requireModule("kesher");
   const access = kesherAccess(s);
@@ -55,10 +55,10 @@ export default async function KesherOverview() {
     const st = companyStatus(last, data.staleDays, now);
     const count = byCompany.get(c.id)?.length ?? 0;
     const href = `/kesher/companies/${c.id}`;
-    if (st.kind === "none" && count) attention.push({ href, tile: <SmallTile color="var(--tile-document)" icon="report" size={28} />, title: `${c.name} — לא הוגש דוח צ׳`, sub: `${fmtCount(count)} צ׳ על הפלוגה` });
+    if (st.kind === "none" && count) attention.push({ href: `/kesher/check?unit=${c.id}`, tile: <SmallTile color="var(--tile-document)" icon="report" size={28} />, title: `${c.name} — לא הוגש דוח צ׳`, sub: `${fmtCount(count)} צ׳ על הפלוגה` });
     else if (st.kind === "missing")
       attention.push({ href, tile: <SmallTile color="var(--tile-document)" icon="alert" size={28} />, title: `${c.name} — ${st.missing} צ׳ לא נמצאו`, sub: `בדוח מ־${fmtWhen(last!.at, now)}${last!.reporterName ? ` · ${last!.reporterName}` : ""}` });
-    else if (st.kind === "stale") attention.push({ href, tile: <SmallTile color="var(--tile-neutral)" icon="clock" size={28} />, title: `${c.name} — דוח צ׳ לפני ${st.days} ימים`, sub: "הגיע הזמן לבדיקה חוזרת" });
+    else if (st.kind === "stale") attention.push({ href: `/kesher/check?unit=${c.id}`, tile: <SmallTile color="var(--tile-neutral)" icon="clock" size={28} />, title: `${c.name} — דוח צ׳ לפני ${st.days} ימים`, sub: "הגיע הזמן לבדיקה חוזרת" });
   }
   const held = data.serials.filter((x) => x.holder);
   const left = held.filter((x) => leftCompany(x.holder!.holder, x.holder!.unitId) || leftCompany(x.holder!.signer, x.holder!.unitId)).length;
@@ -81,6 +81,12 @@ export default async function KesherOverview() {
         sub={`${fmtCount(data.serials.length)} צ׳ בגדוד · ${bulkCount} סוגי ציוד משלים · עודכן ${fmtWhen(now, now)}`}
         actions={
           <>
+            {access.companies.length ? (
+              <Link href="/kesher/check" className="tz-btn tz-btn-filled tz-btn-sm">
+                <Icon name="check" size={16} />
+                דוח צ׳
+              </Link>
+            ) : null}
             <Link href="/kesher/reports" className="tz-btn tz-btn-tinted tz-btn-sm">
               <Icon name="report" size={16} />
               הפקת דוחות

@@ -344,7 +344,7 @@ describe("plan and apply", () => {
     const [m1] = await db.select().from(doch1Members).where(eq(doch1Members.personId, s1!.id));
     expect(m1).toMatchObject({ sheetTab: "פלסר", sheetRow: 4, dmhCategory: "לוחם", callUpOn: "2026-09-06", hasDisc: true });
     const [enlisted] = await db.select().from(schema.doch1FieldOptions).where(eq(schema.doch1FieldOptions.id, m1!.enlistmentOptionId!));
-    expect(enlisted).toMatchObject({ field: "enlistment", name: "התייצב", effect: "pending" });
+    expect(enlisted).toMatchObject({ field: "enlistment", name: "התייצב", effect: "arrived" });
     const rc = await db.select().from(doch1RoundCompanies).where(eq(doch1RoundCompanies.roundId, roundId));
     expect(rc.map((r) => r.unitId).sort()).toEqual([ids.plsr, ids.plnt, ids.pltz].sort());
   });
@@ -373,6 +373,23 @@ describe("plan and apply", () => {
     await set({ callUpOn: null, releasedOn: "2026-09-01" });
     await apply(baseSheet());
     expect(await member()).toMatchObject({ callUpOn: "2026-09-06", releasedOn: null });
+  });
+
+  it("without a call-up date in the sheet or the app, the first reported day becomes the call-up date", async () => {
+    const [s3] = await db.select().from(people).where(eq(people.personalNumber, "7000003"));
+    const member = async () => (await db.select().from(doch1Members).where(eq(doch1Members.personId, s3!.id)))[0]!;
+    const noCallUp = (days: [Cell, Cell]) => {
+      const row = soldier(7000003, "טל", "דמיוני", "", days);
+      row[9] = null;
+      return sheet([companyTab("פלסר", [S1(), S2()]), companyTab("פלנט", [row])]);
+    };
+    await db.update(doch1Members).set({ callUpOn: null, releasedOn: null }).where(eq(doch1Members.personId, s3!.id));
+    await apply(noCallUp([null, "רענון"]));
+    expect(await member()).toMatchObject({ callUpOn: "2026-10-21" });
+    // an existing date wins over the first reported day
+    await apply(noCallUp(["רענון", "רענון"]));
+    expect(await member()).toMatchObject({ callUpOn: "2026-10-21" });
+    await apply(baseSheet());
   });
 
   it("an empty cell clears an existing entry", async () => {
@@ -520,13 +537,15 @@ describe("צפי הגעה and סטטוס גיוס", () => {
     roundId = round!.id;
   });
 
-  it("a round without values gets every value in the file, as arriving / pending", async () => {
+  it("a round without values gets every value in the file: צפי הגעה as arriving, סטטוס גיוס by its words", async () => {
     const counts = await apply(sheet([S(8000001, "מגיע"), S(8000002, "מגיע", "בדרך")]));
     expect(counts.optionsCreated).toBe(3);
     expect(await member(8000002)).toMatchObject({
       arrival: { field: "arrival", name: "מגיע", effect: "arriving" },
       enlistment: { field: "enlistment", name: "בדרך", effect: "pending" },
     });
+    // the effect of a new סטטוס גיוס value follows its words
+    expect(await member(8000001)).toMatchObject({ enlistment: { name: "התייצב", effect: "arrived" } });
   });
 
   it("an unknown value is a question; answering 'create' with an effect creates it and is remembered", async () => {

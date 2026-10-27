@@ -6,6 +6,7 @@ import { doch1Access } from "@/lib/doch1/access";
 import { loadActiveRound, loadFieldOptions, loadMembers, loadRoundCompanies } from "@/lib/doch1/data";
 import { requireModule } from "@/lib/session";
 import { DayNav } from "../_components/day-nav";
+import { BrigadeCompare } from "./_components/brigade-compare";
 import { CallUpList, type CallUpRow } from "./_components/call-up-list";
 import { CallUpText } from "./_components/call-up-text";
 
@@ -98,9 +99,10 @@ export default async function Doch1CallUp({ searchParams }: { searchParams: Prom
     }));
 
   const dayQuery = sp.day ? `&day=${day}` : "";
+  const arrived = data.options.find((o) => o.effect === "arrived") ?? null;
 
   return (
-    <div className="mx-auto flex w-full max-w-[860px] flex-col gap-[22px]">
+    <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-[22px]">
       <div className="flex flex-col gap-1">
         <span className="tz-footnote">{round.name}</span>
         <h1 className="tz-large-title">יום גיוס</h1>
@@ -144,6 +146,8 @@ export default async function Doch1CallUp({ searchParams }: { searchParams: Prom
           <CallUpText text={text} />
         </section>
       ) : null}
+
+      {access.isAdmin ? <BrigadeCompare arrivedOption={arrived ? { id: arrived.id, name: arrived.name } : null} back={`/doch1/call-up${sp.day ? `?day=${day}` : ""}`} /> : null}
 
       {canMark && unit ? (
         <section className="flex flex-col gap-2">

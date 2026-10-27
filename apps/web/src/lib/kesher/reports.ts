@@ -65,7 +65,7 @@ export function brigadeReport(data: KesherData, companies: readonly UnitNode[], 
   const total = (itemId: string) => stockPlaces.reduce((n, p) => n + qty(itemId, p.id), 0);
   const stockTable: ReportTable = {
     title: data.warehouseTracked ? "ציוד משלים לפי מיקום" : "ציוד משלים לפי מיקום (מלאי המחסן לא מנוהל)",
-    head: ["פריט", "קטגוריה", ...stockPlaces.map((p) => p.name), "סה״כ בגדוד", "מלאי קבלות חטיבה", "הפרש"],
+    head: ["פריט", "קטגוריה", ...stockPlaces.map((p) => p.name), "סה״כ בגדוד", "מלאי כללי / חטיבה", "הפרש"],
     tints: [null, null, ...stockPlaces.map((p) => p.color), null, null, null],
     rows: bulk.map((i) => [
       i.name,

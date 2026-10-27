@@ -155,6 +155,13 @@
       "when": 1793108834907,
       "tag": "0021_doch1_drop_member_text_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1793114648531,
+      "tag": "0022_doch1_enlistment_effects",
+      "breakpoints": true
     }
   ]
 }

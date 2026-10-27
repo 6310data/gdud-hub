@@ -2,9 +2,10 @@
  * Call-up day (יום גיוס): who showed up, by the effects of the round's סטטוס גיוס values.
  * Replaces the sheet's "דוחות יום גיוס" tab. No value name lives here.
  */
-import type { EnlistmentEffect, ServiceDates } from "./counting";
+import { guessEnlistmentEffect, type EnlistmentEffect, type ServiceDates } from "./counting";
 import { hebrewDayLabel, type Day } from "./dates";
 import { pairs } from "./outputs";
+import { personalNumberKey } from "./reports";
 
 export interface CallUpMember extends ServiceDates {
   personId: string;
@@ -95,4 +96,62 @@ export function callUpBrigadeText(input: {
     lines.push(...pairs(input.companies.map((c) => `${c.name} ${c.summary.arrived} / ${c.summary.expected}${pct(c.summary.percent)}`)));
   }
   return lines.join("\n");
+}
+
+/* ── The brigade's list of who showed up ─────────────────────────────────── */
+
+/** A row of the brigade's file; `line` is the file's row number. */
+export interface BrigadeRow {
+  line: number;
+  personalNumber: string;
+  name: string;
+  /** the file's status text; "" when the list has no status column (every row showed up) */
+  status: string;
+}
+
+export interface BrigadeMember {
+  personId: string;
+  personalNumber: string | null;
+  /** marked with an "arrived" סטטוס גיוס here */
+  arrived: boolean;
+}
+
+export interface BrigadeComparison {
+  /** showed up on both lists */
+  agree: number;
+  /** showed up on the brigade's list, not marked arrived here */
+  notMarked: Array<{ row: BrigadeRow; personId: string }>;
+  /** marked arrived here, missing from the brigade's list or not arrived there */
+  notInBrigade: Array<{ personId: string; row: BrigadeRow | null }>;
+  /** rows of the brigade's list that are no soldier of the round */
+  unknown: BrigadeRow[];
+}
+
+/** Does the brigade's row say the soldier showed up? A list without statuses lists only those who did. */
+export const brigadeArrived = (row: BrigadeRow): boolean => !row.status || guessEnlistmentEffect(row.status) === "arrived";
+
+/** Compare the brigade's list with the round's סטטוס גיוס, by מספר אישי (digits only, leading zeros ignored). */
+export function compareBrigadeList(members: readonly BrigadeMember[], rows: readonly BrigadeRow[]): BrigadeComparison {
+  const byNumber = new Map<string, BrigadeMember>();
+  for (const m of members) {
+    const k = personalNumberKey(m.personalNumber);
+    if (k) byNumber.set(k, m);
+  }
+  const out: BrigadeComparison = { agree: 0, notMarked: [], notInBrigade: [], unknown: [] };
+  const seen = new Map<string, BrigadeRow>();
+  for (const row of rows) {
+    const m = byNumber.get(personalNumberKey(row.personalNumber) ?? "");
+    if (!m) {
+      out.unknown.push(row);
+      continue;
+    }
+    if (seen.has(m.personId)) continue;
+    seen.set(m.personId, row);
+    const there = brigadeArrived(row);
+    if (there && m.arrived) out.agree++;
+    else if (there) out.notMarked.push({ row, personId: m.personId });
+    else if (m.arrived) out.notInBrigade.push({ personId: m.personId, row });
+  }
+  for (const m of members) if (m.arrived && !seen.has(m.personId)) out.notInBrigade.push({ personId: m.personId, row: null });
+  return out;
 }

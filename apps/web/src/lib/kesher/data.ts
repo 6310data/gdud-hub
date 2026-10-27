@@ -134,6 +134,18 @@ export async function loadKesher(tx: Tx, units: readonly UnitNode[]): Promise<Ke
   };
 }
 
+export interface KKitLine {
+  id: string;
+  parentItemId: string;
+  itemId: string;
+  qty: number;
+}
+
+/** The תקן lines with their ids (editing), in display order. */
+export async function loadKitLines(tx: Tx): Promise<KKitLine[]> {
+  return tx.select({ id: kits.id, parentItemId: kits.parentItemId, itemId: kits.itemId, qty: kits.qty }).from(kits).orderBy(asc(kits.sortOrder), asc(kits.createdAt));
+}
+
 /** The newest דוח צ׳ of each company the user covers. */
 export async function loadLastChecks(tx: Tx): Promise<Map<string, KCheck>> {
   const rows = await tx

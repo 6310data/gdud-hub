@@ -203,7 +203,8 @@ export function SoldierCard({
         <span className="flex items-center gap-2 justify-self-end">
           {pending ? <Spinner size={16} label="שומר" /> : null}
           {canEdit ? (
-            <button type="button" className="tz-btn tz-btn-plain px-0" onClick={() => setSheet("edit")}>
+            <button type="button" className="tz-btn tz-btn-tinted tz-btn-sm" onClick={() => setSheet("edit")}>
+              <Icon name="pencil" size={15} />
               עריכה
             </button>
           ) : null}
@@ -400,7 +401,14 @@ export function SoldierCard({
       </div>
       <p className="tz-section-footer">נוכחות ורענון נספרים מיום הגיוס של הסבב, כמו בגיליון; ימים מתוכננים לא נספרים.</p>
 
-      <h2 className="tz-section-header pt-[22px]">פרטים</h2>
+      <div className="flex items-end justify-between pt-[22px]">
+        <h2 className="tz-section-header">פרטים</h2>
+        {canEdit ? (
+          <button type="button" className="tz-btn tz-btn-plain tz-btn-sm" onClick={() => setSheet("edit")}>
+            עריכת פרטים ותאריכים
+          </button>
+        ) : null}
+      </div>
       <div className="tz-group">
         <div className="tz-row">
           <span className="tz-row-body">

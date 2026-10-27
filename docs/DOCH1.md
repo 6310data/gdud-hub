@@ -9,7 +9,7 @@ The daily personnel report module (`/doch1`). Design: `docs/superpowers/specs/20
 | Pages and Server Actions | `apps/web/src/app/(shell)/doch1/` (the module's own frame: `layout.tsx` → `components/app-shell.tsx`) |
 | Sheet import endpoint | `apps/web/src/app/(shell)/doch1/import/run/route.ts` — streams the import's phases (NDJSON, `lib/progress-stream.ts`) |
 | Counting, dates and the lock rule, report texts, standby readiness | `packages/core/src/doch1/` (pure, unit-tested) |
-| Tables | `packages/db/src/schema/doch1.ts` → `migrations/0004_doch1.sql`, `0007_doch1_standby.sql`, `0019_doch1_round_planning.sql`, `0021_doch1_drop_member_text_fields.sql` |
+| Tables | `packages/db/src/schema/doch1.ts` → `migrations/0004_doch1.sql`, `0007_doch1_standby.sql`, `0019_doch1_round_planning.sql`, `0021_doch1_drop_member_text_fields.sql`, `0022_doch1_enlistment_effects.sql` (data fix) |
 | RLS, grants, the lock guard (`GD001` locked day, `GD002` outside the round), the member guards (`GD003` a value of the other list, `GD004` a company move by a non-admin) | `migrations/0005_doch1_security.sql`, `0008_doch1_standby_security.sql`, `0020_doch1_round_planning_security.sql`, tested in `packages/db/test/rls.test.ts` |
 | Round states, creating and activating a round | `packages/db/src/doch1-rounds/`, tested in `packages/db/test/doch1-rounds.test.ts`; settings actions `_actions/settings.ts` |
 | תכנון סבב pages | `apps/web/src/app/(shell)/doch1/planning/` (actions: `_actions/planning.ts`; loaders: `apps/web/src/lib/doch1/planning.ts`, `roster.ts`) |
@@ -58,7 +58,7 @@ For the reports screen also `0016_doch1_reports` (דמ״ח categories, 10א grou
 
 Then Supabase → Advisors → Security Advisor should show no new warnings.
 
-Round planning (`0019_doch1_round_planning`, `0020_doch1_round_planning_security`, `0021_doch1_drop_member_text_fields`) goes out together with its code: the code reads the new columns, and 0021 drops the free-text צפי הגעה / סטטוס גיוס columns the old code reads. 0020 copies every value already in those columns into the round's lists (as מגיע / ממתין) before 0021 drops them.
+Round planning (`0019_doch1_round_planning`, `0020_doch1_round_planning_security`, `0021_doch1_drop_member_text_fields`) goes out together with its code: the code reads the new columns, and 0021 drops the free-text צפי הגעה / סטטוס גיוס columns the old code reads. 0020 copies every value already in those columns into the round's lists (as מגיע / ממתין) before 0021 drops them. `0022_doch1_enlistment_effects` then gives the סטטוס גיוס values still on ממתין the meaning their words say (התייצב → התייצב, נדחה, שוחרר; טרם התייצב stays ממתין) — without it, התייצבו on יום גיוס stays 0.
 
 ## The reminder cron (runs on any Vercel plan)
 
@@ -149,7 +149,7 @@ Who edits a team: the battalion admin and the company users of its holding compa
 
 A soldier is listed on a day only from their **call-up date** (תאריך גיוס) through their **release date** (תאריך שחרור), inclusive (`inService()` in `packages/core/src/doch1/counting.ts`). A soldier with no call-up date is listed on no day. This applies to every screen and count: the today screen, the board (days outside the dates are blank cells), the overview, the brigade report, the שבצ״ק lists, "השלמת חסרים לפי אתמול" and the push reminders. Copy-to-sheet keeps those soldiers' sheet rows (with whatever value they have) but doesn't count them as missing.
 
-The dates are set on `/doch1/soldiers` (company user or admin covering the soldier; one soldier, or several with "בחירה"). The sheet import fills the call-up date from column J; a blank J keeps the date entered in the app. The release date comes only from the app. Migration: `0012_doch1_service_dates` (`pnpm db:migrate`).
+The dates are set on `/doch1/soldiers` (company user or admin covering the soldier; one soldier, or several with "בחירה"). The sheet import fills the call-up date from column J; a blank J keeps the date entered in the app, and with no date in either, the first day the sheet reports a status for the soldier becomes the call-up date. For soldiers already in the round without a call-up date who have reported days, the screen offers "השלמת תאריך גיוס" (the first reported day; a soldier whose release date is before it is left alone). The release date comes only from the app. Migration: `0012_doch1_service_dates` (`pnpm db:migrate`).
 
 "לא נספר בדוח" (today screen) still works as before, on top of the dates.
 
@@ -217,7 +217,7 @@ A round is **בתכנון** (`planning`), **פעיל** (`active`) or **סגור*
 | סטטוס גיוס | נדחה | asks for the new call-up date |
 | סטטוס גיוס | שוחרר | asks for the release date |
 
-Deleting a value that soldiers have asks what they get instead (another value, or blank). An empty list offers suggested values.
+Deleting a value that soldiers have asks what they get instead (another value, or blank). An empty list offers suggested values. A צפי הגעה value the import creates starts as מגיע; a סטטוס גיוס value gets the meaning its words say (`guessEnlistmentEffect()` in `packages/core/src/doch1/counting.ts`: "טרם" / "בדרך" / "נפקד" → ממתין, "נדח" → נדחה, "שוחרר" → שוחרר, "התייצב" → התייצב, else ממתין).
 
 ## Planning the next round (`/doch1/planning`)
 
@@ -234,4 +234,6 @@ The menu shows "תכנון <round>" to the admin and company users while a round
 
 ## יום גיוס (`/doch1/call-up`)
 
-Per company and battalion: expected (called up by that day and arriving, minus נדחה and שוחרר), arrived, not yet (including not marked), postponed, released, התייצב %. It replaces the sheet's `דוחות יום גיוס`. The admin gets the brigade block (counts only) to copy or share. The admin and company users mark each soldier's סטטוס גיוס: נדחה asks for the new call-up date (the soldier leaves the daily screens until then), שוחרר for the release date — saved together, with undo. It opens on the round's call-up day until it has passed, then today; `?day=` picks another.
+Per company and battalion: expected (called up by that day and arriving, minus נדחה and שוחרר), arrived, not yet (including not marked), postponed, released, התייצב %. It replaces the sheet's `דוחות יום גיוס`. The admin gets the brigade block (counts only) to copy or share. The admin and company users mark each soldier's סטטוס גיוס: נדחה asks for the new call-up date (the soldier leaves the daily screens until then), שוחרר for the release date — saved together, with undo. It opens on the round's call-up day until it has passed, then today; `?day=` picks another. On a phone each soldier is a row with the values as chips; on a desktop it is a table with a column per value.
+
+**השוואה לרשימת החטיבה** (admin): upload the brigade's list of who showed up — xlsx or csv with a "מספר אישי" column (header found by text; names and a status column are optional; without a status column every row counts as showed up). It is compared by מספר אישי (digits only, leading zeros ignored) with every soldier of the round: showed up there but not marked התייצב here ("סימון התייצב" per soldier or all at once), marked התייצב here but missing or not arrived there, and rows that are no soldier of the round. Nothing is stored. Parser: `parseBrigadeList()` in `packages/db/src/doch1-roster-import/brigade.ts`; comparison: `compareBrigadeList()` in `packages/core/src/doch1/call-up.ts`; action: `_actions/call-up.ts`.

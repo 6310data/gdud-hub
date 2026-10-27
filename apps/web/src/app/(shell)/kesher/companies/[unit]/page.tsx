@@ -24,7 +24,8 @@ const searchSchema = z.object({
 /**
  * פלוגה (mockup #/companies/<unit>): the company's צ׳ grouped by device type with who holds each
  * inside the company, and its ציוד משלים against the תקן. Anyone covering the company edits the
- * שיוך בתוך הפלוגה (soldier · תפקיד · מסגרת); a battalion admin also edits חותם על הפלוגה.
+ * שיוך בתוך הפלוגה (soldier · תפקיד · מסגרת) and files a דוח צ׳ (/kesher/check); a battalion admin
+ * also edits חותם על הפלוגה.
  */
 export default async function KesherCompany({
   params,
@@ -112,6 +113,12 @@ export default async function KesherCompany({
             )}
           </span>
         </span>
+        {mine.length ? (
+          <Link href={`/kesher/check?unit=${company.id}`} className="tz-btn tz-btn-filled tz-btn-sm">
+            <Icon name="check" size={16} />
+            דוח צ׳ חדש
+          </Link>
+        ) : null}
       </div>
 
       <div className="flex flex-wrap items-center gap-3">

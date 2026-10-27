@@ -285,6 +285,16 @@ describe("kesher import", () => {
       expect(errors(d, "general").find((l) => l.item === "710")!.message).toMatch(/סוג מכשיר ולא כציוד משלים/);
     });
 
+    it("כללי without a חטיבה column: מלאי כללי is the item's reference total, with no sum warning", async () => {
+      const noBrigade = GENERAL.map((r) => r.slice(0, 13));
+      noBrigade[2]![7] = 70;
+      const only = await diff((await readKesherBook(await xlsx({ ...BOOK, "כללי": noBrigade }))).sheets, ["general"]);
+      expect(find(only, (l) => l.id === "general:item.add:סוללות קטנות")!.op).toMatchObject({ brigadeQty: 70 });
+      expect(find(only, (l) => l.id === "general:item.add:מגבר")!.op).toMatchObject({ brigadeQty: 3 });
+      expect(find(only, (l) => l.id === "general:stock.set:סוללות קטנות")!.message).toBeNull();
+      expect(only.lines.some((l) => l.kind === "info")).toBe(false);
+    });
+
     it("תקן: cycles, unknown parents, non-bulk children and bad quantities are errors", () => {
       expect(byKind(d, "kit.add").map((l) => l.item).sort()).toEqual(["710 ← מגבר", "710 ← סוללות קטנות", "מגבר ← סוללות קטנות"].sort());
       const msgs = errors(d, "kit").map((l) => l.message);

@@ -410,7 +410,11 @@ class Differ {
     }
   }
 
-  /* ── כללי: C פריט · columns by header: במחסן, each company, מלאי כללי, מלאי קבלות חטיבה ── */
+  /*
+   * ── כללי: C פריט · columns by header: במחסן, each company, מלאי כללי, מלאי קבלות חטיבה ──
+   * The item's reference total (brigade_qty, shown as "מלאי כללי") comes from מלאי קבלות חטיבה; a
+   * sheet without that column fills מלאי כללי by hand as the starting inventory, so it's taken instead.
+   */
 
   general(tab: KesherTab) {
     const cols: { col: number; unitId: string | null; name: string }[] = [];
@@ -434,6 +438,9 @@ class Differ {
       this.error("general", 2, "לא נמצאו בשורה 2 עמודות \"במחסן\" או של פלוגות", { key: "header" });
       return;
     }
+    const totalIsRef = !brigadeCol && totalCol > 0;
+    const refCol = brigadeCol || totalCol;
+    const refName = totalIsRef ? "מלאי כללי" : "מלאי קבלות חטיבה";
     const seen = new Map<string, number>();
     for (const r of tab.rows) {
       const name = nameKey(cell(r, 3));
@@ -450,12 +457,12 @@ class Differ {
         this.error("general", r.row, `כמות לא תקינה בעמודה ${bad.name}: "${cell(r, bad.col)}"`, { key: `${r.row}`, item: name });
         continue;
       }
-      const brigade = brigadeCol ? parseQty(cell(r, brigadeCol)) : undefined;
+      const brigade = refCol ? parseQty(cell(r, refCol)) : undefined;
       if (brigade !== undefined && (Number.isNaN(brigade) || brigade < 0)) {
-        this.error("general", r.row, `מלאי קבלות חטיבה לא תקין: "${cell(r, brigadeCol)}"`, { key: `${r.row}`, item: name });
+        this.error("general", r.row, `${refName} לא תקין: "${cell(r, refCol)}"`, { key: `${r.row}`, item: name });
         continue;
       }
-      const brigadeQty = brigade === undefined ? undefined : cell(r, brigadeCol) === "" ? null : brigade;
+      const brigadeQty = brigade === undefined ? undefined : cell(r, refCol) === "" ? null : brigade;
       const existing = this.st.itemsByName.get(name);
       const needs = this.needItem(name, "bulk", { sheet: "general", row: r.row }, { category: nullIfBlank(cell(r, 1)), brigadeQty: brigadeQty ?? null });
       if ("error" in needs) {
@@ -468,12 +475,13 @@ class Differ {
         this.push("general", r.row, "change", { t: "item.brigade", itemId: existing.id, brigadeQty }, {
           key: name,
           item: name,
-          before: `מלאי חטיבה ${existing.brigadeQty ?? "—"}`,
-          after: `מלאי חטיבה ${brigadeQty ?? "—"}`,
+          before: `מלאי כללי ${existing.brigadeQty ?? "—"}`,
+          after: `מלאי כללי ${brigadeQty ?? "—"}`,
         });
       }
       const sum = qtys.reduce((n, q) => n + q.qty, 0);
-      const total = totalCol ? parseQty(cell(r, totalCol)) : Number.NaN;
+      // מלאי כללי as the reference is the starting inventory, not a sum of the columns: no warning
+      const total = totalCol && !totalIsRef ? parseQty(cell(r, totalCol)) : Number.NaN;
       const warning = !Number.isNaN(total) && cell(r, totalCol) !== "" && total !== sum ? `"מלאי כללי" בגיליון ${total}, סכום העמודות ${sum}` : null;
       const app = (unitId: string | null) => (existing ? (this.st.stock.get(stockKey(existing.id, unitId)) ?? 0) : 0);
       const diff = qtys.filter((q) => app(q.unitId) !== q.qty);
