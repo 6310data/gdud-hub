@@ -79,10 +79,10 @@ export const MODULES = [
     description: "מלאי ציוד קשר והחתמות",
     href: "/kesher",
     icon: "antenna",
-    status: "planned",
+    status: "live",
     roles: [
-      { id: "admin", label: "מנהל", description: "החתמות, קליטה וניהול מלאי" },
-      { id: "user", label: "משתמש", description: "חיפוש וצפייה" },
+      { id: "admin", label: "מנהל", description: "החתמות, קליטה, מלאי וייבוא — כשההרשאה על כל הגדוד" },
+      { id: "user", label: "משתמש", description: "צפייה, שיוך חותמים בפלוגה ודוח צ׳" },
     ],
   },
   {
