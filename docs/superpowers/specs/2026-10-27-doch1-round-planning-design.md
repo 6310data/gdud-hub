@@ -158,7 +158,7 @@ So:
 
 ## Call-up day screen
 
-**`/doch1/call-up`** on the active round. It opens on the round's call-up day by default and takes `?day=`. Admin and company users; viewers read only.
+**`/doch1/call-up`** on the active round. It opens on the round's call-up day until that day has passed, then on today, and takes `?day=`. Admin and company users; viewers read only.
 
 - **Expected that day:** soldiers listed on that day (so not "not arriving") whose call-up date is on or before it, whose סטטוס גיוס is not `arrived` or `released`, plus everyone whose value was set that day.
 - Per soldier: chips of the enlistment values. `postponed` asks for the new call-up date and moves `call_up_on`. `released` asks for the release date and sets `released_on`. Each choice shows an undo toast.

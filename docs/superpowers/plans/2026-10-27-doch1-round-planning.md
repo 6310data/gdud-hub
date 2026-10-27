@@ -274,9 +274,9 @@ export async function activateRound(tx: Tx, planningRoundId: string): Promise<{ 
 ### Task 10: Call-up day screen
 
 **Files:**
-- Create: `apps/web/src/app/(shell)/doch1/call-up/page.tsx` (`?day=`, default the round's `call_up_on`; `day-nav.tsx` reused)
+- Create: `apps/web/src/app/(shell)/doch1/call-up/page.tsx` (`?day=`, default the round's `call_up_on` until it has passed, then today; `day-nav.tsx` reused)
 - Create: `apps/web/src/app/(shell)/doch1/call-up/_components/call-up-list.tsx` (chips per soldier; postponed → date sheet; released → date sheet; undo)
-- Create: `apps/web/src/app/(shell)/doch1/call-up/_components/call-up-summary.tsx` (table per company + battalion, brigade text with copy/share)
+- Create: `apps/web/src/app/(shell)/doch1/call-up/_components/call-up-text.tsx` (brigade text with copy/share; the table per company + battalion is in the page)
 - Modify: `apps/web/src/app/(shell)/doch1/_actions/members.ts` (`setEnlistment`: option id + optional `callUpOn` / `releasedOn`, one update)
 - Modify: nav (`components/app-shell.tsx`): "יום גיוס", shown for the active round
 

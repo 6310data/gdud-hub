@@ -1,7 +1,7 @@
 "use server";
 /**
  * Round member fields: in / out of the daily report (today screen), the call-up / release
- * dates (חיילים screen) and the soldier card's details. Company user or admin covering the soldier; RLS checks the same
+ * dates (חיילים screen), the soldier card's details and סטטוס גיוס (יום גיוס). Company user or admin covering the soldier; RLS checks the same
  * (doch1_members_update), the doch1_members_service_dates check the date order.
  */
 import { z } from "zod";
@@ -167,6 +167,51 @@ export async function updateSoldierDetails(raw: SoldierDetailsInput): Promise<So
     return { error: actionError(err) };
   }
   if (confirmDays) return { confirmDays };
+  revalidateDoch1();
+  return { ok: true };
+}
+
+const enlistmentInput = z.object({
+  personId: uuid,
+  optionId: uuid.nullable(),
+  /** set only when given: a postponed value moves the call-up date, undo puts it back */
+  callUpOn: dayParam.nullable().optional(),
+  /** set only when given: a released value sets the release date, undo / another value clears it */
+  releasedOn: dayParam.nullable().optional(),
+});
+
+/**
+ * יום גיוס: a soldier's סטטוס גיוס, and with it the call-up date (נדחה) or the release date
+ * (שוחרר), in one update. The value's effect decides which date it needs; the database checks the
+ * value belongs to this round's list (GD003) and the date order (doch1_members_service_dates).
+ */
+export async function setEnlistment(raw: z.input<typeof enlistmentInput>): Promise<ActionResult> {
+  const ctx = await doch1Ctx();
+  if (!ctx) return NO_ROUND;
+  const parsed = enlistmentInput.safeParse(raw);
+  if (!parsed.success) return { error: firstIssue(parsed.error) };
+  const { personId, optionId, callUpOn, releasedOn } = parsed.data;
+  try {
+    await withUser(ctx.s.claims, async (tx) => {
+      const [person] = await tx.select({ unitId: people.unitId }).from(people).where(eq(people.id, personId));
+      if (!person || !can(ctx.s.user, "doch1", ["admin", "company_user"], person.unitId, ctx.s.parents)) throw new UserError(NO_PERMISSION.error);
+      const [option] = optionId ? await tx.select({ effect: fieldOptions.effect }).from(fieldOptions).where(eq(fieldOptions.id, optionId)) : [];
+      if (optionId && !option) throw new UserError("הערך לא נמצא");
+      if (option?.effect === "postponed" && !callUpOn) throw new UserError("נדחה: צריך תאריך גיוס חדש");
+      if (option?.effect === "released" && !releasedOn) throw new UserError("שוחרר: צריך תאריך שחרור");
+      const set: Partial<typeof members.$inferInsert> = { enlistmentOptionId: optionId };
+      if (callUpOn !== undefined) set.callUpOn = callUpOn;
+      if (releasedOn !== undefined) set.releasedOn = releasedOn;
+      const r = await tx
+        .update(members)
+        .set(set)
+        .where(and(eq(members.roundId, ctx.round.id), eq(members.personId, personId)))
+        .returning({ personId: members.personId });
+      if (!r.length) throw new UserError("החייל לא נמצא בסבב");
+    });
+  } catch (err) {
+    return { error: actionError(err) };
+  }
   revalidateDoch1();
   return { ok: true };
 }
