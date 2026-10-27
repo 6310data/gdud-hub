@@ -5,6 +5,9 @@
 
 export const MSG = {
   noSoldier: "החייל לא נמצא ברשימת דוח 1 של הפלוגה — יש להוסיף אותו בדוח 1 או לתקן את השם בגיליון",
+  /** a close fit was linked: the line shows the candidates to change it */
+  guessed: (name: string) => `בגיליון "${name}" — התאמה משוערת לרשימת דוח 1, בדקו את החייל`,
+  unsure: (name: string, company: string) => `"${name}" לא נמצא בדיוק ב${company} — בחרו את החייל המתאים`,
   noCompany: (name: string) => `הפלוגה "${name}" לא קיימת — יש להוסיף אותה בניהול מערכת`,
   itemDiffers: "סוג המכשיר שונה מהאפליקציה — לתיקון ידני",
   sheetWins: "הגיליון הוא הרשומה: שינוי שנעשה רק באפליקציה (למשל חותם חדש) יופיע כאן כ״ישתנה״ בחזרה לערך שבגיליון. בטלו את הסימון כדי להשאיר את הערך שבאפליקציה.",

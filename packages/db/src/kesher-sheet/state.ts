@@ -59,6 +59,8 @@ export interface State {
   peopleById: Map<string, PersonRef>;
   /** `${companyId}|${searchKey(full name)}` → the active soldiers of that company with that name */
   peopleByName: Map<string, PersonRef[]>;
+  /** company id → its active soldiers (for close matches when no name matches exactly) */
+  peopleByCompany: Map<string, PersonRef[]>;
   itemsByName: Map<string, ItemRef>;
   itemsById: Map<string, ItemRef>;
   kits: KitRef[];
@@ -85,6 +87,7 @@ export async function loadState(tx: Tx): Promise<State> {
     companiesById: new Map(),
     peopleById: new Map(),
     peopleByName: new Map(),
+    peopleByCompany: new Map(),
     itemsByName: new Map(),
     itemsById: new Map(),
     kits: [],
@@ -116,6 +119,7 @@ export async function loadState(tx: Tx): Promise<State> {
     if (!p.active || !company) continue;
     const key = personKey(company.id, p.fullName);
     st.peopleByName.set(key, [...(st.peopleByName.get(key) ?? []), ref]);
+    st.peopleByCompany.set(company.id, [...(st.peopleByCompany.get(company.id) ?? []), ref]);
   }
 
   for (const i of await tx

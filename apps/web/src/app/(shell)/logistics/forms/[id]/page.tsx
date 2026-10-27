@@ -4,7 +4,7 @@ import { z } from "zod";
 import { eq, schema, withUser } from "@gdud/db";
 import { requireModule } from "@/lib/session";
 import { FormDocument } from "../../_components/form-document";
-import { PrintButton } from "../../_components/print-button";
+import { PrintButton } from "@/components/print-button";
 
 export const metadata = { title: "טופס" };
 

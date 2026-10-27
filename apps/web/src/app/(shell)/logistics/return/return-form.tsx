@@ -6,7 +6,7 @@ import { useState, useTransition } from "react";
 import { CONDITION_HINT, CONDITION_PLACE, LOGISTICS_CONDITIONS, matches, type Condition } from "@gdud/core";
 import { Button, Chip, Serial } from "@gdud/ui";
 import { returnItems } from "../_actions/signout";
-import { PersonPicker, PickedPerson, type PickPerson } from "../_components/person-picker";
+import { PersonPicker, PickedPerson, type PickPerson } from "@/components/person-picker";
 import { CONDITION_TILE, SmallTile } from "../_components/ui";
 
 export interface ReturnData {

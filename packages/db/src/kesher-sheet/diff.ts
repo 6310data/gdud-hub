@@ -3,11 +3,14 @@
  * caller's transaction, so RLS applies) and writes nothing.
  *
  * Soldiers are never created or edited here (דוח 1 owns them) and units never created. A name
- * matches only an exact, unique full name among the active soldiers of the row's company; anything
- * else is an error line, and the צ׳ itself still imports — only its holder stays empty.
+ * links on an exact, unique full name among the active soldiers of the row's company. Otherwise the
+ * closest name in that company is offered (first name only, last name only, a spelling slip —
+ * guessName in @gdud/core): one clear fit is linked and its line says so, with the candidates to
+ * change it; several close fits wait for the admin to pick. No fit is an error line, and the צ׳
+ * itself still imports — only its holder stays empty.
  */
 import { createHash } from "node:crypto";
-import { KESHER_WAREHOUSE, kesherLogKind, normalizeSerial, searchKey, type KesherLocation } from "@gdud/core";
+import { guessName, KESHER_WAREHOUSE, kesherLogKind, normalizeSerial, searchKey, type KesherLocation } from "@gdud/core";
 import type { Tx } from "../index";
 import { formatSheetDate, parseSheetDate, sheetDay } from "../logistics-sheet/sheet";
 import { fingerprintLines } from "../sheet-import/index";
@@ -24,7 +27,8 @@ const WAREHOUSE_KEY = searchKey(KESHER_WAREHOUSE);
 
 type Place = { location: "warehouse" | "none"; unit: null } | { location: "company"; unit: CompanyRef };
 type Pick = NonNullable<ChangeLine["pick"]>;
-type Soldier = { id: string | null; pick?: Pick } | { error: string; label: string; pick?: Pick };
+/** `guess`: the sheet's name only fits closely — said on the line so the admin checks it */
+type Soldier = { id: string | null; pick?: Pick; guess?: string } | { error: string; label: string; pick?: Pick };
 
 interface LineFields {
   key: string;
@@ -120,21 +124,36 @@ class Differ {
     return unit ? { location: "company", unit } : { error: MSG.noCompany(nameKey(text)) };
   }
 
-  /** Exact, unique full name among the company's active soldiers; an ambiguous name may be picked. */
-  private soldier(company: CompanyRef, name: string): Soldier {
+  /**
+   * Exact, unique full name among the company's active soldiers; an ambiguous name may be picked.
+   * No exact name: the closest fit (`guess: false` — the log keeps exact links only).
+   */
+  private soldier(company: CompanyRef, name: string, opts: { guess?: boolean } = {}): Soldier {
     const n = nameKey(name);
     if (!n) return { id: null };
     const key = personKey(company.id, n);
     const found = this.st.peopleByName.get(key) ?? [];
     const label = `${n} (${company.name})`;
     if (found.length === 1) return { id: found[0]!.id };
-    if (!found.length) return { error: MSG.noSoldier, label };
-    const choices: PickChoice[] = found.map((p) => ({ id: p.id, label: joinText(p.fullName, p.place) }));
+    const toChoice = (p: { id: string; fullName: string; place: string }): PickChoice => ({ id: p.id, label: joinText(p.fullName, p.place) });
     const wanted = this.picks.get(key);
-    const chosen = wanted && choices.some((c) => c.id === wanted) ? wanted : null;
+    if (found.length) {
+      const choices = found.map(toChoice);
+      const chosen = wanted && choices.some((c) => c.id === wanted) ? wanted : null;
+      const pick: Pick = { key, choices, chosen };
+      if (chosen) return { id: chosen, pick };
+      return { error: `יש ${found.length} חיילים בשם "${n}" ב${company.name} — בחרו את החייל`, label, pick };
+    }
+    if (opts.guess === false) return { error: MSG.noSoldier, label };
+    const g = guessName(n, this.st.peopleByCompany.get(company.id) ?? []);
+    if (g.kind === "none") return { error: MSG.noSoldier, label };
+    const choices = g.ranked.map(toChoice);
+    const picked = wanted && choices.some((c) => c.id === wanted) ? wanted : null;
+    const chosen = picked ?? (g.kind === "guess" ? g.best.id : null);
     const pick: Pick = { key, choices, chosen };
-    if (chosen) return { id: chosen, pick };
-    return { error: `יש ${found.length} חיילים בשם "${n}" ב${company.name} — בחרו את החייל`, label, pick };
+    if (picked) return { id: picked, pick };
+    if (chosen) return { id: chosen, pick, guess: MSG.guessed(n) };
+    return { error: MSG.unsure(n, company.name), label, pick };
   }
 
   private personName(id: string | null | undefined): string | null {
@@ -219,13 +238,17 @@ class Differ {
       // who signed for it (only when it is on a company); an unmatched name is its own error line
       let signer: SignerRef | null = null;
       let pick: Pick | undefined;
+      let guess: string | null = null;
       if (place.location === "company") {
         const s = this.soldier(place.unit, cell(r, 7));
         pick = s.pick;
         if ("error" in s) {
           this.error("pizur", r.row, s.error, { key: `${serial}:signer`, ...at, personName: s.label, pick: s.pick });
           signer = { personId: null, role: signerRole };
-        } else signer = { personId: s.id, role: signerRole };
+        } else {
+          signer = { personId: s.id, role: signerRole };
+          guess = s.guess ?? null;
+        }
       }
       const unitId = place.unit?.id ?? null;
 
@@ -240,6 +263,7 @@ class Differ {
             ...at,
             personName: this.personName(signer?.personId),
             after: joinText(placeText(place), signer?.role, vehicle ? `האמר ${vehicle}` : null),
+            message: guess,
             dependsOn: needs.dependsOn,
             pick,
           },
@@ -268,7 +292,7 @@ class Differ {
             personName: moved ? this.personName(signer?.personId) : null,
             before: describe(appPlace, existing.vehicle, existing.notes),
             after: describe(place, vehicle, notes),
-            message: moved && existing.location === "company" ? "הצ׳ עובר מפלוגה — השיוך הקודם בפלוגה יימחק" : null,
+            message: joinText(moved && existing.location === "company" ? "הצ׳ עובר מפלוגה — השיוך הקודם בפלוגה יימחק" : null, moved ? guess : null) || null,
             pick: moved ? pick : undefined,
           },
         );
@@ -292,6 +316,7 @@ class Differ {
               personName: this.personName(signer.personId),
               before: h ? joinText(this.personName(h.signerPersonId), h.signerRole) : null,
               after: joinText(this.personName(signer.personId), signer.role),
+              message: guess,
               pick,
             },
           );
@@ -376,7 +401,7 @@ class Differ {
             personName: this.personName(s.id),
             before: now.personId || now.role || now.frame ? joinText(this.personName(now.personId) ?? "ללא חותם", now.role, now.frame) : null,
             after: joinText(this.personName(s.id) ?? "ללא חותם", role, frame),
-            message: `גיליון ${tab.name}`,
+            message: joinText(`גיליון ${tab.name}`, s.guess),
             dependsOn: place.lineId ? [place.lineId] : [],
             pick: s.pick,
           },
@@ -599,7 +624,7 @@ class Differ {
         continue;
       }
       const name = nameKey(cells[2]!);
-      const s = place.unit && name ? this.soldier(place.unit, name) : null;
+      const s = place.unit && name ? this.soldier(place.unit, name, { guess: false }) : null;
       const { kind, backdated } = kesherLogKind(cells[5]!);
       const qty = /^\d+$/.test(cells[9]!) ? Number(cells[9]) : null;
       events.push({

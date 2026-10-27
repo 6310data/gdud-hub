@@ -9,7 +9,7 @@ import { signOutForm, type FormPerson } from "@/lib/logistics/forms";
 import { signOut } from "../_actions/signout";
 import { FormDocument } from "../_components/form-document";
 import { KitEditor } from "../_components/kit-editor";
-import { PersonPicker, PickedPerson, type PickPerson } from "../_components/person-picker";
+import { PersonPicker, PickedPerson, type PickPerson } from "@/components/person-picker";
 
 export interface SignData {
   battalion: string;

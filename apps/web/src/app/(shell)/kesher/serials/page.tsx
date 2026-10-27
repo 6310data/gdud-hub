@@ -9,7 +9,7 @@ import { leftCompany, loadKesher, loadLastSeen, type KSerial, type LastSeen } fr
 import { companiesOf } from "@/lib/logistics/data";
 import { fmtCount, fmtWhen } from "@/lib/logistics/format";
 import { requireModule } from "@/lib/session";
-import { LocationChip, SearchBox, SeenChip, pillCount } from "../_components/ui";
+import { LocationChip, SearchBox, SeenChip, companyRefs, pillCount, type CompanyRef } from "../_components/ui";
 
 export const metadata = { title: "צ׳ במערכת" };
 
@@ -59,7 +59,7 @@ export default async function KesherSerials({ searchParams }: { searchParams: Pr
   const s = await requireModule("kesher");
   const f = searchSchema.parse(await searchParams);
   const now = new Date();
-  const companyName = new Map(companiesOf(s.units).map((c) => [c.id, c.name]));
+  const companies = companyRefs(companiesOf(s.units));
 
   const { data, lastSeen, history } = await withUser(s.claims, async (tx) => {
     const [data, lastSeen] = await Promise.all([loadKesher(tx, s.units), loadLastSeen(tx)]);
@@ -72,7 +72,7 @@ export default async function KesherSerials({ searchParams }: { searchParams: Pr
   const rows = data.serials.filter(
     (x) =>
       keep(x, f.f, lastSeen.get(x.id)) &&
-      (!f.q || matches(f.q, x.serial, x.itemName, companyName.get(x.unitId ?? ""), x.holder?.holder?.name, x.holder?.signer?.name, x.holder?.frame, x.holder?.holderRole)),
+      (!f.q || matches(f.q, x.serial, x.itemName, companies.get(x.unitId ?? "")?.name, x.holder?.holder?.name, x.holder?.signer?.name, x.holder?.frame, x.holder?.holderRole)),
   );
   const shown = rows.slice(0, SHOWN);
   const sel = f.sel ? data.serials.find((x) => x.id === f.sel) : undefined;
@@ -118,7 +118,7 @@ export default async function KesherSerials({ searchParams }: { searchParams: Pr
                       </th>
                       <td>{x.itemName}</td>
                       <td>
-                        <LocationChip serial={x} companyName={companyName.get(x.unitId ?? "")} />
+                        <LocationChip serial={x} company={companies.get(x.unitId ?? "")} />
                       </td>
                       <td>{x.holder?.holder?.name ?? <span className="tz-zero">—</span>}</td>
                       <td className="text-ink-muted max-md:hidden">{[x.holder?.holderRole, x.holder?.frame].filter(Boolean).join(" · ")}</td>
@@ -140,7 +140,7 @@ export default async function KesherSerials({ searchParams }: { searchParams: Pr
         {sel ? (
           <Inspector
             x={sel}
-            companyName={companyName.get(sel.unitId ?? "")}
+            company={companies.get(sel.unitId ?? "")}
             seen={lastSeen.get(sel.id)}
             staleDays={data.staleDays}
             history={history}
@@ -178,7 +178,7 @@ async function loadHistory(tx: Tx, serialId: string, serial: string): Promise<Hi
     ...evs.map((r) => ({
       at: r.at,
       title: [r.kind === "legacy" && r.details ? r.details : KESHER_EVENT_LABEL[r.kind], r.company].filter(Boolean).join(" · "),
-      sub: [r.personName, r.sheetActor ?? r.actorName ? `ע״י ${r.sheetActor ?? r.actorName}` : null].filter(Boolean).join(" · "),
+      sub: [r.kind === "assign" || r.kind === "serial_edit" ? r.details : r.personName, r.sheetActor ?? r.actorName ? `ע״י ${r.sheetActor ?? r.actorName}` : null].filter(Boolean).join(" · "),
     })),
     ...checks.map((c) => ({ at: c.at, title: c.found ? "נראה בעין בדוח צ׳" : "לא נמצא בדוח צ׳", sub: c.by ?? "" })),
   ].sort((a, b) => b.at.getTime() - a.at.getTime());
@@ -186,7 +186,7 @@ async function loadHistory(tx: Tx, serialId: string, serial: string): Promise<Hi
 
 function Inspector({
   x,
-  companyName,
+  company,
   seen,
   staleDays,
   history,
@@ -194,7 +194,7 @@ function Inspector({
   now,
 }: {
   x: KSerial;
-  companyName?: string;
+  company?: CompanyRef;
   seen: LastSeen | undefined;
   staleDays: number;
   history: HistoryItem[];
@@ -202,7 +202,7 @@ function Inspector({
   now: Date;
 }) {
   const rows: [string, ReactNode][] = [
-    ["מיקום", <LocationChip key="l" serial={x} companyName={companyName} />],
+    ["מיקום", <LocationChip key="l" serial={x} company={company} />],
     ["חותם על הפלוגה", x.holder?.signer ? [x.holder.signer.name, x.holder.signerRole].filter(Boolean).join(" · ") : "—"],
     ["חותם בפלוגה", x.holder?.holder?.name ?? "—"],
     ["תפקיד", x.holder?.holderRole ?? "—"],

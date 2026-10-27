@@ -54,6 +54,8 @@ const PIZUR = [
   ["710", "489004", "", "", ""],
   ["710", "489004", "", "", "במחסן"],
   ["710", "489005", "", "", "פלס״ר", "", "גיל אור"],
+  ["710", "489006", "", "", "פלס״ר", "", "יוסי"],
+  ["710", "489007", "", "", "פלס״ר", "", "משה"],
 ];
 
 const GENERAL = [
@@ -101,7 +103,7 @@ const CHECKS = [
 
 const BOOK = {
   "פיזור צ כללי": PIZUR,
-  'פלס"ר': companyTab(["710", "489001", "יוסי לוי", "קשר מ״מ", "חפ״ק"], ["אולר", "1100001", "יוסי לוי"], ["710", "489002", "", "", "צוות 1"]),
+  'פלס"ר': companyTab(["710", "489001", "יוסי לוי", "קשר מ״מ", "חפ״ק"], ["אולר", "1100001", "יוסי לוי"], ["710", "489002", "", "", "צוות 1"], ["710", "489006", "לויי", "", ""]),
   "עיט": companyTab(["710", "489099", "מישהו"]),
   "כללי": GENERAL,
   "תקן ציוד משלים": KIT,
@@ -241,6 +243,25 @@ describe("kesher import", () => {
       // a pick that isn't one of the candidates is ignored
       const bogus = await diff(sheets, ALL_TABS, new Map([[amb.pick!.key, s.dani]]));
       expect(find(bogus, (l) => l.id === "pizur:error:489003:signer")).toBeDefined();
+    });
+
+    it("a close name is linked with a note and the candidates; several close names wait for a pick", async () => {
+      const signer = find(d, (l) => l.id === "pizur:serial.add:489006")!;
+      expect(signer.op).toMatchObject({ signer: { personId: s.yossi } });
+      expect(signer.message).toBe(MSG.guessed("יוסי"));
+      expect(signer.pick).toMatchObject({ chosen: s.yossi, choices: [expect.objectContaining({ id: s.yossi })] });
+      const holder = find(d, (l) => l.id === 'companies:holder.set:פלס"ר:489006')!;
+      expect(holder.op).toMatchObject({ personId: s.yossi });
+      expect(holder.message).toMatch(/התאמה משוערת/);
+      const unsure = find(d, (l) => l.id === "pizur:error:489007:signer")!;
+      expect(unsure.message).toBe(MSG.unsure("משה", "פלס״ר"));
+      expect(unsure.pick!.chosen).toBeNull();
+      expect(unsure.pick!.choices.map((c) => c.id).sort()).toEqual([s.moshe1, s.moshe2].sort());
+      // a pick replaces the guess, and the line no longer says it was guessed
+      const picked = await diff(sheets, ALL_TABS, new Map([[signer.pick!.key, s.dani], [unsure.pick!.key, s.moshe1]]));
+      expect(find(picked, (l) => l.id === "pizur:serial.add:489007")!.op).toMatchObject({ signer: { personId: s.moshe1 } });
+      // דני כהן isn't a close fit for "יוסי", so it isn't a candidate and the guess stays
+      expect(find(picked, (l) => l.id === "pizur:serial.add:489006")!.op).toMatchObject({ signer: { personId: s.yossi } });
     });
 
     it("the same צ׳ twice: the first row wins", () => {

@@ -7,7 +7,7 @@ import { battalionName, loadHoldings, loadPerson } from "@/lib/logistics/data";
 import { holdingsForm } from "@/lib/logistics/forms";
 import { requireModule } from "@/lib/session";
 import { FormDocument } from "../../../_components/form-document";
-import { PrintButton } from "../../../_components/print-button";
+import { PrintButton } from "@/components/print-button";
 import { SaveHoldingsButton } from "./save-holdings-button";
 
 export const metadata = { title: "טופס ציוד חתום" };

@@ -179,6 +179,9 @@ a.tz-row, button.tz-row { cursor: pointer; }
 /* a company's column or row, in the company's color lightened (style --tint: the unit color; tintStyle()) */
 .tz-table .tz-tint { background: color-mix(in srgb, var(--tint) 9%, var(--surface-100)); }
 .tz-table :is(thead, tfoot) .tz-tint { background: color-mix(in srgb, var(--tint) 16%, var(--surface-100)); }
+/* a company's chip / dot in the company's own color (style --tint: the unit color; tintStyle()) */
+.tz-chip-tint { background: color-mix(in srgb, var(--tint) 16%, var(--surface-100)); color: color-mix(in srgb, var(--tint) 72%, var(--ink)); }
+.tz-dot { display: inline-block; width: 8px; height: 8px; flex: none; border-radius: var(--radius-pill); background: var(--tint, var(--chevron)); }
 .tz-num { font-variant-numeric: tabular-nums; }
 
 .tz-kpi { display: flex; align-items: center; gap: 10px; padding: 14px 16px; color: var(--ink); text-decoration: none; }
