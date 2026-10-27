@@ -1,0 +1,2041 @@
+/**********************************************************************
+ *  אתר מחלקת קשר — Apps Script Web App
+ *
+ *  שני קבצים באותו פרויקט:
+ *    • קובץ Script בשם   webapp_server   (הקוד הזה)
+ *    • קובץ HTML   בשם   webapp_ui       (הקובץ webapp_ui.html)
+ *
+ *  ארכיטקטורה: קריאה אחת (wa_snapshot) מביאה את כל הנתונים בעלייה,
+ *  וכל החיפוש/הסינון/המעבר בין עמודים נעשים בדפדפן. השרת נקרא שוב
+ *  רק בכתיבה, ואז ה-snapshot נטען מחדש.
+ **********************************************************************/
+
+var UI_FILE       = 'webapp_ui';
+var ACCESS_SHEET  = 'הרשאות אתר';
+var CHECKS_SHEET  = 'בדיקות צ׳';
+var REPORTS_SHEET = 'דוחות צ׳';
+
+var ROLES = { ADMIN: 'מנהל', WRITE: 'החתמה', VIEW: 'צפייה' };
+
+/* גיליון ההרשאות — זיהוי לפי קוד גישה.
+   Google לא חושף לסקריפט את האימייל של מי שאינו בעל הפרויקט כשהפריסה היא
+   "Execute as: Me" ובחשבון פרטי (לא Workspace), ולכן זיהוי לפי אימייל
+   עובד רק בשבילך. הקוד הוא מה שמזהה את כל השאר. */
+var ACCESS_HEAD = ['שם', 'קוד גישה', 'הרשאה', 'אימייל (לא חובה)', 'הערה'];
+var CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+/* טבלת פיזור הצ׳ שבתוך גיליון כל פלוגה (E:N).
+   E מכשיר (נוסחה) · F צ׳ · G חתום · H תפקיד · I מסגרת · J סטטוס (נוסחה) */
+var CO = { FIRST: 3, SER: 6, SIGN: 7, ROLE: 8, FRAME: 9, MAX_ROW: 1032, SCAN: 700 };
+
+var CHECKS_HEAD  = ['צ׳', 'סוג מכשיר', 'פלוגה', 'תאריך בדיקה', 'נבדק ע״י', 'סטטוס'];
+var REPORTS_HEAD = ['תאריך ושעה', 'פלוגה', 'מדווח', 'אימייל', 'סה״כ צ׳', 'נבדקו',
+                    'לא נמצאו', 'פירוט הלא־נמצאו', 'הערות', 'סטטוס'];
+
+/* ==================================================================
+ *  ניתוב
+ * ================================================================== */
+function doGet(e) {
+  var page = (e && e.parameter && e.parameter.page) || 'home';
+  var arg  = (e && e.parameter && e.parameter.c) || '';
+  var key  = (e && e.parameter && e.parameter.k) || '';
+  var base = '';
+  try { base = ScriptApp.getService().getUrl() || ''; } catch (err) {}
+
+  var t = HtmlService.createTemplateFromFile(UI_FILE);
+  t.boot = JSON.stringify({ page: page, arg: arg, base: base, key: key });
+  return t.evaluate()
+    .setTitle('מחלקת קשר')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+/* ---------- תפריט בגיליון ---------- */
+function webAppMenu_() {
+  return SpreadsheetApp.getUi().createMenu('אתר / אפליקציה')
+    .addItem('הצג קישורים', 'showWebAppUrl')
+    .addItem('ניהול הרשאות', 'setupSiteAccess')
+    .addItem('הצג קודי גישה וקישורים אישיים', 'showAccessCodes')
+    .addItem('רענן מטמון', 'clearSiteCache')
+    .addSeparator()
+    .addItem('בנה גיליון "סינון יומנים"', 'setupLogFilters')
+    .addItem('הוראות פריסה', 'showWebAppHelp');
+}
+
+function showWebAppUrl() {
+  var ui = SpreadsheetApp.getUi();
+  var url = '';
+  try { url = ScriptApp.getService().getUrl() || ''; } catch (e) {}
+  if (!url) { showWebAppHelp(); return; }
+  var lines = [
+    'דף הבית:\n' + url,
+    'החתמה שוטפת:\n' + url + '?page=sign',
+    'קליטה ראשונית:\n' + url + '?page=intake',
+    'חיפוש צ׳:\n' + url + '?page=find',
+    'יומן חתימות:\n' + url + '?page=log'
+  ];
+  Object.keys(CFG.COMPANY_COL).forEach(function (c) {
+    var q = encodeURIComponent(c);
+    lines.push(c + ' — עמוד פלוגה:\n' + url + '?page=company&c=' + q);
+    lines.push(c + ' — דוח צ׳:\n' + url + '?page=report&c=' + q);
+  });
+  ui.alert('קישורי האתר', lines.join('\n\n'), ui.ButtonSet.OK);
+}
+
+function showWebAppHelp() {
+  SpreadsheetApp.getUi().alert('פריסת האתר',
+    'בעורך Apps Script:\n\n' +
+    '1. Deploy ← New deployment ← ⚙ ← Web app\n' +
+    '2. Execute as:  Me\n' +
+    '3. Who has access:  Anyone with Google account\n' +
+    '4. Deploy ← אשר הרשאות ← העתק את הקישור\n\n' +
+    'אחרי כל שינוי בקוד: Manage deployments ← ✏ ← Version: New version.',
+    SpreadsheetApp.getUi().ButtonSet.OK);
+}
+
+/* ==================================================================
+ *  הרשאות
+ * ================================================================== */
+function _newCode() {
+  var out = '';
+  for (var i = 0; i < 6; i++) {
+    out += CODE_ALPHABET.charAt(Math.floor(Math.random() * CODE_ALPHABET.length));
+  }
+  return out;
+}
+
+function setupSiteAccess() {
+  var ss = SpreadsheetApp.getActive();
+  var sh = ss.getSheetByName(ACCESS_SHEET);
+  var legacy = [], fresh = false;
+
+  if (sh && _txt(sh.getRange(1, 1).getValue()) === 'אימייל') {
+    /* מבנה ישן: אימייל | הרשאה | הערה  ->  שם | קוד | הרשאה | אימייל | הערה */
+    if (sh.getLastRow() >= 2) {
+      sh.getRange(2, 1, sh.getLastRow() - 1, 3).getValues().forEach(function (r) {
+        var em = _txt(r[0]), ro = _txt(r[1]);
+        if (!em && !ro) return;
+        legacy.push([em.split('@')[0] || 'משתמש', _newCode(), ro || ROLES.VIEW, em, _txt(r[2])]);
+      });
+    }
+    sh.getRange(1, 1, sh.getMaxRows(), sh.getMaxColumns()).clearDataValidations();
+    sh.clear();
+  }
+  if (!sh) { sh = ss.insertSheet(ACCESS_SHEET); }
+
+  sh.setRightToLeft(true);
+  sh.getRange(1, 1, 1, ACCESS_HEAD.length).setValues([ACCESS_HEAD])
+    .setFontWeight('bold').setBackground('#1f3864').setFontColor('#ffffff');
+  sh.setFrozenRows(1);
+  [180, 130, 130, 250, 300].forEach(function (w, i) { sh.setColumnWidth(i + 1, w); });
+  sh.getRange(2, 2, 500, 1).setFontFamily('Roboto Mono').setHorizontalAlignment('center');
+  sh.getRange(2, 3, 500, 1).setDataValidation(
+    SpreadsheetApp.newDataValidation()
+      .requireValueInList([ROLES.ADMIN, ROLES.WRITE, ROLES.VIEW], true)
+      .setAllowInvalid(false).build());
+
+  if (legacy.length) {
+    sh.getRange(2, 1, legacy.length, ACCESS_HEAD.length).setValues(legacy);
+  } else if (sh.getLastRow() < 2) {
+    fresh = true;
+    var owner = '';
+    try { owner = Session.getEffectiveUser().getEmail() || ''; } catch (e) {}
+    sh.getRange(2, 1, 3, ACCESS_HEAD.length).setValues([
+      [owner ? owner.split('@')[0] : 'מנהל', _newCode(), ROLES.ADMIN, owner, 'בעל הגיליון'],
+      ['מחתימים',  _newCode(), ROLES.WRITE, '', 'קוד משותף לכל מי שמחתים'],
+      ['מפקדים',   _newCode(), ROLES.VIEW,  '', 'צפייה בלבד']
+    ]);
+  }
+
+  var last = Math.max(sh.getLastRow(), 2);
+  var nRows = last - 1;
+  var codes = sh.getRange(2, 2, nRows, 1).getValues();
+  var roles = sh.getRange(2, 3, nRows, 1).getValues();
+  var filled = false, used = {};
+  codes.forEach(function (r) { var c = _txt(r[0]).toUpperCase(); if (c) used[c] = true; });
+  codes.forEach(function (r, i) {
+    if (_txt(r[0]) === '' && _txt(roles[i][0]) !== '') {
+      var c;
+      do { c = _newCode(); } while (used[c]);
+      used[c] = true;
+      codes[i][0] = c;
+      filled = true;
+    }
+  });
+  if (filled) sh.getRange(2, 2, nRows, 1).setValues(codes);
+
+  if (legacy.length || fresh) {
+    sh.getRange(last + 2, 1).setValue(
+      'שורה לכל אדם או לכל קבוצה. הקוד הוא מה שנותן גישה — האימייל לתיעוד בלבד ' +
+      '(למנהלים הוא נדרש, לשם נשלחים דוחות הצ׳). למחיקת גישה: מחק את השורה.')
+      .setFontStyle('italic').setFontColor('#7f7f7f').setWrap(true);
+  }
+
+  _cacheClear();
+  ss.setActiveSheet(sh);
+  showAccessCodes();
+}
+
+function showAccessCodes() {
+  var ui = SpreadsheetApp.getUi();
+  var url = '';
+  try { url = ScriptApp.getService().getUrl() || ''; } catch (e) {}
+  var rows = _accessRows();
+  if (!rows.length) { ui.alert('אין עדיין שורות בגיליון "' + ACCESS_SHEET + '".'); return; }
+  var out = rows.map(function (r) {
+    var link = url ? (url + '?k=' + encodeURIComponent(r.code)) : '(פרוס את האתר כדי לקבל קישור)';
+    return r.name + '  —  ' + r.role + '\nקוד: ' + r.code + '\n' + link;
+  }).join('\n\n');
+  ui.alert('קודי גישה וקישורים אישיים',
+    'שלח לכל אחד את הקישור שלו — הוא כולל את הקוד ולא צריך להקליד כלום.\n' +
+    'לעמוד מסוים: הוסף &page=sign (או report / find / log).\n\n' + out,
+    ui.ButtonSet.OK);
+}
+
+function _accessRows() {
+  var sh = SpreadsheetApp.getActive().getSheetByName(ACCESS_SHEET);
+  if (!sh || sh.getLastRow() < 2) return [];
+  return sh.getRange(2, 1, sh.getLastRow() - 1, ACCESS_HEAD.length).getValues()
+    .map(function (r) {
+      return {
+        name : _txt(r[0]),
+        code : _txt(r[1]).toUpperCase(),
+        role : _txt(r[2]),
+        email: _txt(r[3]).toLowerCase()
+      };
+    })
+    .filter(function (r) {
+      return (r.role === ROLES.ADMIN || r.role === ROLES.WRITE || r.role === ROLES.VIEW) &&
+             (r.code || r.email);
+    });
+}
+
+function _adminEmails() {
+  return _accessRows()
+    .filter(function (r) { return r.role === ROLES.ADMIN && r.email; })
+    .map(function (r) { return r.email; });
+}
+
+/**
+ * מזהה את המשתמש. סדר: קוד גישה -> אימייל (עובד רק לבעל הפרויקט
+ * או באותו דומיין Workspace) -> בעל הפרויקט.
+ */
+function _me(token) {
+  var code = _txt(token).toUpperCase();
+  var email = '', owner = '';
+  try { email = _txt(Session.getActiveUser().getEmail()).toLowerCase(); } catch (e) {}
+  try { owner = _txt(Session.getEffectiveUser().getEmail()).toLowerCase(); } catch (e) {}
+
+  var rows = _accessRows(), hit = null;
+  if (code) {
+    rows.forEach(function (r) { if (!hit && r.code && r.code === code) hit = r; });
+  }
+  if (!hit && email) {
+    rows.forEach(function (r) { if (!hit && r.email && r.email === email) hit = r; });
+  }
+  if (!hit && email && email === owner) {
+    hit = { name: email.split('@')[0], code: '', role: ROLES.ADMIN, email: email };
+  }
+  return {
+    email : email || (hit ? hit.email : ''),   // האימייל הרשום, לתיעוד ביומן
+    name  : hit ? (hit.name || hit.email || 'משתמש') : '',
+    role  : hit ? hit.role : '',
+    byCode: !!(hit && code && hit.code === code)
+  };
+}
+
+function _can(role, what) {
+  if (!role) return false;
+  if (role === ROLES.ADMIN) return true;
+  if (what === 'view')   return true;
+  if (what === 'report') return true;          // גם "צפייה" רשאי למלא דוח צ׳
+  if (what === 'assign') return true;          // ולשייך חותמים בתוך הפלוגה
+  if (what === 'admin')  return false;         // ניהול הטבלאות הראשיות — מנהל בלבד
+  if (what === 'write')  return role === ROLES.WRITE;
+  return false;
+}
+
+function _guard(token, what) {
+  var me = _me(token);
+  if (!_can(me.role, what)) {
+    throw new Error(me.role
+      ? 'אין לך הרשאה לפעולה הזו. פנה למנהל המערכת.'
+      : 'קוד גישה שגוי או חסר. בקש קוד ממנהל המערכת.');
+  }
+  return me;
+}
+
+/* ==================================================================
+ *  מטמון (הנתונים הכבדים נקראים מהגיליון פעם ב-SNAP_TTL שניות)
+ * ================================================================== */
+var SNAP_TTL   = 90;
+var CHUNK_SIZE = 90000;
+
+function clearSiteCache() {
+  _cacheClear();
+  SpreadsheetApp.getActive().toast('המטמון נוקה. הרענון הבא יקרא מהגיליון.', 'בוצע', 5);
+}
+
+function _cacheClear() {
+  try {
+    var c = CacheService.getScriptCache();
+    var n = Number(c.get('SNAP_N') || 0);
+    var keys = ['SNAP_N'];
+    for (var i = 0; i < n; i++) keys.push('SNAP_' + i);
+    c.removeAll(keys);
+  } catch (e) {}
+}
+
+function _cacheGet() {
+  try {
+    var c = CacheService.getScriptCache();
+    var n = Number(c.get('SNAP_N') || 0);
+    if (!n) return null;
+    var keys = [];
+    for (var i = 0; i < n; i++) keys.push('SNAP_' + i);
+    var got = c.getAll(keys), out = '';
+    for (var j = 0; j < n; j++) {
+      var part = got['SNAP_' + j];
+      if (part === undefined || part === null) return null;   // חלק פג — לא לסמוך
+      out += part;
+    }
+    return JSON.parse(out);
+  } catch (e) { return null; }
+}
+
+function _cachePut(obj) {
+  try {
+    var s = JSON.stringify(obj);
+    var c = CacheService.getScriptCache();
+    var parts = {}, n = 0;
+    for (var i = 0; i < s.length; i += CHUNK_SIZE) {
+      parts['SNAP_' + n] = s.substr(i, CHUNK_SIZE);
+      n++;
+    }
+    if (n > 12) return;                       // גדול מדי — לא ממטמנים
+    parts['SNAP_N'] = String(n);
+    c.putAll(parts, SNAP_TTL);
+  } catch (e) {}
+}
+
+/* ==================================================================
+ *  Snapshot — כל מה שהדפדפן צריך, בקריאה אחת
+ * ================================================================== */
+function wa_snapshot(token) {
+  var me = _me(token);
+  if (!me.role) {
+    var b = '';
+    try { b = ScriptApp.getService().getUrl() || ''; } catch (e) {}
+    return { base: b, needCode: true,
+             me: { email: me.email, name: '', role: '',
+                   canView: false, canWrite: false, canReport: false,
+                   canAssign: false, canAdmin: false, isAdmin: false } };
+  }
+  var data = _cacheGet();
+  if (!data) {
+    data = _buildSnapshot();
+    _cachePut(data);
+  }
+  data.me = {
+    email     : me.email,
+    name      : me.name,
+    role      : me.role,
+    canView   : true,
+    canWrite  : _can(me.role, 'write'),
+    canReport : _can(me.role, 'report'),
+    canAssign : _can(me.role, 'assign'),
+    canAdmin  : _can(me.role, 'admin'),
+    isAdmin   : me.role === ROLES.ADMIN
+  };
+  try { data.base = ScriptApp.getService().getUrl() || ''; } catch (e) { data.base = ''; }
+  return data;
+}
+
+/** רענון מאולץ — אחרי כתיבה */
+function wa_refresh(token) {
+  _guard(token, 'view');
+  _cacheClear();
+  return wa_snapshot(token);
+}
+
+function _buildSnapshot() {
+  var ss = SpreadsheetApp.getActive();
+
+  /* ---- פיזור צ כללי ---- */
+  var pz = ss.getSheetByName(CFG.PIZUR);
+  var pzLast = pz.getLastRow();
+  var pv = pz.getRange(1, 1, pzLast, 10).getValues();
+  var serials = [], byComp = {}, warehouse = 0, blank = 0;
+  for (var r = CFG.PZ_FIRST - 1; r < pv.length; r++) {
+    var s = _txt(pv[r][CFG.PZ_SER - 1]);
+    var d = _txt(pv[r][CFG.PZ_DEV - 1]);
+    if (!s) continue;
+    var c = _txt(pv[r][CFG.PZ_COMP - 1]);
+    serials.push({
+      s: s, d: d, c: c,
+      g: _txt(pv[r][CFG.PZ_SIGN - 1]),
+      r: _txt(pv[r][CFG.PZ_ROLE - 1]),
+      l: _txt(pv[r][CFG.PZ_LOC - 1]),
+      n: _txt(pv[r][9])
+    });
+    if (c === CFG.WAREHOUSE) warehouse++;
+    else if (!c) blank++;
+    else byComp[c] = (byComp[c] || 0) + 1;
+  }
+  serials.sort(function (a, b) { return a.s < b.s ? -1 : 1; });
+
+  /* ---- כללי ---- */
+  var kl = ss.getSheetByName(CFG.KLALI);
+  var n = CFG.KLALI_LAST - CFG.KLALI_FIRST + 1;
+  var block = kl.getRange(CFG.KLALI_FIRST, 1, n, 14).getValues();   // A..N
+  var devices = [], stock = {}, qty = {}, low = [], brigade = {}, cats = {};
+  var comps = Object.keys(CFG.COMPANY_COL);
+  comps.forEach(function (c) { qty[c] = {}; });
+  block.forEach(function (row) {
+    var t = _txt(row[CFG.KLALI_DEV_COL - 1]);
+    if (!t || stock[t] !== undefined) return;
+    var w = row[CFG.KLALI_WH_COL - 1];
+    var wn = (w === '' || w === null) ? null : (Number(w) || 0);
+    devices.push(t);
+    stock[t] = wn === null ? 0 : wn;
+    var bv = row[13];                                   // N – מלאי קבלות חטיבה
+    if (bv !== '' && bv !== null) brigade[t] = Number(bv) || 0;
+    var cv = _txt(row[1]);                              // B – קטגוריה
+    if (cv) cats[t] = cv;
+    if (wn !== null && wn <= 0) low.push({ dev: t, qty: wn });
+    comps.forEach(function (c) {
+      var v = Number(row[CFG.COMPANY_COL[c] - 1]) || 0;
+      if (v) qty[c][t] = v;
+    });
+  });
+  devices.sort();
+  low.sort(function (a, b) { return a.qty - b.qty; });
+
+  /* ---- תקן ---- */
+  var std = _stdMap(), memo = {}, kits = {};
+  Object.keys(std).forEach(function (p) { kits[p] = _fullKit(p, std, memo, {}); });
+
+  /* ---- מי חתום בתוך כל פלוגה (מהגיליון של הפלוגה) ---- */
+  var holders = _holdersAll(comps);
+
+  /* ---- בדיקות ודוחות ---- */
+  var checks = _checksMap();
+  var reports = _reportsMap();
+
+  return {
+    companies : comps,
+    serials   : serials,
+    byComp    : byComp,
+    warehouse : warehouse,
+    blank     : blank,
+    total     : serials.length,
+    devices   : devices,
+    stock     : stock,
+    qty       : qty,
+    brigade   : brigade,
+    cats      : cats,
+    kits      : kits,
+    types     : _serializedTypes().sort(),
+    low       : low.slice(0, 15),
+    holders   : holders.map,
+    roleList  : holders.roles,
+    frameList : holders.frames,
+    checks    : checks,
+    reports   : reports,
+    recent    : _recentLog(8),
+    partial   : _partialStock(),
+    ts        : Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'HH:mm:ss')
+  };
+}
+
+/* ==================================================================
+ *  מי חתום בתוך הפלוגה — גיליון הפלוגה עצמה
+ * ================================================================== */
+function _coSheet(company) {
+  return SpreadsheetApp.getActive().getSheetByName(company);   // שם הגיליון = שם הפלוגה
+}
+
+function _holdersAll(comps) {
+  var map = {}, roles = {}, frames = {};
+  comps.forEach(function (c) {
+    map[c] = {};
+    var sh = _coSheet(c);
+    if (!sh) return;
+    var last = Math.min(Math.max(sh.getLastRow(), CO.FIRST), CO.FIRST + CO.SCAN);
+    if (last < CO.FIRST) return;
+    sh.getRange(CO.FIRST, CO.SER, last - CO.FIRST + 1, 4).getValues().forEach(function (r) {
+      var ser = _txt(r[0]);
+      if (!ser) return;
+      var g = _txt(r[1]), h = _txt(r[2]), i = _txt(r[3]);
+      map[c][ser] = { g: g, h: h, i: i };
+      if (h) roles[h] = true;
+      if (i) frames[i] = true;
+    });
+  });
+  return { map: map, roles: Object.keys(roles).sort(), frames: Object.keys(frames).sort() };
+}
+
+/** שיוך חותמים בתוך הפלוגה — כותב לעמודות F:I בגיליון הפלוגה */
+function wa_assign(token, p) {
+  var me;
+  try { me = _guard(token, 'assign'); }
+  catch (e) { return { ok: false, errors: [e.message] }; }
+
+  var lock = LockService.getDocumentLock();
+  try { lock.waitLock(45000); }
+  catch (e) { return { ok: false, errors: ['המערכת עסוקה. נסה שוב בעוד רגע.'] }; }
+  try { return _waAssign(p, me); }
+  catch (e) { return { ok: false, errors: ['שגיאה טכנית: ' + e.message] }; }
+  finally { try { lock.releaseLock(); } catch (e2) {} }
+}
+
+function _waAssign(p, me) {
+  var ss = SpreadsheetApp.getActive();
+  var company = _txt(p && p.company);
+  var items = (p && p.items) ? p.items : [];
+  var errs = [];
+
+  if (!company) errs.push('לא נבחרה פלוגה.');
+  else if (!CFG.COMPANY_COL[company]) errs.push('הפלוגה "' + company + '" אינה מוכרת.');
+  if (!items.length) errs.push('לא נשלח אף שינוי.');
+  if (errs.length) return { ok: false, errors: errs };
+
+  var sh = _coSheet(company);
+  if (!sh) return { ok: false, errors: ['לא נמצא גיליון בשם "' + company + '".'] };
+
+  /* הצ׳ באמת שייכים לפלוגה? */
+  var pz = ss.getSheetByName(CFG.PIZUR);
+  var pv = pz.getRange(1, 1, pz.getLastRow(), CFG.PZ_COMP).getValues();
+  var owned = {};
+  for (var r = CFG.PZ_FIRST - 1; r < pv.length; r++) {
+    var s0 = _txt(pv[r][CFG.PZ_SER - 1]);
+    if (s0 && _txt(pv[r][CFG.PZ_COMP - 1]) === company) owned[s0] = _txt(pv[r][CFG.PZ_DEV - 1]);
+  }
+
+  /* מפת צ׳ -> שורה בגיליון הפלוגה, ורשימת שורות פנויות */
+  var last = Math.min(Math.max(sh.getLastRow(), CO.FIRST), CO.MAX_ROW);
+  var span = Math.max(last - CO.FIRST + 1, 1);
+  var col  = sh.getRange(CO.FIRST, CO.SER, span, 1).getValues();
+  var rowOf = {}, free = [];
+  col.forEach(function (v, i) {
+    var t = _txt(v[0]);
+    if (t) { if (rowOf[t] === undefined) rowOf[t] = CO.FIRST + i; }
+    else free.push(CO.FIRST + i);
+  });
+  var nextFree = CO.FIRST + span;      // אחרי סוף הטווח שנקרא
+
+  var writes = [], logItems = [], seen = {};
+  items.forEach(function (it) {
+    var ser = _txt(it && it.ser);
+    if (!ser || seen[ser]) return;
+    seen[ser] = true;
+    if (owned[ser] === undefined) {
+      errs.push('הצ׳ ' + ser + ' לא רשום על ' + company + '.');
+      return;
+    }
+    var row = rowOf[ser];
+    var isNew = false;
+    if (row === undefined) {
+      row = free.length ? free.shift() : nextFree++;
+      isNew = true;
+      if (row > CO.MAX_ROW) { errs.push('אין מקום פנוי בטבלת ' + company + '.'); return; }
+    }
+    writes.push({ row: row, ser: ser, isNew: isNew,
+                  g: _txt(it.g), h: _txt(it.h), i: _txt(it.i) });
+    logItems.push({ ser: ser, dev: owned[ser], g: _txt(it.g), h: _txt(it.h), i: _txt(it.i) });
+  });
+
+  if (errs.length) return { ok: false, errors: errs };
+  if (!writes.length) return { ok: false, errors: ['אין שינויים תקינים לשמירה.'] };
+
+  writes.forEach(function (w) {
+    if (w.isNew) sh.getRange(w.row, CO.SER).setValue(_numIfPossible(w.ser));
+    sh.getRange(w.row, CO.SIGN, 1, 3).setValues([[w.g, w.h, w.i]]);
+  });
+
+  _logAssign(ss, company, (me.name || me.email || 'משתמש'), logItems);
+  _cacheClear();
+  SpreadsheetApp.flush();
+  return { ok: true, company: company, count: writes.length };
+}
+
+function _logAssign(ss, company, issuer, items) {
+  var log = ss.getSheetByName(CFG.LOG);
+  if (!log) return;
+  var now = new Date();
+  var rows = items.map(function (x) {
+    return [now, company, x.g, x.h, issuer, 'אתר — שיוך בפלוגה', 'ציוד עם צ׳',
+            x.dev, x.ser, (x.i || 1), issuer];
+  });
+  if (!rows.length) return;
+  var first = log.getLastRow() + 1;
+  log.getRange(first, 1, rows.length, CFG.LOG_HEAD.length).setValues(rows);
+  log.getRange(first, 1, rows.length, 1).setNumberFormat('dd/mm/yyyy HH:mm');
+}
+
+/* ==================================================================
+ *  יומן חתימות (נטען לפי דרישה — לא ב-snapshot)
+ * ================================================================== */
+function wa_log(token, limit) {
+  _guard(token, 'view');
+  return { rows: _recentLog(Math.min(Number(limit) || 150, 400)) };
+}
+
+function _recentLog(limit) {
+  var log = SpreadsheetApp.getActive().getSheetByName(CFG.LOG);
+  if (!log || log.getLastRow() < 2) return [];
+  var n = Math.min(limit, log.getLastRow() - 1);
+  return log.getRange(log.getLastRow() - n + 1, 1, n, CFG.LOG_HEAD.length)
+            .getValues().reverse().map(function (v) {
+    return {
+      when    : _when(v[0]),
+      company : _txt(v[1]), soldier: _txt(v[2]), role: _txt(v[3]), issuer: _txt(v[4]),
+      action  : _txt(v[5]), kind: _txt(v[6]), dev: _txt(v[7]),
+      ser     : _txt(v[8]), qty: _txt(v[9])
+    };
+  });
+}
+
+/** יומן דוחות הצ׳ — לעמוד היומן באתר */
+function wa_reportsLog(token, limit) {
+  _guard(token, 'view');
+  var sh = SpreadsheetApp.getActive().getSheetByName(REPORTS_SHEET);
+  if (!sh || sh.getLastRow() < 2) return { rows: [] };
+  var n = Math.min(Number(limit) || 200, 500, sh.getLastRow() - 1);
+  var rows = sh.getRange(sh.getLastRow() - n + 1, 1, n, REPORTS_HEAD.length)
+               .getValues().reverse().map(function (v) {
+    return {
+      when: _when(v[0]), company: _txt(v[1]), by: _txt(v[2]), email: _txt(v[3]),
+      total: Number(v[4]) || 0, ok: Number(v[5]) || 0, missing: Number(v[6]) || 0,
+      detail: _txt(v[7]), note: _txt(v[8]), status: _txt(v[9])
+    };
+  });
+  return { rows: rows };
+}
+
+function _when(v) {
+  return (v instanceof Date)
+    ? Utilities.formatDate(v, Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm')
+    : _txt(v);
+}
+
+/* ==================================================================
+ *  דוחות צ׳
+ * ================================================================== */
+function _sheetWithHead(name, head, widths) {
+  var ss = SpreadsheetApp.getActive();
+  var sh = ss.getSheetByName(name);
+  if (!sh) {
+    sh = ss.insertSheet(name);
+    sh.setRightToLeft(true);
+  }
+  sh.getRange(1, 1, 1, head.length).setValues([head])
+    .setFontWeight('bold').setBackground('#1f3864').setFontColor('#ffffff');
+  sh.setFrozenRows(1);
+  if (widths) widths.forEach(function (w, i) { sh.setColumnWidth(i + 1, w); });
+  return sh;
+}
+
+function setupReportSheets() {
+  _sheetWithHead(CHECKS_SHEET, CHECKS_HEAD, [120, 160, 120, 140, 160, 110]);
+  _sheetWithHead(REPORTS_SHEET, REPORTS_HEAD, [150, 120, 150, 220, 90, 90, 90, 320, 260, 200]);
+  _cacheClear();
+}
+
+/** {צ׳: {t: תאריך, by: מי, ok: bool}} */
+function _checksMap() {
+  var sh = SpreadsheetApp.getActive().getSheetByName(CHECKS_SHEET);
+  var map = {};
+  if (!sh || sh.getLastRow() < 2) return map;
+  sh.getRange(2, 1, sh.getLastRow() - 1, CHECKS_HEAD.length).getValues().forEach(function (v) {
+    var s = _txt(v[0]);
+    if (!s) return;
+    map[s] = { t: _when(v[3]), by: _txt(v[4]), ok: _txt(v[5]) === 'נמצא' };
+  });
+  return map;
+}
+
+/** {פלוגה: {when, total, ok, missing, by}} — הדוח האחרון לכל פלוגה */
+function _reportsMap() {
+  var sh = SpreadsheetApp.getActive().getSheetByName(REPORTS_SHEET);
+  var map = {};
+  if (!sh || sh.getLastRow() < 2) return map;
+  sh.getRange(2, 1, sh.getLastRow() - 1, REPORTS_HEAD.length).getValues().forEach(function (v) {
+    var c = _txt(v[1]);
+    if (!c) return;
+    map[c] = {                       // השורה האחרונה גוברת
+      when   : _when(v[0]),
+      by     : _txt(v[2]),
+      total  : Number(v[4]) || 0,
+      ok     : Number(v[5]) || 0,
+      missing: Number(v[6]) || 0,
+      status : _txt(v[9])
+    };
+  });
+  return map;
+}
+
+function wa_report(token, p) {
+  var me;
+  try { me = _guard(token, 'report'); }
+  catch (e) { return { ok: false, errors: [e.message] }; }
+
+  var lock = LockService.getDocumentLock();
+  try { lock.waitLock(45000); }
+  catch (e) { return { ok: false, errors: ['המערכת עסוקה. נסה שוב בעוד רגע.'] }; }
+  try { return _waReport(p, me); }
+  catch (e) { return { ok: false, errors: ['שגיאה טכנית: ' + e.message] }; }
+  finally { try { lock.releaseLock(); } catch (e2) {} }
+}
+
+function _waReport(p, me) {
+  var errs = [];
+  var company  = _txt(p && p.company);
+  var reporter = _txt(p && p.reporter);
+  var note     = _txt(p && p.note);
+  var results  = (p && p.results) ? p.results : [];
+
+  if (!company) errs.push('לא נבחרה פלוגה.');
+  else if (!CFG.COMPANY_COL[company]) errs.push('הפלוגה "' + company + '" אינה מוכרת.');
+  if (!reporter) errs.push('חסר שם המדווח.');
+  if (!results.length) errs.push('לא נשלח אף פריט.');
+  if (errs.length) return { ok: false, errors: errs };
+
+  /* אימות מול המצב בגיליון — הצ׳ באמת שייכים לפלוגה */
+  var pz = SpreadsheetApp.getActive().getSheetByName(CFG.PIZUR);
+  var pv = pz.getRange(1, 1, pz.getLastRow(), CFG.PZ_COMP).getValues();
+  var owned = {};
+  for (var r = CFG.PZ_FIRST - 1; r < pv.length; r++) {
+    var s = _txt(pv[r][CFG.PZ_SER - 1]);
+    if (s && _txt(pv[r][CFG.PZ_COMP - 1]) === company) {
+      owned[s] = _txt(pv[r][CFG.PZ_DEV - 1]);
+    }
+  }
+
+  var rows = [], missing = [], okCount = 0;
+  var seen = {};
+  results.forEach(function (it) {
+    var s = _txt(it && it.ser);
+    if (!s || seen[s]) return;
+    seen[s] = true;
+    if (owned[s] === undefined) {
+      errs.push('הצ׳ ' + s + ' כבר לא רשום על ' + company + '.');
+      return;
+    }
+    var ok = !!(it && it.ok);
+    rows.push({ ser: s, dev: owned[s], ok: ok });
+    if (ok) okCount++; else missing.push(s + ' (' + owned[s] + ')');
+  });
+  if (errs.length) return { ok: false, errors: errs };
+  if (!rows.length) return { ok: false, errors: ['אין פריטים תקינים בדוח.'] };
+
+  var total = Object.keys(owned).length;
+  var reported = rows.length;
+
+  /* ---- עדכון גיליון "בדיקות צ׳" (שורה אחת לכל צ׳) ---- */
+  var ch = _sheetWithHead(CHECKS_SHEET, CHECKS_HEAD, [120, 160, 120, 140, 160, 110]);
+  var chLast = ch.getLastRow();
+  var index = {};
+  if (chLast >= 2) {
+    ch.getRange(2, 1, chLast - 1, 1).getValues().forEach(function (v, i) {
+      var s = _txt(v[0]);
+      if (s) index[s] = i + 2;
+    });
+  }
+  var now = new Date();
+  var appends = [];
+  rows.forEach(function (x) {
+    var line = [_numIfPossible(x.ser), _numIfPossible(x.dev), company, now, reporter,
+                x.ok ? 'נמצא' : 'לא נמצא'];
+    var at = index[x.ser];
+    if (at) ch.getRange(at, 1, 1, CHECKS_HEAD.length).setValues([line]);
+    else appends.push(line);
+  });
+  if (appends.length) {
+    ch.getRange(ch.getLastRow() + 1, 1, appends.length, CHECKS_HEAD.length).setValues(appends);
+  }
+  ch.getRange(2, 4, Math.max(ch.getLastRow() - 1, 1), 1).setNumberFormat('dd/mm/yyyy HH:mm');
+
+  /* ---- שורת דוח ---- */
+  var allSeen = (reported === total) && (missing.length === 0);
+  var status = allSeen
+    ? '✅ כל הצ׳ נראו בעין'
+    : '⚠ ' + missing.length + ' לא נמצאו' +
+      (reported < total ? ' · ' + (total - reported) + ' לא דווחו' : '');
+
+  var rp = _sheetWithHead(REPORTS_SHEET, REPORTS_HEAD,
+                          [150, 120, 150, 220, 90, 90, 90, 320, 260, 200]);
+  var line = [now, company, reporter, (me.email || me.name), total, okCount, missing.length,
+              missing.join(', '), note, status];
+  var at = rp.getLastRow() + 1;
+  rp.getRange(at, 1, 1, REPORTS_HEAD.length).setValues([line]);
+  rp.getRange(at, 1).setNumberFormat('dd/mm/yyyy HH:mm');
+  rp.getRange(at, 10).setFontColor(allSeen ? '#2f7a3d' : '#b3261e');
+
+  /* ---- מייל למנהלים ---- */
+  var mailed = _mailAdmins(company, reporter, (me.email || me.name), total, okCount, missing, note, status);
+
+  _cacheClear();
+  SpreadsheetApp.flush();
+
+  return {
+    ok: true, company: company, total: total, ok_count: okCount,
+    missing: missing.length, status: status, mailed: mailed, allSeen: allSeen
+  };
+}
+
+function _mailAdmins(company, reporter, byEmail, total, okCount, missing, note, status) {
+  var to = _adminEmails();
+  if (!to.length) return 0;
+  var subject = 'דוח צ׳ — ' + company + ' — ' + (missing.length ? 'חסרים ' + missing.length : 'תקין');
+  var body =
+    'דוח צ׳ התקבל.\n\n' +
+    'פלוגה: ' + company + '\n' +
+    'מדווח: ' + reporter + (byEmail ? ' (' + byEmail + ')' : '') + '\n' +
+    'תאריך: ' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm') + '\n\n' +
+    'סה״כ צ׳ רשומים על הפלוגה: ' + total + '\n' +
+    'נראו בעין: ' + okCount + '\n' +
+    'לא נמצאו: ' + missing.length + '\n\n' +
+    (missing.length ? 'פירוט הלא־נמצאו:\n• ' + missing.join('\n• ') + '\n\n' : '') +
+    (note ? 'הערות המדווח:\n' + note + '\n\n' : '') +
+    'סטטוס: ' + status;
+  var sent = 0;
+  to.forEach(function (addr) {
+    try { MailApp.sendEmail(addr, subject, body); sent++; } catch (e) {}
+  });
+  return sent;
+}
+
+/* ==================================================================
+ *  ניהול הטבלאות הראשיות — מנהל בלבד
+ * ================================================================== */
+
+/** עדכון כמויות בגיליון "כללי". p = {col: '<פלוגה>'|'__wh', items:[{dev, qty}]} */
+function wa_stockSave(token, p) {
+  var me;
+  try { me = _guard(token, 'admin'); }
+  catch (e) { return { ok: false, errors: [e.message] }; }
+
+  var lock = LockService.getDocumentLock();
+  try { lock.waitLock(45000); }
+  catch (e) { return { ok: false, errors: ['המערכת עסוקה. נסה שוב בעוד רגע.'] }; }
+  try {
+    var col = _txt(p && p.col);
+    var items = (p && p.items) ? p.items : [];
+    var errs = [];
+    var target = (col === '__wh') ? CFG.KLALI_WH_COL : CFG.COMPANY_COL[col];
+    if (!target) errs.push('עמודה לא מוכרת: ' + col);
+    if (!items.length) errs.push('לא נשלח אף שינוי.');
+    if (errs.length) return { ok: false, errors: errs };
+
+    var kl = SpreadsheetApp.getActive().getSheetByName(CFG.KLALI);
+    var n = CFG.KLALI_LAST - CFG.KLALI_FIRST + 1;
+    var devs = kl.getRange(CFG.KLALI_FIRST, CFG.KLALI_DEV_COL, n, 1).getValues();
+    var vals = kl.getRange(CFG.KLALI_FIRST, target, n, 1).getValues();
+    var idx = {};
+    devs.forEach(function (v, i) { var t = _txt(v[0]); if (t && idx[t] === undefined) idx[t] = i; });
+
+    var changed = 0;
+    items.forEach(function (it) {
+      var dev = _txt(it && it.dev);
+      var i = idx[dev];
+      if (i === undefined) { errs.push('"' + dev + '" לא נמצא ברשימת הציוד.'); return; }
+      var q = Number(it.qty);
+      if (isNaN(q) || q < 0) { errs.push('כמות לא תקינה עבור "' + dev + '".'); return; }
+      vals[i][0] = q === 0 ? '' : q;
+      changed++;
+    });
+    if (errs.length) return { ok: false, errors: errs };
+
+    kl.getRange(CFG.KLALI_FIRST, target, n, 1).setValues(vals);
+    _logAdmin(SpreadsheetApp.getActive(), (col === '__wh' ? 'במחסן' : col),
+              (me.name || me.email), 'אתר — עדכון מלאי', items);
+    _cacheClear();
+    SpreadsheetApp.flush();
+    return { ok: true, count: changed, col: col };
+  }
+  catch (e) { return { ok: false, errors: ['שגיאה טכנית: ' + e.message] }; }
+  finally { try { lock.releaseLock(); } catch (e2) {} }
+}
+
+/** עדכון / הוספת צ׳ ב"פיזור צ כללי".
+ *  p = {items:[{ser, dev, loc, comp, role, sign, note, isNew}]} */
+function wa_serialSave(token, p) {
+  var me;
+  try { me = _guard(token, 'admin'); }
+  catch (e) { return { ok: false, errors: [e.message] }; }
+
+  var lock = LockService.getDocumentLock();
+  try { lock.waitLock(45000); }
+  catch (e) { return { ok: false, errors: ['המערכת עסוקה. נסה שוב בעוד רגע.'] }; }
+  try { return _waSerialSave(p, me); }
+  catch (e) { return { ok: false, errors: ['שגיאה טכנית: ' + e.message] }; }
+  finally { try { lock.releaseLock(); } catch (e2) {} }
+}
+
+function _waSerialSave(p, me) {
+  var ss = SpreadsheetApp.getActive();
+  var items = (p && p.items) ? p.items : [];
+  var errs = [];
+  if (!items.length) return { ok: false, errors: ['לא נשלח אף שינוי.'] };
+
+  var pz = ss.getSheetByName(CFG.PIZUR);
+  var vals = pz.getRange(1, CFG.PZ_DEV, pz.getLastRow(), 2).getValues();
+  var rowOf = {}, lastData = CFG.PZ_FIRST - 1;
+  for (var r = CFG.PZ_FIRST - 1; r < vals.length; r++) {
+    var dev0 = _txt(vals[r][0]), ser0 = _txt(vals[r][1]);
+    if (ser0 && rowOf[ser0] === undefined) rowOf[ser0] = r + 1;
+    if (dev0 !== '' || ser0 !== '') lastData = r + 1;
+  }
+
+  var valid = {}; valid[CFG.WAREHOUSE] = true;
+  Object.keys(CFG.COMPANY_COL).forEach(function (c) { valid[c] = true; });
+
+  var updates = [], creates = [], seen = {};
+  items.forEach(function (it) {
+    var ser = _txt(it && it.ser);
+    if (!ser) { errs.push('שורה בלי צ׳.'); return; }
+    var nser = _txt(it.newSer) || ser;          // שינוי מספר הצ׳ עצמו
+    if (seen[ser] || seen[nser]) { errs.push('הצ׳ ' + ser + ' מופיע פעמיים.'); return; }
+    seen[ser] = true; seen[nser] = true;
+    var comp = _txt(it.comp);
+    if (comp && !valid[comp]) { errs.push('מיקום לא מוכר עבור ' + ser + ': ' + comp); return; }
+    if (nser !== ser && rowOf[nser] !== undefined) {
+      errs.push('אי אפשר לשנות את הצ׳ ל-' + nser + ' — הוא כבר קיים בטבלה.');
+      return;
+    }
+    var rec = { ser: ser, nser: nser, dev: _txt(it.dev), loc: _txt(it.loc), comp: comp,
+                role: _txt(it.role), sign: _txt(it.sign), note: _txt(it.note) };
+    if (rowOf[ser] !== undefined) { rec.row = rowOf[ser]; updates.push(rec); }
+    else {
+      if (!rec.dev) { errs.push('צ׳ חדש ' + ser + ' בלי סוג מכשיר.'); return; }
+      creates.push(rec);
+    }
+  });
+  if (errs.length) return { ok: false, errors: errs };
+
+  var renamed = 0;
+  updates.forEach(function (u) {
+    pz.getRange(u.row, CFG.PZ_DEV).setValue(_numIfPossible(u.dev));
+    if (u.nser !== u.ser) {
+      pz.getRange(u.row, CFG.PZ_SER).setValue(_numIfPossible(u.nser));
+      renamed++;
+    }
+    pz.getRange(u.row, CFG.PZ_LOC, 1, 4)
+      .setValues([[u.loc, u.comp, u.role, u.sign]]);      // D,E,F,G
+    pz.getRange(u.row, 10).setValue(u.note);              // J – הערות
+  });
+
+  if (creates.length) {
+    var startRow = lastData + 1;
+    while (startRow <= pz.getMaxRows()) {
+      var chk = pz.getRange(startRow, CFG.PZ_DEV, 1, 2).getValues()[0];
+      if (_txt(chk[0]) === '' && _txt(chk[1]) === '') break;
+      startRow++;
+    }
+    var needed = startRow + creates.length - 1;
+    if (needed > pz.getMaxRows()) pz.insertRowsAfter(pz.getMaxRows(), needed - pz.getMaxRows() + 10);
+    var block = creates.map(function (c) {
+      return [_numIfPossible(c.dev), _numIfPossible(c.ser), '', c.loc, c.comp, c.role, c.sign];
+    });
+    pz.getRange(startRow, 1, block.length, CFG.PZ_SIGN).setValues(block);
+    creates.forEach(function (c, i) { pz.getRange(startRow + i, 10).setValue(c.note); });
+    try {
+      var srcRow = 0;
+      for (var k = startRow - 1; k >= CFG.PZ_FIRST && k > startRow - 61; k--) {
+        if (pz.getRange(k, CFG.PZ_CALC1, 1, 2).getFormulas()[0].join('') !== '') { srcRow = k; break; }
+      }
+      if (srcRow) {
+        pz.getRange(srcRow, CFG.PZ_CALC1, 1, 2)
+          .copyTo(pz.getRange(startRow, CFG.PZ_CALC1, block.length, 2),
+                  SpreadsheetApp.CopyPasteType.PASTE_FORMULA, false);
+      }
+    } catch (e) {}
+  }
+
+  _logAdmin(ss, '', (me.name || me.email), 'אתר — עדכון צ׳',
+            updates.concat(creates).map(function (x) {
+              return { dev: x.dev, ser: (x.nser || x.ser), qty: 1, comp: x.comp };
+            }));
+  _cacheClear();
+  SpreadsheetApp.flush();
+  return { ok: true, updated: updates.length, created: creates.length, renamed: renamed };
+}
+
+function _logAdmin(ss, company, who, action, items) {
+  var log = ss.getSheetByName(CFG.LOG);
+  if (!log || !items.length) return;
+  var now = new Date();
+  var rows = items.map(function (x) {
+    return [now, (x.comp !== undefined ? x.comp : company) || company, '', '', who,
+            action, (x.ser ? 'ציוד עם צ׳' : 'ציוד משלים'),
+            x.dev || '', x.ser || '', (x.qty !== undefined ? x.qty : ''), who];
+  });
+  var first = log.getLastRow() + 1;
+  log.getRange(first, 1, rows.length, CFG.LOG_HEAD.length).setValues(rows);
+  log.getRange(first, 1, rows.length, 1).setNumberFormat('dd/mm/yyyy HH:mm');
+}
+
+/* ==================================================================
+ *  ייצוא "פיזור צ כללי" — PDF ו-Excel
+ *  שני הפורמטים נבנים מאותו גיליון זמני, ולכן התוכן, המיון, שורות
+ *  הקבוצה ורוחב העמודות זהים בשניהם.
+ * ================================================================== */
+var PDF_FOLDER    = 'דוחות PDF — מחלקת קשר';
+var PDF_TMP_SHEET = '__דוח_PDF_זמני';
+
+var EXP_MIME = {
+  pdf : 'application/pdf',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+};
+
+/** רק שורות שיש בהן ערך אמיתי. H/I הן נוסחאות ולכן לא נספרות כ"ערך". */
+function _pizurRows(opts) {
+  var pz = SpreadsheetApp.getActive().getSheetByName(CFG.PIZUR);
+  var last = pz.getLastRow();
+  var head = pz.getRange(1, 1, 1, 12).getDisplayValues()[0];
+  var vals = pz.getRange(1, 1, last, 12).getDisplayValues();
+  var real = [0, 1, 2, 3, 4, 5, 6, 9, 10, 11];      // A,B,C,D,E,F,G,J,K,L
+
+  var comp = _txt(opts && opts.company);
+  var rows = [];
+  for (var r = CFG.PZ_FIRST - 1; r < vals.length; r++) {
+    var v = vals[r];
+    var has = false;
+    for (var k = 0; k < real.length; k++) {
+      if (_txt(v[real[k]]) !== '') { has = true; break; }
+    }
+    if (!has) continue;
+    if (comp && _txt(v[CFG.PZ_COMP - 1]) !== comp) continue;
+    rows.push(v.map(function (x) { return _txt(x); }));
+  }
+
+  var sort = _txt(opts && opts.sort) || 'comp';
+  var key = { comp: [CFG.PZ_COMP - 1, CFG.PZ_DEV - 1, CFG.PZ_SER - 1],
+              dev : [CFG.PZ_DEV - 1, CFG.PZ_COMP - 1, CFG.PZ_SER - 1],
+              ser : [CFG.PZ_SER - 1] }[sort] || [CFG.PZ_COMP - 1];
+  rows.sort(function (a, b) {
+    for (var i = 0; i < key.length; i++) {
+      var x = a[key[i]] || '', y = b[key[i]] || '';
+      if (x !== y) return x < y ? -1 : 1;
+    }
+    return 0;
+  });
+
+  /* כותרת לעמודה בלי שם */
+  var letters = 'ABCDEFGHIJKL';
+  head = head.map(function (h, i) { return _txt(h).replace(/\s+/g, ' ') || letters.charAt(i); });
+
+  var keep = [];
+  for (var c = 0; c < 12; c++) keep.push(c);
+  if (opts && opts.trim) {
+    keep = keep.filter(function (c) {
+      if (c === CFG.PZ_DEV - 1 || c === CFG.PZ_SER - 1) return true;   // תמיד
+      for (var i = 0; i < rows.length; i++) if (rows[i][c] !== '') return true;
+      return false;
+    });
+    head = keep.map(function (c) { return head[c]; });
+    rows = rows.map(function (r) { return keep.map(function (c) { return r[c]; }); });
+  }
+  var serCol = keep.indexOf(CFG.PZ_SER - 1);
+  var compCol = keep.indexOf(CFG.PZ_COMP - 1);
+  return { head: head, rows: rows, company: comp, sort: sort,
+           serCol: serCol, compCol: compCol, keep: keep };
+}
+
+/* ------------------------------------------------------------------
+ *  רוחב עמודות — חישוב ידני לפי התוכן בפועל
+ *
+ *  autoResizeColumns נותן תוצאה גרועה כאן: הוא מתעלם מ-setWrap, מודד לפי
+ *  הטקסט הארוך ביותר בשורה אחת, ואז fitw דוחס את כל הטבלה לרוחב עמוד
+ *  אחד — ומכאן הטקסט הצפוף. במקום זה מחושב רוחב לכל עמודה לפי אורך
+ *  התוכן המרבי שבה, עם מינימום ומקסימום לכל עמודה, והתוצאה מותאמת
+ *  לרוחב ההדפסה של A4 לרוחב. fitw נשאר כרשת ביטחון בלבד, וכשהחישוב
+ *  מדויק הוא לא משנה כלום.
+ * ------------------------------------------------------------------ */
+var EXP = {
+  FS_TITLE: 13,
+  FS_HEAD : 9,
+  FS_BODY : 9,
+  FS_GROUP: 10,
+  CHAR    : 0.72,   // פיקסלים לתו, לכל נקודה בגודל הגופן (Arial, עברית)
+  PAD     : 14,     // ריפוד התא + הגבול
+  PAGE_PX : 1040    // רוחב מודפס שימושי: A4 לרוחב, שוליים 0.25" משני הצדדים
+};
+
+/** פרופיל רוחב/יישור/גלישה לפי העמודה המקורית ב"פיזור צ כללי" */
+function _expProfile(orig) {
+  var P = {};
+  P[CFG.PZ_DEV  - 1] = { min: 95, max: 190, wrap: true,  align: 'right'  }; // סוג מכשיר
+  P[CFG.PZ_SER  - 1] = { min: 66, max: 120, wrap: false, align: 'center' }; // צ׳
+  P[2]               = { min: 62, max: 125, wrap: false, align: 'center' }; // מס סידורי מדבקה
+  P[CFG.PZ_LOC  - 1] = { min: 62, max: 135, wrap: true,  align: 'right'  }; // מיקום
+  P[CFG.PZ_COMP - 1] = { min: 60, max: 110, wrap: false, align: 'center' }; // פלוגה
+  P[CFG.PZ_ROLE - 1] = { min: 62, max: 140, wrap: true,  align: 'right'  }; // תפקיד
+  P[CFG.PZ_SIGN - 1] = { min: 72, max: 150, wrap: true,  align: 'right'  }; // מי חתום
+  P[7]               = { min: 72, max: 150, wrap: true,  align: 'right'  }; // מי חתום (נוסחה)
+  P[8]               = { min: 62, max: 140, wrap: true,  align: 'right'  }; // תפקיד (נוסחה)
+  P[9]               = { min: 90, max: 250, wrap: true,  align: 'right'  }; // הערות
+  P[10]              = { min: 55, max: 115, wrap: false, align: 'center' }; // האמר
+  P[11]              = { min: 55, max: 115, wrap: false, align: 'center' }; // Column 2
+  return P[orig] || { min: 60, max: 150, wrap: true, align: 'right' };
+}
+
+function _expTextPx(chars) {
+  return Math.round(chars * EXP.CHAR * EXP.FS_BODY) + EXP.PAD;
+}
+
+/** מתאים את הרוחבים לרוחב העמוד: מכווץ מעל התקציב (עד המינימום של כל
+ *  עמודה), ומרחיב מתחתיו כדי שהטבלה תמלא את הדף. */
+function _expFit(want, prof, budget) {
+  var w = want.slice(), i, total = 0;
+  for (i = 0; i < w.length; i++) total += w[i];
+
+  if (total > budget) {
+    for (var pass = 0; pass < 8 && total > budget; pass++) {
+      var room = 0;
+      for (i = 0; i < w.length; i++) room += Math.max(0, w[i] - prof[i].min);
+      if (room <= 0) break;
+      var f = Math.min(1, (total - budget) / room);
+      for (i = 0; i < w.length; i++) {
+        var r = w[i] - prof[i].min;
+        if (r > 0) w[i] = Math.round(w[i] - r * f);
+      }
+      total = 0;
+      for (i = 0; i < w.length; i++) total += w[i];
+    }
+    return w;
+  }
+
+  /* יש מקום פנוי — מרחיבים בהדרגה, עד פי 1.7 מהרוחב הטבעי */
+  for (var g = 0; g < 3 && total < budget - 4; g++) {
+    var cap = 0, base = 0;
+    for (i = 0; i < w.length; i++) {
+      var lim = Math.round(want[i] * 1.7);
+      if (w[i] < lim) { cap += lim - w[i]; base += w[i]; }
+    }
+    if (cap <= 0 || base <= 0) break;
+    var extra = Math.min(budget - total, cap);
+    for (i = 0; i < w.length; i++) {
+      var lim2 = Math.round(want[i] * 1.7);
+      if (w[i] < lim2) w[i] = Math.min(lim2, w[i] + Math.round(extra * w[i] / base));
+    }
+    total = 0;
+    for (i = 0; i < w.length; i++) total += w[i];
+  }
+
+  /* עיגולים יכולים לחרוג בפיקסל־שניים — מקזזים מהעמודה הרחבה ביותר */
+  while (total > budget) {
+    var wide = 0;
+    for (i = 1; i < w.length; i++) if (w[i] > w[wide]) wide = i;
+    if (w[wide] <= prof[wide].min) break;
+    w[wide]--; total--;
+  }
+  return w;
+}
+
+/** מחזיר { w:[רוחבים], prof:[פרופילים] } לעמודות שנבחרו */
+function _expWidths(data) {
+  var prof = data.keep.map(function (c) { return _expProfile(c); });
+  var want = [];
+  for (var c = 0; c < data.head.length; c++) {
+    var body = 0;
+    for (var r = 0; r < data.rows.length; r++) {
+      var L = (data.rows[r][c] || '').length;
+      if (L > body) body = L;
+    }
+    /* הכותרת נשברת לשורות, ולכן דורשת רק את המילה הארוכה שבה */
+    var word = 0, parts = String(data.head[c] || '').split(/\s+/);
+    for (var i = 0; i < parts.length; i++) if (parts[i].length > word) word = parts[i].length;
+
+    var px = _expTextPx(Math.max(body, word));
+    want.push(Math.max(prof[c].min, Math.min(prof[c].max, px)));
+  }
+  return { w: _expFit(want, prof, EXP.PAGE_PX), prof: prof };
+}
+
+/* ------------------------------------------------------------------
+ *  בניית הגיליון הזמני — משותף ל-PDF ול-Excel
+ * ------------------------------------------------------------------ */
+function _expBuildSheet(sh, data, who) {
+  var nc   = data.head.length;
+  var when = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm');
+  var CW   = _expWidths(data);
+  var WRAP = SpreadsheetApp.WrapStrategy.WRAP;
+  var CLIP = SpreadsheetApp.WrapStrategy.CLIP;
+
+  sh.setRightToLeft(true);
+
+  /* שורה 1 – כותרת, שורה 2 – שמות העמודות. שתיהן קפואות ולכן חוזרות בכל עמוד. */
+  sh.getRange(1, 1, 1, nc).merge()
+    .setValue('פיזור צ׳ כללי' + (data.company ? ' — ' + data.company : '') +
+              '   ·   ' + data.rows.length + ' רשומות   ·   הופק ' + when +
+              (who ? '   ·   ' + who : ''))
+    .setFontSize(EXP.FS_TITLE).setFontWeight('bold').setHorizontalAlignment('center')
+    .setVerticalAlignment('middle').setBackground('#dbe5f5');
+  sh.getRange(2, 1, 1, nc).setValues([data.head])
+    .setFontWeight('bold').setBackground('#1f3864').setFontColor('#ffffff')
+    .setFontSize(EXP.FS_HEAD).setWrap(true)
+    .setHorizontalAlignment('center').setVerticalAlignment('middle');
+
+  /* גוף — עם שורות כותרת לקבוצה כשממיינים לפי פלוגה */
+  var out = [], group = {}, last = null;
+  data.rows.forEach(function (r) {
+    if (data.sort === 'comp' && data.compCol >= 0) {
+      var g = r[data.compCol] || 'ללא שיוך';
+      if (g !== last) {
+        last = g;
+        var blank = [];
+        for (var i = 0; i < nc; i++) blank.push(i === 0 ? g : '');
+        out.push(blank);
+        group[out.length - 1] = true;
+      }
+    }
+    out.push(r);
+  });
+
+  /* מערכי עיצוב לכל התאים בבת אחת — מהיר בהרבה מלולאה על עמודות */
+  var wraps = [], aligns = [], backs = [], band = 0;
+  for (var i = 0; i < out.length; i++) {
+    var isG = !!group[i];
+    if (!isG) band++;
+    var wr = [], al = [], bg = [];
+    for (var c = 0; c < nc; c++) {
+      wr.push(isG ? WRAP : (CW.prof[c].wrap ? WRAP : CLIP));
+      al.push(isG ? 'right' : CW.prof[c].align);
+      bg.push(isG ? '#dbe5f5' : (band % 2 === 0 ? '#f3f6fb' : '#ffffff'));
+    }
+    wraps.push(wr); aligns.push(al); backs.push(bg);
+  }
+
+  var body = sh.getRange(3, 1, out.length, nc);
+  body.setNumberFormat('@');                     // שומר את הטקסט בדיוק כפי שהוא
+  body.setValues(out);
+  body.setFontSize(EXP.FS_BODY).setVerticalAlignment('middle');
+  body.setWrapStrategies(wraps);
+  body.setHorizontalAlignments(aligns);
+  body.setBackgrounds(backs);
+
+  sh.getRange(1, 1, out.length + 2, nc)
+    .setBorder(true, true, true, true, true, true, '#b8c2d4',
+               SpreadsheetApp.BorderStyle.SOLID);
+
+  Object.keys(group).forEach(function (k) {
+    var row = Number(k) + 3;
+    sh.getRange(row, 1, 1, nc).merge()
+      .setFontWeight('bold').setFontSize(EXP.FS_GROUP);
+  });
+
+  if (data.serCol >= 0) {
+    sh.getRange(3, data.serCol + 1, out.length, 1).setFontWeight('bold');
+  }
+
+  for (var c2 = 0; c2 < nc; c2++) sh.setColumnWidth(c2 + 1, CW.w[c2]);
+  sh.setRowHeight(1, 26);
+  sh.setFrozenRows(2);
+  return sh;
+}
+
+function _expName(data, ext) {
+  var d = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd_HHmm');
+  var n = 'פיזור צ כללי' + (data.company ? ' - ' + data.company : '') + ' ' + d;
+  return n.replace(/[\\\/:*?"<>|]/g, '-') + '.' + ext;
+}
+function _pdfName(data) { return _expName(data, 'pdf'); }   // תאימות לאחור
+
+function _expFetch(ss, params) {
+  var url = ss.getUrl().replace(/\/edit.*$/, '') + '/export?' + params;
+  var res = UrlFetchApp.fetch(url, {
+    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+    muteHttpExceptions: true
+  });
+  if (res.getResponseCode() !== 200) {
+    throw new Error('ייצוא נכשל (קוד ' + res.getResponseCode() + ')');
+  }
+  return res.getBlob();
+}
+
+/** PDF ו-Excel של הדוח הכללי — אותה בנייה, שני נתיבי ייצוא (ראה _expEmit). */
+function _pizurPdfBlob(data, who) {
+  return _expEmit(function (sh) { _expBuildSheet(sh, data, who); },
+                  'פיזור צ כללי', _expName(data, 'pdf').replace(/\.pdf$/, ''), 'pdf');
+}
+function _pizurXlsxBlob(data, who) {
+  return _expEmit(function (sh) { _expBuildSheet(sh, data, who); },
+                  'פיזור צ כללי', _expName(data, 'xlsx').replace(/\.xlsx$/, ''), 'xlsx');
+}
+
+/* ------------------------------------------------------------------
+ *  נקודות הכניסה מהאתר
+ * ------------------------------------------------------------------ */
+function _waExport(token, p, fmt, toDrive) {
+  var me;
+  try { me = _guard(token, 'view'); }
+  catch (e) { return { ok: false, errors: [e.message] }; }
+
+  try {
+    var data = _pizurRows(p);
+    if (!data.rows.length) return { ok: false, errors: ['אין שורות שתואמות את הבחירה.'] };
+
+    var who  = me.name || me.email;
+    var blob = (fmt === 'xlsx') ? _pizurXlsxBlob(data, who) : _pizurPdfBlob(data, who);
+
+    if (!toDrive) {
+      return { ok: true, name: blob.getName(), rows: data.rows.length,
+               mime: EXP_MIME[fmt] || EXP_MIME.pdf,
+               b64: Utilities.base64Encode(blob.getBytes()) };
+    }
+
+    var it = DriveApp.getFoldersByName(PDF_FOLDER);
+    var folder = it.hasNext() ? it.next() : DriveApp.createFolder(PDF_FOLDER);
+    var file = folder.createFile(blob);
+    try {
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    } catch (e2) { /* בארגונים שחוסמים שיתוף — הקובץ נשאר פרטי */ }
+    return { ok: true, name: blob.getName(), rows: data.rows.length, url: file.getUrl() };
+
+  } catch (e) {
+    return { ok: false,
+             errors: [(toDrive ? 'שגיאה בשמירה ל-Drive: ' : 'שגיאה בהפקת הקובץ: ') + e.message] };
+  }
+}
+
+function wa_pdf(token, p)         { return _waExport(token, p, 'pdf',  false); }
+function wa_pdfToDrive(token, p)  { return _waExport(token, p, 'pdf',  true ); }
+function wa_xlsx(token, p)        { return _waExport(token, p, 'xlsx', false); }
+function wa_xlsxToDrive(token, p) { return _waExport(token, p, 'xlsx', true ); }
+
+/* ==================================================================
+ *  גיליון "סינון יומנים" — סינון חי בתוך הגיליון, בלי סקריפט
+ * ================================================================== */
+var FILTER_SHEET = 'סינון יומנים';
+
+function setupLogFilters() {
+  var ss = SpreadsheetApp.getActive();
+  var L = "'" + CFG.LOG + "'";
+  var R = "'" + REPORTS_SHEET + "'";
+  var sh = ss.getSheetByName(FILTER_SHEET);
+  if (!sh) sh = ss.insertSheet(FILTER_SHEET);
+  sh.clear();
+  sh.setRightToLeft(true);
+  sh.setHiddenGridlines(true);
+  sh.setColumnWidth(1, 24);
+  for (var c = 2; c <= 12; c++) sh.setColumnWidth(c, 130);
+
+  sh.getRange(2, 2, 1, 6).merge().setValue('סינון יומנים')
+    .setFontSize(16).setFontWeight('bold')
+    .setBackground('#1f3864').setFontColor('#ffffff')
+    .setHorizontalAlignment('center');
+
+  sh.getRange(4, 2, 1, 5)
+    .setValues([['פלוגה', 'מחתים', 'חותם', 'סוג מכשיר', 'חיפוש צ׳ / טקסט חופשי']])
+    .setFontWeight('bold').setBackground('#d9e2f3').setHorizontalAlignment('center');
+  sh.getRange(5, 2, 1, 4).setValues([['הכול', 'הכול', 'הכול', 'הכול']])
+    .setBackground('#fff2cc').setHorizontalAlignment('center')
+    .setBorder(true, true, true, true, true, true);
+  sh.getRange(5, 6).setBackground('#fff2cc')
+    .setBorder(true, true, true, true, false, false);
+  sh.getRange(6, 2, 1, 5).merge()
+    .setValue('בחר מהתפריטים, או הקלד טקסט לחיפוש. "הכול" = בלי סינון. התוצאות מתעדכנות מיד.')
+    .setFontStyle('italic').setFontColor('#7f7f7f');
+
+  /* ---- רשימות לתפריטים, בעמודות עזר רחוקות ---- */
+  var help = [
+    ['BA', '=IFERROR({"הכול"; SORT(UNIQUE(FILTER(' + L + '!B2:B, ' + L + '!B2:B<>"")))}, "הכול")'],
+    ['BB', '=IFERROR({"הכול"; SORT(UNIQUE(FILTER(' + L + '!E2:E, ' + L + '!E2:E<>"")))}, "הכול")'],
+    ['BC', '=IFERROR({"הכול"; SORT(UNIQUE(FILTER(' + L + '!C2:C, ' + L + '!C2:C<>"")))}, "הכול")'],
+    ['BD', '=IFERROR({"הכול"; SORT(UNIQUE(FILTER(' + L + '!H2:H, ' + L + '!H2:H<>"")))}, "הכול")']
+  ];
+  help.forEach(function (h) { sh.getRange(h[0] + '2').setFormula(h[1]); });
+  SpreadsheetApp.flush();
+  ['BA', 'BB', 'BC', 'BD'].forEach(function (col, i) {
+    sh.getRange(5, 2 + i).setDataValidation(
+      SpreadsheetApp.newDataValidation()
+        .requireValueInRange(sh.getRange(col + '2:' + col + '300'), true)
+        .setAllowInvalid(true).build());
+  });
+  sh.hideColumns(53, 6);
+
+  /* ---- יומן חתימות מסונן ---- */
+  var opt = function (cell, col) {
+    return '(($' + cell + '="הכול")+(' + col + '=$' + cell + '))';
+  };
+  var txt = function (cell, col) {
+    return '(($' + cell + '="")+(IFERROR(SEARCH($' + cell + ', TO_TEXT(' + col + ')),0)>0))';
+  };
+
+  sh.getRange(8, 2, 1, 6).merge().setValue('יומן חתימות — מסונן')
+    .setFontWeight('bold').setBackground('#2e75b6').setFontColor('#ffffff');
+  sh.getRange(9, 2, 1, 11).setValues([CFG.LOG_HEAD])
+    .setFontWeight('bold').setBackground('#d9e2f3');
+  sh.getRange('B10').setFormula(
+    '=IFERROR(FILTER(' + L + '!A2:K, ' + L + '!A2:A<>"", ' +
+      opt('B$5', L + '!B2:B') + ', ' +
+      opt('C$5', L + '!E2:E') + ', ' +
+      opt('D$5', L + '!C2:C') + ', ' +
+      opt('E$5', L + '!H2:H') + ', ' +
+      '(($F$5="")+(IFERROR(SEARCH($F$5, TO_TEXT(' + L + '!I2:I)),0)>0)' +
+        '+(IFERROR(SEARCH($F$5, TO_TEXT(' + L + '!H2:H)),0)>0))' +
+    '), "אין תוצאות")');
+  sh.getRange(10, 2, 800, 1).setNumberFormat('dd/mm/yyyy HH:mm');
+
+  /* ---- דוחות צ׳ מסוננים ---- */
+  sh.getRange(8, 14, 1, 6).merge().setValue('דוחות צ׳ — מסוננים')
+    .setFontWeight('bold').setBackground('#0f6b6b').setFontColor('#ffffff');
+  sh.getRange(9, 14, 1, 10).setValues([REPORTS_HEAD])
+    .setFontWeight('bold').setBackground('#e2efd9');
+  sh.getRange('N10').setFormula(
+    '=IFERROR(FILTER(' + R + '!A2:J, ' + R + '!A2:A<>"", ' +
+      opt('B$5', R + '!B2:B') + ', ' +
+      '(($D$5="הכול")+(' + R + '!C2:C=$D$5)), ' +
+      '(($F$5="")+(IFERROR(SEARCH($F$5, TO_TEXT(' + R + '!H2:H)),0)>0)' +
+        '+(IFERROR(SEARCH($F$5, TO_TEXT(' + R + '!C2:C)),0)>0))' +
+    '), "אין תוצאות")');
+  sh.getRange(10, 14, 800, 1).setNumberFormat('dd/mm/yyyy HH:mm');
+  for (var k = 14; k <= 23; k++) sh.setColumnWidth(k, 130);
+
+  sh.setFrozenRows(9);
+  ss.setActiveSheet(sh);
+  SpreadsheetApp.getUi().alert('גיליון "' + FILTER_SHEET + '" מוכן.\n\n' +
+    'שנה את התפריטים בשורה 5 — שתי הטבלאות מתעדכנות מיד.\n' +
+    '"מחתים" ו"סוג מכשיר" רלוונטיים ליומן החתימות; "חותם" מסנן גם את מדווח הדוח.');
+}
+
+/* ==================================================================
+ *  שמירה — החתמה שוטפת
+ * ================================================================== */
+function wa_submit(token, p) {
+  try { _guard(token, 'write'); }
+  catch (e) { return { ok: false, errors: [e.message] }; }
+
+  var lock = LockService.getDocumentLock();
+  try { lock.waitLock(45000); }
+  catch (e) { return { ok: false, errors: ['המערכת עסוקה בשמירה אחרת. נסה שוב בעוד רגע.'] }; }
+  try { return _waSubmit(p); }
+  catch (e) { return { ok: false, errors: ['שגיאה טכנית: ' + e.message] }; }
+  finally { try { lock.releaseLock(); } catch (e2) {} }
+}
+
+function _waSubmit(p) {
+  var ss = SpreadsheetApp.getActive();
+  var errs = [];
+  var h = _payloadHeader(p, errs);
+  var when = _payloadWhen(p, errs);
+  var partial = _partialStock();
+
+  var pz = ss.getSheetByName(CFG.PIZUR);
+  var pzVals = pz.getRange(1, 1, pz.getLastRow(), CFG.PZ_SIGN).getValues();
+  var serRow = {};
+  for (var r = CFG.PZ_FIRST - 1; r < pzVals.length; r++) {
+    var s0 = _txt(pzVals[r][CFG.PZ_SER - 1]);
+    if (s0) serRow[s0] = r + 1;
+  }
+
+  var serJobs = [], seen = {};
+  (p && p.serials ? p.serials : []).forEach(function (raw) {
+    var ser = _txt(raw);
+    if (!ser || seen[ser]) return;
+    seen[ser] = true;
+    var sr = serRow[ser];
+    if (!sr) { errs.push('הצ׳ ' + ser + ' לא נמצא ב"' + CFG.PIZUR + '".'); return; }
+    var cur = _txt(pzVals[sr - 1][CFG.PZ_COMP - 1]);
+    if (cur === h.company) { errs.push('הצ׳ ' + ser + ' כבר רשום על ' + h.company + '.'); return; }
+    if (!_isAvailable(cur) && !CFG.ALLOW_TRANSFER) {
+      errs.push('הצ׳ ' + ser + ' כבר לא במחסן (רשום כרגע: ' + (cur || 'ריק') + ').'); return;
+    }
+    serJobs.push({ row: sr, ser: ser, dev: _txt(pzVals[sr - 1][CFG.PZ_DEV - 1]) });
+  });
+
+  var K = _klaliBundle(h.company);
+  var cmpJobs = _payloadComplementary(p, K, !partial, errs);
+
+  if (!errs.length && !serJobs.length && !cmpJobs.length) errs.push('לא נבחר ציוד כלשהו.');
+  if (errs.length) return { ok: false, errors: errs };
+
+  serJobs.forEach(function (j) {
+    pz.getRange(j.row, CFG.PZ_COMP).setValue(h.company);
+    pz.getRange(j.row, CFG.PZ_ROLE).setValue(h.role);
+    pz.getRange(j.row, CFG.PZ_SIGN).setValue(h.soldier);
+  });
+  _writeKlali(K, cmpJobs, !partial);
+
+  var act = partial ? 'אתר — החתמה (מלאי חלקי)' : 'אתר — החתמה';
+  if (when && when.__back) _logRowsAt(ss, act + ' · תאריך ' + _dstr(when), h, serJobs, cmpJobs, when);
+  else _logRows(ss, act, h, serJobs, cmpJobs);
+
+  _cacheClear();
+  SpreadsheetApp.flush();
+
+  return { ok: true, company: h.company, serials: serJobs.length, comp: cmpJobs.length,
+           when: (when && when.__back) ? _dstr(when) : '' };
+}
+
+/* ==================================================================
+ *  שמירה — קליטה ראשונית
+ * ================================================================== */
+function wa_intakeSubmit(token, p) {
+  try { _guard(token, 'write'); }
+  catch (e) { return { ok: false, errors: [e.message] }; }
+
+  var lock = LockService.getDocumentLock();
+  try { lock.waitLock(45000); }
+  catch (e) { return { ok: false, errors: ['המערכת עסוקה. נסה שוב בעוד רגע.'] }; }
+  try { return _waIntake(p); }
+  catch (e) { return { ok: false, errors: ['שגיאה טכנית: ' + e.message] }; }
+  finally { try { lock.releaseLock(); } catch (e2) {} }
+}
+
+function _waIntake(p) {
+  var ss = SpreadsheetApp.getActive();
+  var errs = [];
+  var h = _payloadHeader(p, errs);
+
+  var pz = ss.getSheetByName(CFG.PIZUR);
+  var vals = pz.getRange(1, CFG.PZ_DEV, pz.getLastRow(), 2).getValues();
+  var known = {}, lastData = CFG.PZ_FIRST - 1;
+  for (var r = CFG.PZ_FIRST - 1; r < vals.length; r++) {
+    var dev0 = _txt(vals[r][0]), ser0 = _txt(vals[r][1]);
+    if (ser0) known[ser0] = true;
+    if (dev0 !== '' || ser0 !== '') lastData = r + 1;
+  }
+
+  var serJobs = [], seen = {};
+  (p && p.items ? p.items : []).forEach(function (it) {
+    var dev = _txt(it && it.dev), ser = _txt(it && it.ser);
+    if (!dev && !ser) return;
+    if (!dev) { errs.push('הצ׳ ' + ser + ' נרשם בלי סוג מכשיר.'); return; }
+    if (!ser) { errs.push('"' + dev + '" נרשם בלי צ׳.'); return; }
+    if (seen[ser]) { errs.push('הצ׳ ' + ser + ' מופיע פעמיים.'); return; }
+    seen[ser] = true;
+    if (known[ser]) { errs.push('הצ׳ ' + ser + ' כבר קיים במערכת — השתמש בהחתמה השוטפת.'); return; }
+    serJobs.push({ ser: ser, dev: dev });
+  });
+
+  var K = _klaliBundle(h.company);
+  var cmpJobs = _payloadComplementary(p, K, false, errs);
+
+  if (!errs.length && !serJobs.length && !cmpJobs.length) errs.push('לא נרשם ציוד כלשהו.');
+  if (errs.length) return { ok: false, errors: errs };
+
+  if (serJobs.length) {
+    var startRow = lastData + 1;
+    while (startRow <= pz.getMaxRows()) {
+      var chk = pz.getRange(startRow, CFG.PZ_DEV, 1, 2).getValues()[0];
+      if (_txt(chk[0]) === '' && _txt(chk[1]) === '') break;
+      startRow++;
+    }
+    var needed = startRow + serJobs.length - 1;
+    if (needed > pz.getMaxRows()) pz.insertRowsAfter(pz.getMaxRows(), needed - pz.getMaxRows() + 10);
+
+    var block = serJobs.map(function (j) {
+      return [_numIfPossible(j.dev), _numIfPossible(j.ser), '', '', h.company, h.role, h.soldier];
+    });
+    pz.getRange(startRow, 1, block.length, CFG.PZ_SIGN).setValues(block);
+    try {
+      var srcRow = 0;
+      for (var k = startRow - 1; k >= CFG.PZ_FIRST && k > startRow - 61; k--) {
+        if (pz.getRange(k, CFG.PZ_CALC1, 1, 2).getFormulas()[0].join('') !== '') { srcRow = k; break; }
+      }
+      if (srcRow) {
+        pz.getRange(srcRow, CFG.PZ_CALC1, 1, 2)
+          .copyTo(pz.getRange(startRow, CFG.PZ_CALC1, block.length, 2),
+                  SpreadsheetApp.CopyPasteType.PASTE_FORMULA, false);
+      }
+    } catch (e) {}
+  }
+
+  _writeKlali(K, cmpJobs, false);
+  _logRows(ss, 'אתר — קליטה ראשונית', h, serJobs, cmpJobs);
+  _cacheClear();
+  SpreadsheetApp.flush();
+
+  return { ok: true, company: h.company, serials: serJobs.length, comp: cmpJobs.length };
+}
+
+/* ==================================================================
+ *  עזרי payload
+ * ================================================================== */
+function _payloadHeader(p, errs) {
+  var h = {
+    company : _txt(p && p.company),
+    soldier : _txt(p && p.soldier),
+    role    : _txt(p && p.role),
+    issuer  : _txt(p && p.issuer)
+  };
+  if (!h.company) errs.push('לא נבחרה פלוגה.');
+  else if (!CFG.COMPANY_COL[h.company]) errs.push('הפלוגה "' + h.company + '" אינה מוכרת.');
+  if (!h.soldier) errs.push('חסר שם החייל החותם.');
+  if (!h.role)    errs.push('חסר תפקיד.');
+  if (!h.issuer)  errs.push('חסר שם המחתים.');
+  return h;
+}
+
+function _klaliBundle(company) {
+  var kl = SpreadsheetApp.getActive().getSheetByName(CFG.KLALI);
+  var n = CFG.KLALI_LAST - CFG.KLALI_FIRST + 1;
+  var col = CFG.COMPANY_COL[company];
+  var dev = kl.getRange(CFG.KLALI_FIRST, CFG.KLALI_DEV_COL, n, 1).getValues();
+  var idx = {};
+  dev.forEach(function (v, i) { var t = _txt(v[0]); if (t && idx[t] === undefined) idx[t] = i; });
+  return {
+    sheet: kl, n: n, col: col, idx: idx,
+    comp : col ? kl.getRange(CFG.KLALI_FIRST, col, n, 1).getValues() : null,
+    wh   : kl.getRange(CFG.KLALI_FIRST, CFG.KLALI_WH_COL, n, 1).getValues()
+  };
+}
+
+function _payloadComplementary(p, K, checkStock, errs) {
+  var jobs = [], seen = {};
+  (p && p.comp ? p.comp : []).forEach(function (row) {
+    var dev = _txt(row && row.dev), qty = Number(row && row.qty);
+    if (!dev || !qty || qty <= 0) return;
+    if (seen[dev]) { errs.push('"' + dev + '" מופיע פעמיים.'); return; }
+    seen[dev] = true;
+    var i = K.idx[dev];
+    if (i === undefined) { errs.push('"' + dev + '" לא נמצא ברשימת הציוד ב"' + CFG.KLALI + '".'); return; }
+    if (checkStock && !CFG.ALLOW_NEGATIVE) {
+      var stock = Number(K.wh[i][0]) || 0;
+      if (qty > stock) { errs.push('"' + dev + '" – מבוקש ' + qty + ' אבל במחסן יש ' + stock + '.'); return; }
+    }
+    jobs.push({ idx: i, dev: dev, qty: qty });
+  });
+  return jobs;
+}
+
+function _writeKlali(K, cmpJobs, deduct) {
+  if (!cmpJobs.length || !K.col) return;
+  cmpJobs.forEach(function (j) {
+    K.comp[j.idx][0] = (Number(K.comp[j.idx][0]) || 0) + j.qty;
+    if (deduct) K.wh[j.idx][0] = (Number(K.wh[j.idx][0]) || 0) - j.qty;
+  });
+  K.sheet.getRange(CFG.KLALI_FIRST, K.col, K.n, 1).setValues(K.comp);
+  if (deduct) K.sheet.getRange(CFG.KLALI_FIRST, CFG.KLALI_WH_COL, K.n, 1).setValues(K.wh);
+}
+
+/* ==================================================================
+ *  תאריך ידני ליומן (החתמה/זיכוי שנרשמים יום אחרי המסירה בפועל)
+ * ================================================================== */
+function _payloadWhen(p, errs) {
+  var raw = _txt(p && p.when);
+  if (!raw) return null;
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  if (!m) { errs.push('תאריך לא תקין: ' + raw); return null; }
+  var d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0);
+  if (isNaN(d.getTime())) { errs.push('תאריך לא תקין: ' + raw); return null; }
+
+  var end = new Date(); end.setHours(23, 59, 59, 999);
+  if (d.getTime() > end.getTime()) { errs.push('אי אפשר לרשום החתמה בתאריך עתידי.'); return null; }
+  if (end.getTime() - d.getTime() > 400 * 24 * 3600 * 1000) {
+    errs.push('התאריך רחוק מדי אחורה (יותר משנה).'); return null;
+  }
+  var today = new Date();
+  d.__back = !(d.getFullYear() === today.getFullYear() &&
+               d.getMonth()    === today.getMonth() &&
+               d.getDate()     === today.getDate());
+  return d;
+}
+
+function _dstr(d) {
+  return Utilities.formatDate(d, Session.getScriptTimeZone(), 'dd/MM/yyyy');
+}
+
+/** כותב ליומן עם תאריך נתון. משמש כשמתארכים אחורה וגם בזיכויים. */
+function _logRowsAt(ss, action, h, serJobs, cmpJobs, when) {
+  var log = ss.getSheetByName(CFG.LOG);
+  if (!log) return 0;
+  var at = when || new Date();
+  var rows = [];
+  (serJobs || []).forEach(function (j) {
+    rows.push([at, h.company, (j.soldier !== undefined ? j.soldier : h.soldier),
+               (j.role !== undefined ? j.role : h.role), h.issuer,
+               action, 'ציוד עם צ׳', j.dev || '', j.ser || '', 1, h.issuer]);
+  });
+  (cmpJobs || []).forEach(function (j) {
+    rows.push([at, h.company, h.soldier, h.role, h.issuer,
+               action, 'ציוד משלים', j.dev || '', '', j.qty, h.issuer]);
+  });
+  if (!rows.length) return 0;
+  var first = log.getLastRow() + 1;
+  log.getRange(first, 1, rows.length, CFG.LOG_HEAD.length).setValues(rows);
+  log.getRange(first, 1, rows.length, 1).setNumberFormat('dd/mm/yyyy HH:mm');
+  return rows.length;
+}
+
+/* ==================================================================
+ *  זיכוי — החזרת ציוד מפלוגה/מחייל אל המחסן
+ * ================================================================== */
+function wa_credit(token, p) {
+  var me;
+  try { me = _guard(token, 'write'); }
+  catch (e) { return { ok: false, errors: [e.message] }; }
+
+  var lock = LockService.getDocumentLock();
+  try { lock.waitLock(45000); }
+  catch (e) { return { ok: false, errors: ['המערכת עסוקה בשמירה אחרת. נסה שוב בעוד רגע.'] }; }
+  try { return _waCredit(p, me); }
+  catch (e) { return { ok: false, errors: ['שגיאה טכנית: ' + e.message] }; }
+  finally { try { lock.releaseLock(); } catch (e2) {} }
+}
+
+function _waCredit(p, me) {
+  var ss = SpreadsheetApp.getActive();
+  var errs = [];
+  var company = _txt(p && p.company);
+  var soldier = _txt(p && p.soldier);           // ממי מזכים — לא חובה (אפשר זיכוי פלוגתי)
+  var issuer  = _txt(p && p.issuer);
+  if (!company) errs.push('לא נבחרה פלוגה.');
+  else if (!CFG.COMPANY_COL[company]) errs.push('הפלוגה "' + company + '" אינה מוכרת.');
+  if (!issuer) errs.push('חסר שם מי שמבצע את הזיכוי.');
+  var when = _payloadWhen(p, errs);
+  var partial = _partialStock();
+
+  var pz = ss.getSheetByName(CFG.PIZUR);
+  var pzVals = pz.getRange(1, 1, pz.getLastRow(), CFG.PZ_SIGN).getValues();
+  var serRow = {};
+  for (var r = CFG.PZ_FIRST - 1; r < pzVals.length; r++) {
+    var s0 = _txt(pzVals[r][CFG.PZ_SER - 1]);
+    if (s0 && serRow[s0] === undefined) serRow[s0] = r + 1;
+  }
+
+  var serJobs = [], seen = {};
+  (p && p.serials ? p.serials : []).forEach(function (raw) {
+    var ser = _txt(raw);
+    if (!ser || seen[ser]) return;
+    seen[ser] = true;
+    var sr = serRow[ser];
+    if (!sr) { errs.push('הצ׳ ' + ser + ' לא נמצא ב"' + CFG.PIZUR + '".'); return; }
+    var cur = _txt(pzVals[sr - 1][CFG.PZ_COMP - 1]);
+    if (cur !== company) {
+      errs.push('הצ׳ ' + ser + ' רשום כרגע על "' + (cur || 'ללא שיוך') +
+                '" ולא על ' + company + '.');
+      return;
+    }
+    serJobs.push({ row: sr, ser: ser,
+                   dev    : _txt(pzVals[sr - 1][CFG.PZ_DEV - 1]),
+                   soldier: _txt(pzVals[sr - 1][CFG.PZ_SIGN - 1]) || soldier,
+                   role   : _txt(pzVals[sr - 1][CFG.PZ_ROLE - 1]) });
+  });
+
+  /* ציוד משלים שחוזר למחסן */
+  var K = _klaliBundle(company);
+  var cmpJobs = [], seenDev = {};
+  (p && p.comp ? p.comp : []).forEach(function (row) {
+    var dev = _txt(row && row.dev), qty = Number(row && row.qty);
+    if (!dev || !qty || qty <= 0) return;
+    if (seenDev[dev]) { errs.push('"' + dev + '" מופיע פעמיים.'); return; }
+    seenDev[dev] = true;
+    var i = K.idx[dev];
+    if (i === undefined) { errs.push('"' + dev + '" לא נמצא ברשימת הציוד ב"' + CFG.KLALI + '".'); return; }
+    var have = K.comp ? (Number(K.comp[i][0]) || 0) : 0;
+    if (qty > have && !CFG.ALLOW_NEGATIVE) {
+      errs.push('"' + dev + '" – מזכים ' + qty + ' אבל על ' + company + ' רשומים ' + have + '.');
+      return;
+    }
+    cmpJobs.push({ idx: i, dev: dev, qty: qty });
+  });
+
+  if (!errs.length && !serJobs.length && !cmpJobs.length) errs.push('לא נבחר ציוד לזיכוי.');
+  if (errs.length) return { ok: false, errors: errs };
+
+  serJobs.forEach(function (j) {
+    pz.getRange(j.row, CFG.PZ_COMP).setValue(CFG.WAREHOUSE);
+    pz.getRange(j.row, CFG.PZ_ROLE).setValue('');
+    pz.getRange(j.row, CFG.PZ_SIGN).setValue('');
+  });
+  _creditKlali(K, cmpJobs, !partial);
+  var cleared = _clearCoRows(company, serJobs.map(function (j) { return j.ser; }));
+
+  var act = 'אתר — זיכוי' + (partial ? ' (מלאי חלקי)' : '') +
+            (when && when.__back ? ' · תאריך ' + _dstr(when) : '');
+  _logRowsAt(ss, act,
+             { company: company, soldier: soldier, role: '', issuer: issuer },
+             serJobs, cmpJobs, when);
+
+  _cacheClear();
+  SpreadsheetApp.flush();
+  return { ok: true, company: company, serials: serJobs.length, comp: cmpJobs.length,
+           cleared: cleared, warehouse: CFG.WAREHOUSE,
+           when: when ? _dstr(when) : '' };
+}
+
+/** הפוך ל-_writeKlali: מוריד מהפלוגה ומחזיר למחסן */
+function _creditKlali(K, cmpJobs, addBack) {
+  if (!cmpJobs.length || !K.col) return;
+  cmpJobs.forEach(function (j) {
+    K.comp[j.idx][0] = (Number(K.comp[j.idx][0]) || 0) - j.qty;
+    if (addBack) K.wh[j.idx][0] = (Number(K.wh[j.idx][0]) || 0) + j.qty;
+  });
+  K.sheet.getRange(CFG.KLALI_FIRST, K.col, K.n, 1).setValues(K.comp);
+  if (addBack) K.sheet.getRange(CFG.KLALI_FIRST, CFG.KLALI_WH_COL, K.n, 1).setValues(K.wh);
+}
+
+/** מנקה את שורות הצ׳ שזוכו מטבלת הפיזור הפנימית של הפלוגה (F:I) */
+function _clearCoRows(company, sers) {
+  if (!sers || !sers.length) return 0;
+  var sh = _coSheet(company);
+  if (!sh) return 0;
+  var want = {};
+  sers.forEach(function (s) { want[s] = true; });
+  var last = Math.min(Math.max(sh.getLastRow(), CO.FIRST), CO.MAX_ROW);
+  var span = Math.max(last - CO.FIRST + 1, 1);
+  var col = sh.getRange(CO.FIRST, CO.SER, span, 1).getValues();
+  var n = 0;
+  col.forEach(function (v, i) {
+    if (want[_txt(v[0])]) {
+      sh.getRange(CO.FIRST + i, CO.SER, 1, 4).setValues([['', '', '', '']]);
+      n++;
+    }
+  });
+  return n;
+}
+
+/* ==================================================================
+ *  רשימת הציוד של פלוגה — להדפסה (PDF / Excel)
+ *  כל הצ׳ מקובצים לפי מי שחתום עליהם, ואחריהם הציוד המשלים בכמויות.
+ * ================================================================== */
+var CO_COLS = [
+  { t: 'סוג מכשיר',   min: 130, max: 230, wrap: true,  align: 'right'  },
+  { t: 'צ׳',           min: 80,  max: 130, wrap: false, align: 'center' },
+  { t: 'תפקיד',        min: 80,  max: 150, wrap: true,  align: 'right'  },
+  { t: 'מסגרת',        min: 80,  max: 150, wrap: true,  align: 'right'  },
+  { t: 'מיקום / מצב',  min: 85,  max: 165, wrap: true,  align: 'right'  },
+  { t: 'הערות',        min: 110, max: 260, wrap: true,  align: 'right'  }
+];
+
+function _coReportData(company) {
+  var ss = SpreadsheetApp.getActive();
+  var pz = ss.getSheetByName(CFG.PIZUR);
+  var pv = pz.getRange(1, 1, pz.getLastRow(), 10).getValues();
+  var hold = (_holdersAll([company]).map || {})[company] || {};
+
+  var rows = [];
+  for (var r = CFG.PZ_FIRST - 1; r < pv.length; r++) {
+    var ser = _txt(pv[r][CFG.PZ_SER - 1]);
+    if (!ser || _txt(pv[r][CFG.PZ_COMP - 1]) !== company) continue;
+    var co = hold[ser] || {};
+    rows.push({
+      dev  : _txt(pv[r][CFG.PZ_DEV - 1]),
+      ser  : ser,
+      sign : co.g || _txt(pv[r][CFG.PZ_SIGN - 1]),
+      role : co.h || _txt(pv[r][CFG.PZ_ROLE - 1]),
+      frame: co.i || '',
+      loc  : _txt(pv[r][CFG.PZ_LOC - 1]),
+      note : _txt(pv[r][9])
+    });
+  }
+  rows.sort(function (a, b) {
+    var x = a.sign || '\uffff', y = b.sign || '\uffff';
+    if (x !== y) return x < y ? -1 : 1;
+    if (a.dev !== b.dev) return a.dev < b.dev ? -1 : 1;
+    return a.ser < b.ser ? -1 : 1;
+  });
+
+  var K = _klaliBundle(company), comp = [];
+  if (K.col) {
+    Object.keys(K.idx).forEach(function (dev) {
+      var q = Number(K.comp[K.idx[dev]][0]) || 0;
+      if (q) comp.push({ dev: dev, qty: q });
+    });
+    comp.sort(function (a, b) { return a.dev < b.dev ? -1 : 1; });
+  }
+  return { company: company, rows: rows, comp: comp };
+}
+
+function _coBuildSheet(sh, D, who) {
+  var nc   = CO_COLS.length;
+  var when = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm');
+  var WRAP = SpreadsheetApp.WrapStrategy.WRAP;
+  var CLIP = SpreadsheetApp.WrapStrategy.CLIP;
+
+  var totalQty = 0;
+  D.comp.forEach(function (c) { totalQty += c.qty; });
+
+  sh.setRightToLeft(true);
+
+  /* שורה 1 — כותרת המסמך */
+  sh.getRange(1, 1, 1, nc).merge()
+    .setValue('רשימת ציוד — ' + D.company + '   ·   ' + D.rows.length + ' פריטים עם צ׳   ·   ' +
+              D.comp.length + ' סוגי ציוד משלים (' + totalQty + ' יח׳)   ·   הופק ' + when +
+              (who ? '   ·   ' + who : ''))
+    .setFontSize(13).setFontWeight('bold').setHorizontalAlignment('center')
+    .setVerticalAlignment('middle').setBackground('#dbe5f5');
+
+  /* בונים את כל הגוף כמערך אחד, ומסמנים לאיזה סוג שייכת כל שורה */
+  var out = [], kind = [];        // 'sec' | 'head' | 'grp' | 'row' | 'sign'
+  function push(cells, k) {
+    var row = [];
+    for (var i = 0; i < nc; i++) row.push(cells[i] === undefined ? '' : cells[i]);
+    out.push(row); kind.push(k);
+  }
+
+  push(['ציוד עם צ׳ (' + D.rows.length + ')'], 'sec');
+  if (!D.rows.length) {
+    push(['אין ציוד עם צ׳ הרשום על ' + D.company], 'grp');
+  } else {
+    push(CO_COLS.map(function (c) { return c.t; }), 'head');
+    var last = null;
+    D.rows.forEach(function (o) {
+      var g = o.sign || 'לא רשום מי חתום';
+      if (g !== last) {
+        last = g;
+        var n = 0;
+        D.rows.forEach(function (x) { if ((x.sign || 'לא רשום מי חתום') === g) n++; });
+        push([g + '   ·   ' + n + ' פריטים'], 'grp');
+      }
+      push([o.dev, o.ser, o.role, o.frame, o.loc, o.note], 'row');
+    });
+  }
+
+  push(['ציוד משלים (' + D.comp.length + ')'], 'sec');
+  if (!D.comp.length) {
+    push(['אין ציוד משלים רשום על ' + D.company], 'grp');
+  } else {
+    push(['פריט', 'כמות'], 'head');
+    D.comp.forEach(function (c) { push([c.dev, c.qty], 'row'); });
+    push(['סה״כ', totalQty], 'grp');
+  }
+
+  push(['אישור קבלת אחריות'], 'sec');
+  push(['שם מקבל הציוד: ________________     תפקיד: ____________     ' +
+        'חתימה: ________________     תאריך: ____________'], 'sign');
+
+  /* כתיבה — כל הפורמטים במערכים, קריאה אחת לכל תכונה */
+  var first = 2;
+  var body = sh.getRange(first, 1, out.length, nc);
+  body.setNumberFormat('@');
+  body.setValues(out);
+  body.setVerticalAlignment('middle');
+
+  var wraps = [], aligns = [], backs = [], sizes = [], weights = [], colors = [];
+  var band = 0;
+  for (var i = 0; i < out.length; i++) {
+    var k = kind[i];
+    if (k === 'row') band++; else band = 0;
+    var wr = [], al = [], bg = [], fs = [], fw = [], fc = [];
+    for (var c = 0; c < nc; c++) {
+      wr.push(k === 'row' && !CO_COLS[c].wrap ? CLIP : WRAP);
+      al.push(k === 'row' ? CO_COLS[c].align : (k === 'head' ? 'center' : 'right'));
+      bg.push(k === 'sec'  ? '#1f3864'
+            : k === 'head' ? '#dbe5f5'
+            : k === 'grp'  ? '#eef2f9'
+            : k === 'sign' ? '#ffffff'
+            : (band % 2 === 0 ? '#f3f6fb' : '#ffffff'));
+      fc.push(k === 'sec' ? '#ffffff' : '#000000');
+      fs.push(k === 'sec' ? 11 : k === 'grp' ? 10 : k === 'sign' ? 11 : 9);
+      fw.push(k === 'row' ? 'normal' : 'bold');
+    }
+    wraps.push(wr); aligns.push(al); backs.push(bg);
+    sizes.push(fs); weights.push(fw); colors.push(fc);
+  }
+  body.setWrapStrategies(wraps);
+  body.setHorizontalAlignments(aligns);
+  body.setBackgrounds(backs);
+  body.setFontSizes(sizes);
+  body.setFontWeights(weights);
+  body.setFontColors(colors);
+
+  sh.getRange(1, 1, out.length + 1, nc)
+    .setBorder(true, true, true, true, true, true, '#b8c2d4', SpreadsheetApp.BorderStyle.SOLID);
+
+  kind.forEach(function (k, i) {
+    if (k === 'sec' || k === 'grp' || k === 'sign') sh.getRange(first + i, 1, 1, nc).merge();
+  });
+
+  /* רוחב עמודות — לפי התוכן בפועל, בדיוק כמו בדוח הכללי */
+  var prof = CO_COLS.map(function (c) { return { min: c.min, max: c.max }; });
+  var want = [];
+  for (var c2 = 0; c2 < nc; c2++) {
+    var wide = String(CO_COLS[c2].t).length;
+    for (var r2 = 0; r2 < out.length; r2++) {
+      if (kind[r2] !== 'row') continue;
+      var L = String(out[r2][c2] || '').length;
+      if (L > wide) wide = L;
+    }
+    want.push(Math.max(prof[c2].min, Math.min(prof[c2].max, _expTextPx(wide))));
+  }
+  var W = _expFit(want, prof, EXP.PAGE_PX);
+  for (var c3 = 0; c3 < nc; c3++) sh.setColumnWidth(c3 + 1, W[c3]);
+
+  sh.setRowHeight(1, 26);
+  sh.setRowHeight(first + out.length - 1, 34);      // שורת החתימה
+  sh.setFrozenRows(1);
+  return sh;
+}
+
+/* ------------------------------------------------------------------
+ *  הפקה בפועל — משותף לדוח הכללי ולרשימת הפלוגה
+ * ------------------------------------------------------------------ */
+function _pdfParams(gid) {
+  return ['format=pdf', 'size=A4', 'portrait=false', 'fitw=true',
+          'gridlines=false', 'printtitle=false', 'sheetnames=false',
+          'pagenumbers=true', 'attachment=true', 'fzr=true',
+          'top_margin=0.35', 'bottom_margin=0.35',
+          'left_margin=0.25', 'right_margin=0.25', 'gid=' + gid].join('&');
+}
+
+/** בונה גיליון זמני ומייצא אותו. ל-xlsx נדרש קובץ נפרד כי format=xlsx
+ *  מתעלם מ-gid ומייצא את כל חוברת העבודה. */
+function _expEmit(build, sheetName, baseName, fmt) {
+  if (fmt === 'xlsx') {
+    var tmp = SpreadsheetApp.create('__ייצוא_זמני_' + new Date().getTime());
+    var id = tmp.getId();
+    try {
+      var sh = tmp.getSheets()[0];
+      sh.setName(sheetName);
+      build(sh);
+      SpreadsheetApp.flush();
+      return _expFetch(tmp, 'format=xlsx').setName(baseName + '.xlsx');
+    } finally {
+      try { DriveApp.getFileById(id).setTrashed(true); } catch (e) {}
+    }
+  }
+
+  var ss = SpreadsheetApp.getActive();
+  var old = ss.getSheetByName(PDF_TMP_SHEET);
+  if (old) ss.deleteSheet(old);
+  var sh2 = ss.insertSheet(PDF_TMP_SHEET);
+  try {
+    build(sh2);
+    SpreadsheetApp.flush();
+    return _expFetch(ss, _pdfParams(sh2.getSheetId())).setName(baseName + '.pdf');
+  } finally {
+    try { ss.deleteSheet(ss.getSheetByName(PDF_TMP_SHEET)); } catch (e) {}
+  }
+}
+
+function wa_coReport(token, p) {
+  var me;
+  try { me = _guard(token, 'view'); }
+  catch (e) { return { ok: false, errors: [e.message] }; }
+
+  try {
+    var company = _txt(p && p.company);
+    if (!company) return { ok: false, errors: ['לא נבחרה פלוגה.'] };
+    if (!CFG.COMPANY_COL[company]) return { ok: false, errors: ['הפלוגה "' + company + '" אינה מוכרת.'] };
+
+    var fmt = (_txt(p && p.fmt) === 'xlsx') ? 'xlsx' : 'pdf';
+    var D = _coReportData(company);
+    if (!D.rows.length && !D.comp.length) {
+      return { ok: false, errors: ['אין ציוד רשום על ' + company + '.'] };
+    }
+
+    var who  = me.name || me.email;
+    var date = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd_HHmm');
+    var base = ('רשימת ציוד - ' + company + ' ' + date).replace(/[\\\/:*?"<>|]/g, '-');
+    var blob = _expEmit(function (sh) { _coBuildSheet(sh, D, who); },
+                        'רשימת ציוד', base, fmt);
+
+    if (!(p && p.toDrive)) {
+      return { ok: true, name: blob.getName(), rows: D.rows.length, comp: D.comp.length,
+               mime: EXP_MIME[fmt], b64: Utilities.base64Encode(blob.getBytes()) };
+    }
+    var it = DriveApp.getFoldersByName(PDF_FOLDER);
+    var folder = it.hasNext() ? it.next() : DriveApp.createFolder(PDF_FOLDER);
+    var file = folder.createFile(blob);
+    try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e2) {}
+    return { ok: true, name: blob.getName(), rows: D.rows.length, comp: D.comp.length,
+             url: file.getUrl() };
+  } catch (e) {
+    return { ok: false, errors: ['שגיאה בהפקת הרשימה: ' + e.message] };
+  }
+}
