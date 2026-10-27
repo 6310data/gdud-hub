@@ -31,7 +31,7 @@
     "drizzle-kit": "^0.31.0",
     "tsx": "^4.20.0",
     "typescript": "~5.9.3",
-    "vitest": "^4.0.0",
+    "vitest": "^5.0.5",
     "write-excel-file": "^4.1.1"
   }
 }
