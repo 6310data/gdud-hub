@@ -1,18 +1,50 @@
 "use client";
 /**
  * ייבוא מהגיליון: upload → choose tabs → preview → result. The File stays in this component's
- * state and is re-sent with every step; the server stores nothing in between.
+ * state and is re-sent with every step; the server stores nothing in between. Generic over the
+ * module: the page passes its Server Actions, its default tabs and its labels.
  */
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import type { ApplyResult, PreviewLine, SheetKey, XlsxTab } from "@gdud/db/logistics-sheet";
-import { carryTicks, checkUploadFile } from "@gdud/db/logistics-sheet/preview";
+import {
+  carryTicks,
+  checkUploadFile,
+  STALE_PREVIEW,
+  type ApplyResultBase,
+  type ImportTab,
+  type PreviewLineBase,
+} from "@gdud/db/sheet-import/preview";
 import { Button, Steps, type StepItem } from "@gdud/ui";
 import { FilePicker } from "@/components/file-picker";
-import { applySheetImport, inspectSheetFile, previewSheetImport, type PreviewData } from "../_actions/sheet-import";
 import type { ActionOutcome } from "@/lib/action-result";
 import { ChangeTable } from "./change-table";
-import { STALE_PREVIEW } from "./messages";
+
+export interface PreviewData<L extends PreviewLineBase = PreviewLineBase> {
+  lines: L[];
+  identical: Partial<Record<string, number>>;
+  fingerprint: string;
+}
+
+export interface ImportFlowProps {
+  inspect(form: FormData): Promise<ActionOutcome<{ fileName: string; tabs: ImportTab[] }>>;
+  preview(form: FormData): Promise<ActionOutcome<PreviewData>>;
+  apply(form: FormData): Promise<ActionOutcome<ApplyResultBase>>;
+  /** the Google Sheet's name, for the download instructions */
+  sheetName: string;
+  /** tabs ticked when the file is read */
+  defaultTabs: readonly string[];
+  /** tabs read for lookups only: shown ticked and locked, never chosen */
+  lookupTabs?: Readonly<Record<string, string>>;
+  kindLabels: Readonly<Record<string, string>>;
+  /** error message of a soldier missing from the app (collapsed per soldier) */
+  missingSoldier?: string;
+  /** one line above the preview */
+  previewNote?: string;
+  backHref: string;
+  logHref: string;
+  /** what the module calls its log ("לוג", "יומן") */
+  logName: string;
+}
 
 type Step = "upload" | "tabs" | "preview" | "result";
 const WIZARD: Array<{ id: Step; label: string; working: string }> = [
@@ -35,8 +67,6 @@ function wizardSteps(step: Step, busy: Step | null): StepItem[] {
   }));
 }
 
-const DEFAULT_TABS: readonly SheetKey[] = ["serials", "assignments", "storage", "log"];
-
 /** An action call that never throws: a rejected request (too large, network) becomes a Hebrew error. */
 async function safe<T>(call: () => Promise<ActionOutcome<T>>): Promise<ActionOutcome<T>> {
   try {
@@ -46,31 +76,35 @@ async function safe<T>(call: () => Promise<ActionOutcome<T>>): Promise<ActionOut
   }
 }
 
-const count = (lines: readonly PreviewLine[], pred: (l: PreviewLine) => boolean) => lines.filter(pred).length;
+const count = (lines: readonly PreviewLineBase[], pred: (l: PreviewLineBase) => boolean) => lines.filter(pred).length;
 
-export function ImportFlow() {
+export function ImportFlow(props: ImportFlowProps) {
+  const { defaultTabs, lookupTabs = {}, backHref } = props;
   const [step, setStep] = useState<Step>("upload");
   const [file, setFile] = useState<File | null>(null);
   /** the file being read, before the server accepted it */
   const [picked, setPicked] = useState<File | null>(null);
-  const [tabs, setTabs] = useState<XlsxTab[]>([]);
-  const [chosen, setChosen] = useState<ReadonlySet<SheetKey>>(new Set());
+  const [tabs, setTabs] = useState<ImportTab[]>([]);
+  const [chosen, setChosen] = useState<ReadonlySet<string>>(new Set());
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
-  const [active, setActive] = useState<SheetKey | null>(null);
-  const [result, setResult] = useState<ApplyResult | null>(null);
+  /** soldiers picked for ambiguous names: pick key → person id (this import only) */
+  const [picks, setPicks] = useState<Readonly<Record<string, string>>>({});
+  const [active, setActive] = useState<string | null>(null);
+  const [result, setResult] = useState<ApplyResultBase | null>(null);
   const [error, setError] = useState<string>();
   const [pending, start] = useTransition();
   /** the step the running request produces */
   const [busy, setBusy] = useState<Step>("upload");
 
-  /** chosen tabs in the workbook's order; the אלפון is always read (lookup only) and never chosen */
-  const chosenTabs = tabs.flatMap((t) => (t.key && chosen.has(t.key) ? [t.key] : []));
+  /** chosen tabs in the workbook's order; lookup tabs are always read and never chosen */
+  const chosenTabs = tabs.flatMap((t) => (t.key && chosen.has(t.key) && !(t.key in lookupTabs) ? [t.key] : []));
 
-  const form = (extra: Record<string, readonly string[]> = {}) => {
+  const form = (extra: Record<string, readonly string[]> = {}, withPicks = picks) => {
     const fd = new FormData();
     if (file) fd.append("file", file);
     for (const [k, values] of Object.entries(extra)) for (const v of values) fd.append(k, v);
+    for (const [k, v] of Object.entries(withPicks)) fd.append("pick", `${k}=${v}`);
     return fd;
   };
 
@@ -84,27 +118,36 @@ export function ImportFlow() {
     start(async () => {
       const fd = new FormData();
       fd.append("file", f);
-      const r = await safe(() => inspectSheetFile(fd));
+      const r = await safe(() => props.inspect(fd));
       if (!r.ok) return setError(r.error);
       setFile(f);
       setTabs(r.data.tabs);
-      setChosen(new Set(r.data.tabs.flatMap((t) => (t.key && DEFAULT_TABS.includes(t.key) ? [t.key] : []))));
+      setPicks({});
+      setChosen(new Set(r.data.tabs.flatMap((t) => (t.key && defaultTabs.includes(t.key) ? [t.key] : []))));
       setStep("tabs");
     });
   }
 
-  function showPreview() {
+  function showPreview(withPicks = picks) {
     setError(undefined);
     setBusy("preview");
     start(async () => {
-      const r = await safe(() => previewSheetImport(form({ tabs: chosenTabs })));
+      const r = await safe(() => props.preview(form({ tabs: chosenTabs }, withPicks)));
       if (!r.ok) return setError(r.error);
       setPreview(r.data);
       // "הצג שוב" keeps what the admin unticked; only lines that are new get their default
       setSelected(carryTicks(preview ? { lines: preview.lines, selected } : null, r.data.lines));
-      setActive(chosenTabs.find((k) => r.data.lines.some((l) => l.sheet === k)) ?? chosenTabs[0] ?? null);
+      setActive((cur) =>
+        cur && chosenTabs.includes(cur) ? cur : (chosenTabs.find((k) => r.data.lines.some((l) => l.sheet === k)) ?? chosenTabs[0] ?? null),
+      );
       setStep("preview");
     });
+  }
+
+  function pick(key: string, personId: string) {
+    const next = { ...picks, [key]: personId };
+    setPicks(next);
+    showPreview(next);
   }
 
   function apply() {
@@ -112,7 +155,7 @@ export function ImportFlow() {
     setError(undefined);
     setBusy("result");
     start(async () => {
-      const r = await safe(() => applySheetImport(form({ tabs: chosenTabs, selected: [...selected], fingerprint: [preview.fingerprint] })));
+      const r = await safe(() => props.apply(form({ tabs: chosenTabs, selected: [...selected], fingerprint: [preview.fingerprint] })));
       if (!r.ok) return setError(r.error);
       setResult(r.data);
       setStep("result");
@@ -124,6 +167,7 @@ export function ImportFlow() {
     setFile(null);
     setPreview(null);
     setResult(null);
+    setPicks({});
     setError(undefined);
   }
 
@@ -144,14 +188,14 @@ export function ImportFlow() {
         <div role="alert" className="tz-alert tz-alert-error m-0 flex flex-wrap items-center gap-3">
           <span className="flex-1">{error}</span>
           {error === STALE_PREVIEW ? (
-            <Button type="button" small onClick={showPreview} loading={pending}>
+            <Button type="button" small onClick={() => showPreview()} loading={pending}>
               הצג שוב
             </Button>
           ) : null}
         </div>
       ) : null}
 
-      {step === "upload" ? <UploadStep pending={pending} file={pending ? picked : null} onFile={pickFile} /> : null}
+      {step === "upload" ? <UploadStep sheetName={props.sheetName} pending={pending} file={pending ? picked : null} onFile={pickFile} /> : null}
 
       {step === "tabs" ? (
         <section className="tz-card flex flex-col gap-3 p-4">
@@ -169,7 +213,8 @@ export function ImportFlow() {
               <TabRow
                 key={t.name}
                 tab={t}
-                on={t.key === "people" || (t.key !== null && chosen.has(t.key))}
+                lookup={t.key ? lookupTabs[t.key] : undefined}
+                on={t.key !== null && (t.key in lookupTabs || chosen.has(t.key))}
                 onToggle={(k) =>
                   setChosen((cur) => {
                     const next = new Set(cur);
@@ -183,10 +228,10 @@ export function ImportFlow() {
           </div>
           <p className="tz-footnote m-0">הגיליון לא משתנה. הייבוא רק מעדכן את האפליקציה לפי הגיליון.</p>
           <div className="flex flex-wrap gap-2">
-            <Button type="button" onClick={showPreview} disabled={chosenTabs.length === 0} loading={pending}>
+            <Button type="button" onClick={() => showPreview()} disabled={chosenTabs.length === 0} loading={pending}>
               {pending ? "בודק…" : "הצג מה ישתנה"}
             </Button>
-            <Link href="/logistics" className="tz-btn tz-btn-plain">
+            <Link href={backHref} className="tz-btn tz-btn-plain">
               ביטול
             </Link>
           </div>
@@ -201,24 +246,28 @@ export function ImportFlow() {
           onActive={setActive}
           selected={selected}
           onToggle={toggle}
+          onPick={pick}
           pending={pending}
           onBack={() => setStep("tabs")}
           onApply={apply}
+          kindLabels={props.kindLabels}
+          missingSoldier={props.missingSoldier}
+          note={props.previewNote}
         />
       ) : null}
 
-      {step === "result" && result && preview ? <ResultStep result={result} lines={preview.lines} onAgain={restart} /> : null}
+      {step === "result" && result && preview ? <ResultStep result={result} lines={preview.lines} logHref={props.logHref} logName={props.logName} onAgain={restart} /> : null}
     </div>
   );
 }
 
-function UploadStep({ pending, file, onFile }: { pending: boolean; file: File | null; onFile(f: File | null): void }) {
+function UploadStep({ sheetName, pending, file, onFile }: { sheetName: string; pending: boolean; file: File | null; onFile(f: File | null): void }) {
   return (
     <section className="tz-card flex flex-col gap-4 p-4">
       <div className="flex flex-col gap-1">
         <h2 className="tz-headline">איך מורידים את הגיליון</h2>
         <ol className="m-0 flex list-decimal flex-col gap-0.5 ps-5 text-[15px]">
-          <li>פותחים את &quot;לוגיסטיקה גדודית&quot; ב-Google Sheets</li>
+          <li>פותחים את &quot;{sheetName}&quot; ב-Google Sheets</li>
           <li>קובץ ← הורדה ← Microsoft Excel (&lrm;.xlsx)</li>
           <li>מעלים את הקובץ כאן. הקובץ לא נשמר באפליקציה.</li>
         </ol>
@@ -228,12 +277,12 @@ function UploadStep({ pending, file, onFile }: { pending: boolean; file: File | 
   );
 }
 
-function TabRow({ tab: t, on, onToggle }: { tab: XlsxTab; on: boolean; onToggle(k: SheetKey): void }) {
-  const lookupOnly = t.key === "people";
-  const sub = t.key === null ? "לא נתמך" : lookupOnly ? `${t.rows} שורות · לאיתור מספר אישי בלבד` : `${t.rows} שורות`;
+function TabRow({ tab: t, lookup, on, onToggle }: { tab: ImportTab; lookup?: string; on: boolean; onToggle(k: string): void }) {
+  const locked = !t.key || lookup !== undefined;
+  const sub = t.key === null ? (t.note ?? "לא נתמך") : lookup !== undefined ? `${t.rows} שורות · ${lookup}` : [`${t.rows} שורות`, t.note].filter(Boolean).join(" · ");
   return (
-    <label className={`flex items-center gap-3 border-b border-separator py-2.5 last:border-0 ${t.key && !lookupOnly ? "cursor-pointer" : "opacity-55"}`}>
-      <input type="checkbox" checked={on} disabled={!t.key || lookupOnly} onChange={() => t.key && onToggle(t.key)} aria-label={t.name} />
+    <label className={`flex items-center gap-3 border-b border-separator py-2.5 last:border-0 ${locked ? "opacity-55" : "cursor-pointer"}`}>
+      <input type="checkbox" checked={on} disabled={locked} onChange={() => t.key && onToggle(t.key)} aria-label={t.name} />
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="text-[15px]">{t.name}</span>
         <span className="text-xs text-ink-muted">{sub}</span>
@@ -244,17 +293,21 @@ function TabRow({ tab: t, on, onToggle }: { tab: XlsxTab; on: boolean; onToggle(
 
 interface PreviewStepProps {
   preview: PreviewData;
-  tabs: XlsxTab[];
-  active: SheetKey | null;
-  onActive(k: SheetKey): void;
+  tabs: ImportTab[];
+  active: string | null;
+  onActive(k: string): void;
   selected: ReadonlySet<string>;
   onToggle(id: string): void;
+  onPick(key: string, personId: string): void;
   pending: boolean;
   onBack(): void;
   onApply(): void;
+  kindLabels: Readonly<Record<string, string>>;
+  missingSoldier?: string;
+  note?: string;
 }
 
-function PreviewStep({ preview, tabs, active, onActive, selected, onToggle, pending, onBack, onApply }: PreviewStepProps) {
+function PreviewStep({ preview, tabs, active, onActive, selected, onToggle, onPick, pending, onBack, onApply, kindLabels, missingSoldier, note }: PreviewStepProps) {
   const lines = preview.lines;
   const shown = lines.filter((l) => l.sheet === active);
   const selectable = count(lines, (l) => l.selectable);
@@ -275,6 +328,7 @@ function PreviewStep({ preview, tabs, active, onActive, selected, onToggle, pend
           <h2 className="tz-headline flex-1">תצוגה מקדימה</h2>
           <span className="tz-footnote">שום דבר עוד לא נשמר</span>
         </div>
+        {note ? <p className="tz-footnote m-0">{note}</p> : null}
         <nav className="tz-pills" aria-label="לשונית">
           {tabs.map((t) => (
             <button key={t.name} type="button" className="tz-pill" aria-pressed={t.key === active} onClick={() => t.key && onActive(t.key)}>
@@ -291,7 +345,7 @@ function PreviewStep({ preview, tabs, active, onActive, selected, onToggle, pend
         </div>
       </section>
       <div className="tz-card overflow-hidden">
-        <ChangeTable lines={shown} selected={selected} onToggle={onToggle} />
+        <ChangeTable lines={shown} selected={selected} onToggle={onToggle} kindLabels={kindLabels} missingSoldier={missingSoldier} onPick={onPick} />
       </div>
       <div className="tz-card sticky bottom-3 flex flex-wrap items-center gap-3 p-3">
         <span className="flex-1 text-[14px]">
@@ -309,14 +363,15 @@ function PreviewStep({ preview, tabs, active, onActive, selected, onToggle, pend
   );
 }
 
-function ResultStep({ result, lines, onAgain }: { result: ApplyResult; lines: PreviewLine[]; onAgain(): void }) {
+function ResultStep(props: { result: ApplyResultBase; lines: PreviewLineBase[]; logHref: string; logName: string; onAgain(): void }) {
+  const { result, lines, logHref, logName, onAgain } = props;
   const byId = new Map(lines.map((l) => [l.id, l]));
   const a = result.applied;
   return (
     <section className="tz-card flex flex-col gap-3 p-4">
       <p role="status" className="tz-alert tz-alert-ok m-0">
         הייבוא נשמר · חדשים {a.new} · שינויים {a.change} · הוסרו {a.appOnly}
-        {result.logEvents ? ` · ${result.logEvents} פעולות נוספו ללוג` : ""}
+        {result.logEvents ? ` · ${result.logEvents} פעולות נוספו ל${logName}` : ""}
       </p>
       {result.blocked.length ? (
         <>
@@ -335,8 +390,8 @@ function ResultStep({ result, lines, onAgain }: { result: ApplyResult; lines: Pr
         </>
       ) : null}
       <div className="flex flex-wrap gap-2">
-        <Link href="/logistics/log?kind=sheet_import" className="tz-btn tz-btn-tinted">
-          ללוג
+        <Link href={logHref} className="tz-btn tz-btn-tinted">
+          ל{logName}
         </Link>
         <Button type="button" variant="plain" onClick={onAgain}>
           ייבוא נוסף

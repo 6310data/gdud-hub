@@ -1,11 +1,10 @@
 /**
- * The preview table of an import: one section per group, each line with a checkbox (when it can
- * be chosen), what kind of change it is, where it is in the sheet and before → after.
- * Generic over PreviewLine so other imports (דוח 1) can reuse it.
+ * The preview table of a sheet import: one section per group, each line with a checkbox (when it
+ * can be chosen), what kind of change it is, where it is in the sheet and before → after.
+ * Generic over the module (logistics, kesher): the caller passes the labels of its change kinds.
  */
 import type { CSSProperties, ReactNode } from "react";
-import type { LineGroup, LineKind, PreviewLine } from "@gdud/db/logistics-sheet";
-import { MSG } from "@gdud/db/logistics-sheet/preview";
+import type { LineGroup, PreviewLineBase } from "@gdud/db/sheet-import/preview";
 import { Chip, Serial } from "@gdud/ui";
 
 const SECTIONS: { group: LineGroup; title: string; hint: string }[] = [
@@ -15,32 +14,27 @@ const SECTIONS: { group: LineGroup; title: string; hint: string }[] = [
   { group: "error", title: "לא נקראו", hint: "לא ייובאו. תקנו בגיליון והעלו שוב." },
 ];
 
-const KIND_LABEL: Partial<Record<LineKind, string>> = {
-  "item.update": "קטלוג",
-  "serial.condition": "מצב",
-  "assignment.transfer": "העברה",
-  "assignment.kit": "ציוד משלים",
-  "assignment.return": "זיכוי",
-  "storage.release": "שחרור מאפסון",
-  "serial.delete": "מחיקה",
-  "kit.remove": "הסרה מהתקן",
-  "log.add": "היסטוריה",
-};
 const GROUP_LABEL: Record<LineGroup, string> = { new: "חדש", change: "שינוי", appOnly: "רק באפליקציה", error: "שגיאה" };
 const DANGER_CHIP: CSSProperties = { background: "var(--danger-soft)", color: "var(--danger)" };
 
-/** Rows for a soldier missing from the app are grouped per soldier. */
-const NO_SOLDIER = MSG.noSoldier;
-
 export interface ChangeTableProps {
-  lines: PreviewLine[];
+  lines: PreviewLineBase[];
   selected: ReadonlySet<string>;
   onToggle(id: string): void;
+  /** the module's change kinds → the chip label (other kinds show the group) */
+  kindLabels: Readonly<Record<string, string>>;
+  /** error lines with this message (a soldier missing from the app) collapse into one row per soldier */
+  missingSoldier?: string;
+  /** an ambiguous soldier was picked (key from the line's `pick`) */
+  onPick?(key: string, personId: string): void;
 }
 
-export function ChangeTable({ lines, selected, onToggle }: ChangeTableProps) {
+export function ChangeTable({ lines, selected, onToggle, kindLabels, missingSoldier, onPick }: ChangeTableProps) {
   const sections = SECTIONS.map((s) => ({ ...s, lines: lines.filter((l) => l.group === s.group) })).filter((s) => s.lines.length);
   if (!sections.length) return <div className="p-6 text-center text-[15px] text-ink-muted">אין שינויים בלשונית הזו</div>;
+  const row = (l: PreviewLineBase, on: boolean, toggle: (id: string) => void) => (
+    <LineRow key={l.id} line={l} on={on} onToggle={toggle} kindLabels={kindLabels} onPick={onPick} />
+  );
   return (
     <div className="tz-table-wrap">
       <table className="tz-table">
@@ -62,7 +56,11 @@ export function ChangeTable({ lines, selected, onToggle }: ChangeTableProps) {
                 {s.title} ({s.lines.length}) · <span className="font-normal">{s.hint}</span>
               </th>
             </tr>
-            {s.group === "error" ? <ErrorRows lines={s.lines} /> : s.lines.map((l) => <LineRow key={l.id} line={l} on={selected.has(l.id)} onToggle={onToggle} />)}
+            {s.group === "error" ? (
+              <ErrorRows lines={s.lines} missingSoldier={missingSoldier} row={row} />
+            ) : (
+              s.lines.map((l) => row(l, selected.has(l.id), onToggle))
+            )}
           </tbody>
         ))}
       </table>
@@ -70,7 +68,15 @@ export function ChangeTable({ lines, selected, onToggle }: ChangeTableProps) {
   );
 }
 
-function LineRow({ line: l, on, onToggle }: { line: PreviewLine; on: boolean; onToggle(id: string): void }) {
+interface LineRowProps {
+  line: PreviewLineBase;
+  on: boolean;
+  onToggle(id: string): void;
+  kindLabels: Readonly<Record<string, string>>;
+  onPick?(key: string, personId: string): void;
+}
+
+function LineRow({ line: l, on, onToggle, kindLabels, onPick }: LineRowProps) {
   const dim = l.selectable && !on;
   return (
     <tr className={dim ? "opacity-55" : undefined}>
@@ -80,7 +86,7 @@ function LineRow({ line: l, on, onToggle }: { line: PreviewLine; on: boolean; on
         ) : null}
       </td>
       <td>
-        <Badge line={l} />
+        <Badge line={l} label={kindLabels[l.kind] ?? GROUP_LABEL[l.group]} />
       </td>
       <td className="tz-num">{l.row ?? "—"}</td>
       <td>{l.item ?? "—"}</td>
@@ -88,19 +94,19 @@ function LineRow({ line: l, on, onToggle }: { line: PreviewLine; on: boolean; on
       <td>{l.personName ?? "—"}</td>
       <td className="whitespace-normal">
         <Change line={l} />
+        {l.pick && onPick ? <PickSoldier pick={l.pick} onPick={onPick} /> : null}
       </td>
     </tr>
   );
 }
 
-function Badge({ line }: { line: PreviewLine }) {
-  const label = KIND_LABEL[line.kind] ?? GROUP_LABEL[line.group];
+function Badge({ line, label }: { line: PreviewLineBase; label: string }) {
   if (line.group === "error") return <span className="tz-chip" style={DANGER_CHIP}>{label}</span>;
   const tone = line.group === "new" ? "ok" : line.group === "change" ? "broken" : "brigade";
   return <Chip tone={tone}>{label}</Chip>;
 }
 
-function Change({ line: l }: { line: PreviewLine }): ReactNode {
+function Change({ line: l }: { line: PreviewLineBase }): ReactNode {
   if (l.group === "error") return <span>{l.message}</span>;
   if (l.group === "appOnly") {
     if (!l.selectable) return <span className="text-ink-muted">{l.message ?? "יישאר כמו שהוא"}</span>;
@@ -124,13 +130,41 @@ function Change({ line: l }: { line: PreviewLine }): ReactNode {
   );
 }
 
+/** A name that matches several soldiers: the admin picks one, for this import only. */
+function PickSoldier({ pick, onPick }: { pick: NonNullable<PreviewLineBase["pick"]>; onPick(key: string, personId: string): void }) {
+  return (
+    <select
+      className="tz-input mt-1.5 min-h-[34px] text-[14px]"
+      value={pick.chosen ?? ""}
+      onChange={(e) => e.target.value && onPick(pick.key, e.target.value)}
+      aria-label="בחירת החייל"
+    >
+      <option value="">בחרו את החייל…</option>
+      {pick.choices.map((c) => (
+        <option key={c.id} value={c.id}>
+          {c.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 /** Error rows; rows for the same soldier missing from the app collapse into one row with a count. */
-function ErrorRows({ lines }: { lines: PreviewLine[] }) {
-  const bySoldier = new Map<string, PreviewLine[]>();
-  const other: PreviewLine[] = [];
+function ErrorRows({
+  lines,
+  missingSoldier,
+  row,
+}: {
+  lines: PreviewLineBase[];
+  missingSoldier?: string;
+  row(l: PreviewLineBase, on: boolean, toggle: (id: string) => void): ReactNode;
+}) {
+  const bySoldier = new Map<string, PreviewLineBase[]>();
+  const other: PreviewLineBase[] = [];
   for (const l of lines) {
-    if (l.message === NO_SOLDIER && l.personName) bySoldier.set(l.personName, [...(bySoldier.get(l.personName) ?? []), l]);
-    else other.push(l);
+    if (missingSoldier && l.message === missingSoldier && l.personName && !l.pick) {
+      bySoldier.set(l.personName, [...(bySoldier.get(l.personName) ?? []), l]);
+    } else other.push(l);
   }
   return (
     <>
@@ -147,12 +181,10 @@ function ErrorRows({ lines }: { lines: PreviewLine[] }) {
             {rows.length} שורות
           </td>
           <td className="font-semibold">{name}</td>
-          <td className="whitespace-normal">{NO_SOLDIER}</td>
+          <td className="whitespace-normal">{missingSoldier}</td>
         </tr>
       ))}
-      {other.map((l) => (
-        <LineRow key={l.id} line={l} on={false} onToggle={() => undefined} />
-      ))}
+      {other.map((l) => row(l, false, () => undefined))}
     </>
   );
 }
