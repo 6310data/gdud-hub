@@ -23,6 +23,7 @@ import {
   type RosterAnswers,
   type RosterDecisions,
   type RosterFile,
+  parseBrigadeList,
 } from "../src/doch1-roster-import/index";
 import { readWorkbook } from "../src/doch1-import/read";
 import { runAsUser, type Tx } from "../src/index";
@@ -394,5 +395,23 @@ describe("the corrections file", () => {
     const [sheet] = await readWorkbook(await correctionsWorkbook(rows));
     expect(sheet!.rows[0]).toEqual(["סוג", "מספר אישי", "שם", "שדה", "ברשימת הגדוד", "אצלנו"]);
     expect(sheet!.rows).toHaveLength(rows.length + 1);
+  });
+});
+
+describe("the brigade's call-up list", () => {
+  it("finds the header by מספר אישי; a status column is optional", () => {
+    const grid = (rows: (string | number | null)[][]) => [{ name: "גיליון1", hidden: false, rows }];
+    const withStatus = parseBrigadeList(
+      grid([["דוח התייצבות"], ["מ\"א", "שם פרטי", "שם משפחה", "סטטוס"], [1234567, "דנה", "בדויה", "התייצב"], [null, "בלי", "מספר", ""], [7654321, "רון", "ממציא", "טרם התייצב"]]),
+    );
+    expect(withStatus.hasStatus).toBe(true);
+    expect(withStatus.rows).toEqual([
+      { line: 3, personalNumber: "1234567", name: "דנה בדויה", status: "התייצב" },
+      { line: 5, personalNumber: "7654321", name: "רון ממציא", status: "טרם התייצב" },
+    ]);
+    expect(withStatus.warnings).toEqual(["1 שורות בלי מספר אישי לא נבדקו."]);
+    const plain = parseBrigadeList(grid([["שם מלא", "מספר אישי"], ["טל דמיוני", "0001111111"]]));
+    expect(plain).toMatchObject({ hasStatus: false, rows: [{ personalNumber: "0001111111", name: "טל דמיוני", status: "" }] });
+    expect(() => parseBrigadeList(grid([["שם"], ["x"]]))).toThrow(/מספר אישי/);
   });
 });

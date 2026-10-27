@@ -6,7 +6,7 @@
  */
 import { z } from "zod";
 import { can } from "@gdud/auth";
-import { and, count, eq, inArray, schema, withUser } from "@gdud/db";
+import { and, count, eq, inArray, schema, sql, withUser } from "@gdud/db";
 import { actionError, UserError, type ActionResult } from "@/lib/action-result";
 import { dayParam, doch1Ctx, firstIssue, NO_PERMISSION, NO_ROUND, revalidateDoch1, uuid } from "./common";
 
@@ -77,6 +77,45 @@ export async function setServiceDates(raw: {
         .update(members)
         .set(set)
         .where(and(eq(members.roundId, ctx.round.id), inArray(members.personId, personIds)));
+    });
+  } catch (err) {
+    return { error: actionError(err) };
+  }
+  revalidateDoch1();
+  return { ok: true };
+}
+
+const fillInput = z.object({ personIds: z.array(uuid).min(1, "לא נבחרו חיילים").max(1000) });
+
+/**
+ * Soldiers without a call-up date who already have reported days: the first reported day becomes
+ * their call-up date (the import does the same for a blank sheet cell). A release date before that
+ * day is left alone, and so is that soldier.
+ */
+export async function fillCallUpFromReports(raw: { personIds: string[] }): Promise<ActionResult> {
+  const ctx = await doch1Ctx();
+  if (!ctx) return NO_ROUND;
+  const parsed = fillInput.safeParse(raw);
+  if (!parsed.success) return { error: firstIssue(parsed.error) };
+  const { personIds } = parsed.data;
+  try {
+    await withUser(ctx.s.claims, async (tx) => {
+      const rows = await tx.select({ unitId: people.unitId }).from(people).where(inArray(people.id, personIds));
+      if (rows.length !== new Set(personIds).size) throw new UserError("חלק מהחיילים לא נמצאו");
+      if (rows.some((r) => !can(ctx.s.user, "doch1", ["admin", "company_user"], r.unitId, ctx.s.parents))) throw new UserError(NO_PERMISSION.error);
+      const ids = sql.join(
+        personIds.map((id) => sql`${id}::uuid`),
+        sql`, `,
+      );
+      await tx.execute(sql`
+        update public.doch1_members m set call_up_on = f.first
+        from (
+          select person_id, min(day) as first from public.doch1_days
+          where round_id = ${ctx.round.id}::uuid and person_id in (${ids})
+          group by person_id
+        ) f
+        where m.round_id = ${ctx.round.id}::uuid and m.person_id = f.person_id and m.call_up_on is null
+          and (m.released_on is null or m.released_on >= f.first)`);
     });
   } catch (err) {
     return { error: actionError(err) };

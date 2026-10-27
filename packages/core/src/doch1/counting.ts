@@ -71,6 +71,19 @@ export interface ServiceDates {
   arriving: boolean;
 }
 
+/**
+ * The likely effect of a סטטוס גיוס value read from the sheet, by its words — what the import gives
+ * a new value until the admin changes it in settings. "טרם התייצב" is pending, "התייצב" arrived.
+ * Keep in sync with migrations/0022_doch1_enlistment_effects.sql.
+ */
+export function guessEnlistmentEffect(text: string): EnlistmentEffect {
+  if (/טרם|לא\s*התייצב|נפקד|בדרך/.test(text)) return "pending";
+  if (/נדח|דחי/.test(text)) return "postponed";
+  if (/שוחרר|שחרור|פטור/.test(text)) return "released";
+  if (/התייצב|הגיע|נקלט/.test(text)) return "arrived";
+  return "pending";
+}
+
 /** `arriving` of a member from their צפי הגעה value's effect (null = not filled). */
 export function isArriving(effect: ArrivalEffect | null | undefined): boolean {
   return effect !== "not_arriving";

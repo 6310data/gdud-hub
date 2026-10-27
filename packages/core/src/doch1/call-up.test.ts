@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { callUpBrigadeText, callUpSummary, inCallUp, type CallUpMember } from "./call-up";
+import { callUpBrigadeText, callUpSummary, compareBrigadeList, inCallUp, type BrigadeRow, type CallUpMember } from "./call-up";
 
 const DAY = "2026-09-06";
 const m = (personId: string, companyId: string, extra: Partial<CallUpMember> = {}): CallUpMember => ({
@@ -77,5 +77,30 @@ describe("callUpBrigadeText", () => {
 
   it("carries no names or ids", () => {
     for (const x of members) expect(text).not.toContain(x.personId);
+  });
+});
+
+describe("compareBrigadeList", () => {
+  const row = (line: number, personalNumber: string, status = ""): BrigadeRow => ({ line, personalNumber, name: `שם ${line}`, status });
+  const members = [
+    { personId: "a", personalNumber: "1234567", arrived: true },
+    { personId: "b", personalNumber: "0007654321", arrived: false },
+    { personId: "c", personalNumber: "1111111", arrived: true },
+    { personId: "d", personalNumber: null, arrived: false },
+  ];
+
+  it("a list without statuses: every row showed up", () => {
+    const r = compareBrigadeList(members, [row(2, "1234567"), row(3, "7654321"), row(4, "9999999")]);
+    expect(r.agree).toBe(1);
+    expect(r.notMarked.map((x) => x.personId)).toEqual(["b"]);
+    expect(r.notInBrigade).toEqual([{ personId: "c", row: null }]);
+    expect(r.unknown.map((x) => x.line)).toEqual([4]);
+  });
+
+  it("a status column: only arrived rows count as showed up", () => {
+    const r = compareBrigadeList(members, [row(2, "1234567", "טרם התייצב"), row(3, "7654321", "התייצב"), row(4, "1111111", "התייצב")]);
+    expect(r.agree).toBe(1);
+    expect(r.notMarked.map((x) => x.personId)).toEqual(["b"]);
+    expect(r.notInBrigade.map((x) => [x.personId, x.row?.line])).toEqual([["a", 2]]);
   });
 });

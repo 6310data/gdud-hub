@@ -5,7 +5,7 @@
  * change. planSheetImport() only reads; applySheetImport() (apply.ts) runs the same
  * resolution and then writes. Everything runs in the caller's RLS transaction.
  */
-import { canonicalName, placement, type Day, type UnitKind } from "@gdud/core";
+import { canonicalName, guessEnlistmentEffect, placement, type Day, type UnitKind } from "@gdud/core";
 import { eq, inArray } from "drizzle-orm";
 import type { Tx } from "../index";
 import * as schema from "../schema/index";
@@ -16,8 +16,8 @@ const { units, people, doch1Rounds, doch1RoundCompanies, doch1Statuses, doch1Mem
 
 export type OptionField = schema.FieldOptionField;
 const OPTION_FIELDS: readonly OptionField[] = ["arrival", "enlistment"];
-/** What a value created by the import does until the admin changes it in settings. */
-const DEFAULT_EFFECT = { arrival: "arriving", enlistment: "pending" } as const satisfies Record<OptionField, schema.FieldOptionEffect>;
+/** What a value created by the import does until the admin changes it in settings: צפי הגעה arriving, סטטוס גיוס by its words. */
+const defaultEffect = (field: OptionField, text: string): schema.FieldOptionEffect => (field === "arrival" ? "arriving" : guessEnlistmentEffect(text));
 
 export interface ImportMappings {
   /** tab key → company unit id ("create" = a new company named after the tab) */
@@ -354,13 +354,13 @@ export async function resolveSheetImport(tx: Tx, roundId: string, parsed: Parsed
       const answer =
         create(given) ?? valid(given) ?? valid(saved[field].get(key)) ?? byKey.get(key)
         // a round without values takes the file's, like statuses on a first import
-        ?? (list.length === 0 ? `create:${DEFAULT_EFFECT[field]}` : undefined);
+        ?? (list.length === 0 ? `create:${defaultEffect(field, text)}` : undefined);
       if (!answer) {
         questions.push({
           kind: field,
           key,
           label: text,
-          suggestion: `create:${DEFAULT_EFFECT[field]}`,
+          suggestion: `create:${defaultEffect(field, text)}`,
           options: list.map((o) => ({ id: o.id, label: o.name })),
         });
         continue;
@@ -519,12 +519,17 @@ export function dayChanges(
       const text = optionText(r, field);
       return text ? (optionOf(field, canonicalName(text)) ?? current ?? null) : null;
     };
+    // the first day of the round the sheet reports a status on
+    let firstReported: Day | null = null;
+    for (const [day, value] of r.days) {
+      if (value && day >= res.round.startsOn && day <= res.round.endsOn && statusOf(value) && (!firstReported || day < firstReported)) firstReported = day;
+    }
     const member: MemberFields = {
       personId,
       dmhCategory: r.dmhCategory || null,
       arrivalOptionId: option("arrival", had?.arrivalOptionId),
-      // a blank call-up date in the sheet keeps the one entered in the app
-      callUpOn: r.callUpOn ?? had?.callUpOn ?? null,
+      // a blank call-up date in the sheet keeps the one entered in the app; without one, the first reported day
+      callUpOn: r.callUpOn ?? had?.callUpOn ?? firstReported,
       enlistmentOptionId: option("enlistment", had?.enlistmentOptionId),
       hasDisc: r.hasDisc,
       notes: r.notes || null,

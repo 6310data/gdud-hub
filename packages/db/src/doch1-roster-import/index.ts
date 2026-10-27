@@ -4,6 +4,7 @@
  * admin's RLS transaction (withUser); the file is parsed in memory and never stored.
  */
 export * from "./apply";
+export * from "./brigade";
 export * from "./corrections";
 export * from "./parse";
 export * from "./plan";
