@@ -1,17 +1,41 @@
 /** Small presentational pieces shared by the kesher screens (server-safe, no hooks). */
 import Link from "next/link";
-import type { CheckStatus } from "@gdud/core";
-import { Chip, Icon } from "@gdud/ui";
+import type { CheckStatus, UnitNode } from "@gdud/core";
+import { Chip, Icon, tintStyle } from "@gdud/ui";
 import { leftCompany, type KPerson, type KSerial, type LastSeen } from "@/lib/kesher/data";
 import { fmtCount } from "@/lib/logistics/format";
 
 const DAY_MS = 86_400_000;
 
+/** A company as the units tree names and colors it (ניהול מערכת › יחידות). */
+export interface CompanyRef {
+  name: string;
+  color: string | null;
+}
+
+/** unit id → name and color, for every unit (a company that was renamed still finds its color). */
+export const companyRefs = (units: readonly UnitNode[]): Map<string, CompanyRef> => new Map(units.map((u) => [u.id, { name: u.name, color: u.color }]));
+
+/** The company's name in the company's color. */
+export function CompanyChip({ company }: { company: CompanyRef }) {
+  if (!company.color) return <Chip tone="signed">{company.name}</Chip>;
+  return (
+    <span className="tz-chip tz-chip-tint" style={tintStyle(company.color)}>
+      {company.name}
+    </span>
+  );
+}
+
+/** A small dot in the company's color (pills, headings). */
+export function CompanyDot({ color }: { color: string | null }) {
+  return <span aria-hidden="true" className="tz-dot" style={tintStyle(color)} />;
+}
+
 /** במחסן / the company / ללא שיוך */
-export function LocationChip({ serial, companyName }: { serial: Pick<KSerial, "location">; companyName?: string | null }) {
+export function LocationChip({ serial, company }: { serial: Pick<KSerial, "location">; company?: CompanyRef | null }) {
   if (serial.location === "warehouse") return <Chip tone="ok">במחסן</Chip>;
   if (serial.location === "none") return <Chip tone="broken">ללא שיוך</Chip>;
-  return <Chip tone="signed">{companyName ?? "פלוגה"}</Chip>;
+  return <CompanyChip company={company ?? { name: "פלוגה", color: null }} />;
 }
 
 /** The last דוח צ׳ of a company: לא הוגש / N לא נמצאו / ישן · N ימים / תקין */

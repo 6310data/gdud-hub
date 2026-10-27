@@ -3,13 +3,15 @@ import { notFound } from "next/navigation";
 import { z } from "zod";
 import { byHe, expandKit, matches } from "@gdud/core";
 import { withUser } from "@gdud/db";
-import { Serial } from "@gdud/ui";
+import { Icon, Serial } from "@gdud/ui";
 import { Empty, PageHeader, SmallTile } from "@/components/page-parts";
 import { kesherAccess } from "@/lib/kesher/access";
 import { companyStatus, groupBy, loadKesher, loadLastChecks, loadLastSeen, loadMissing, placeTotal, stockKey } from "@/lib/kesher/data";
+import { loadPeople, personPlace } from "@/lib/logistics/data";
 import { fmtCount, fmtWhen } from "@/lib/logistics/format";
 import { requireModule } from "@/lib/session";
-import { ReportChip, SearchBox, SeenChip, SegLinks, SoldierName, pillCount } from "../../_components/ui";
+import { CompanyDot, ReportChip, SearchBox, SeenChip, SegLinks, SoldierName, pillCount } from "../../_components/ui";
+import { AssignProvider, GroupCheck, RowCheck, RowEdit, type AssignPerson } from "./_components/assign";
 
 export const metadata = { title: "פלוגה" };
 
@@ -21,7 +23,8 @@ const searchSchema = z.object({
 
 /**
  * פלוגה (mockup #/companies/<unit>): the company's צ׳ grouped by device type with who holds each
- * inside the company, and its ציוד משלים against the תקן. Phase 1: read-only (שיוך arrives in Phase 2).
+ * inside the company, and its ציוד משלים against the תקן. Anyone covering the company edits the
+ * שיוך בתוך הפלוגה (soldier · תפקיד · מסגרת); a battalion admin also edits חותם על הפלוגה.
  */
 export default async function KesherCompany({
   params,
@@ -38,11 +41,11 @@ export default async function KesherCompany({
   const f = searchSchema.parse(await searchParams);
   const now = new Date();
 
-  const { data, last, lastSeen, missing } = await withUser(s.claims, async (tx) => {
-    const [data, lastChecks, lastSeen] = await Promise.all([loadKesher(tx, s.units), loadLastChecks(tx), loadLastSeen(tx)]);
+  const { data, last, lastSeen, missing, soldiers } = await withUser(s.claims, async (tx) => {
+    const [data, lastChecks, lastSeen, soldiers] = await Promise.all([loadKesher(tx, s.units), loadLastChecks(tx), loadLastSeen(tx), loadPeople(tx, s.units)]);
     const last = lastChecks.get(company.id);
     const missing = last && last.found < last.total ? await loadMissing(tx, last.id) : [];
-    return { data, last, lastSeen, missing };
+    return { data, last, lastSeen, missing, soldiers };
   });
 
   const counts = groupBy(
@@ -53,12 +56,17 @@ export default async function KesherCompany({
   const assigned = mine.filter((x) => x.holder?.holder).length;
   const status = companyStatus(last, data.staleDays, now);
   const base = `/kesher/companies/${company.id}`;
+  // the picker: the company's active soldiers (RLS already limits people to what the user covers)
+  const people: AssignPerson[] = soldiers
+    .filter((p) => p.companyId === company.id)
+    .map((p) => ({ id: p.id, name: p.name, personalNumber: p.personalNumber, place: personPlace(p), platoonName: p.platoonName }));
 
   return (
     <>
       <nav className="tz-pills" aria-label="פלוגות">
         {access.companies.map((c) => (
           <Link key={c.id} href={`/kesher/companies/${c.id}${f.tab === "comp" ? "?tab=comp" : ""}`} className="tz-pill" aria-current={c.id === company.id ? "page" : undefined}>
+            <CompanyDot color={c.color} />
             {c.name} {pillCount(counts.get(c.id)?.length ?? 0)}
           </Link>
         ))}
@@ -66,6 +74,12 @@ export default async function KesherCompany({
       <PageHeader
         title={company.name}
         sub={`${fmtCount(mine.length)} צ׳ · ${fmtCount(assigned)} משויכים לחותם בתוך הפלוגה · ${fmtCount(placeTotal(data, company.id))} פריטי ציוד משלים`}
+        actions={
+          <Link href={`/kesher/reports/print?r=company&unit=${company.id}`} className="tz-btn tz-btn-tinted tz-btn-sm">
+            <Icon name="print" size={16} />
+            רשימת ציוד להדפסה
+          </Link>
+        }
       />
 
       <div className="tz-card flex flex-wrap items-center gap-3 px-4 py-3.5">
@@ -114,14 +128,30 @@ export default async function KesherCompany({
       {f.tab === "comp" ? (
         <CompTable data={data} unitId={company.id} serials={mine} />
       ) : (
-        <SerialsTable
-          rows={mine.filter((x) => !f.q || matches(f.q, x.serial, x.itemName, x.holder?.holder?.name, x.holder?.holderRole, x.holder?.frame))}
+        <AssignProvider
           unitId={company.id}
-          companyName={company.name}
-          lastSeen={lastSeen}
-          staleDays={data.staleDays}
-          now={now}
-        />
+          canSign={access.isAdmin}
+          people={people}
+          rows={mine.map((x) => ({
+            serialId: x.id,
+            serial: x.serial,
+            item: x.itemName,
+            holderPersonId: x.holder?.holder?.id ?? null,
+            holderRole: x.holder?.holderRole ?? null,
+            frame: x.holder?.frame ?? null,
+            signerPersonId: x.holder?.signer?.id ?? null,
+            signerRole: x.holder?.signerRole ?? null,
+          }))}
+        >
+          <SerialsTable
+            rows={mine.filter((x) => !f.q || matches(f.q, x.serial, x.itemName, x.holder?.holder?.name, x.holder?.signer?.name, x.holder?.holderRole, x.holder?.frame))}
+            unitId={company.id}
+            companyName={company.name}
+            lastSeen={lastSeen}
+            staleDays={data.staleDays}
+            now={now}
+          />
+        </AssignProvider>
       )}
     </>
   );
@@ -150,12 +180,18 @@ function SerialsTable({
           <table className="tz-table">
             <thead>
               <tr>
+                <th className="w-0">
+                  <span className="sr-only">בחירה</span>
+                </th>
                 <th>צ׳</th>
                 <th>חתום</th>
                 <th>תפקיד</th>
                 <th>מסגרת</th>
                 <th className="max-md:hidden">חותם על הפלוגה</th>
                 <th>נבדק</th>
+                <th className="w-0">
+                  <span className="sr-only">עריכה</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -192,7 +228,10 @@ function GroupRows({
   return (
     <>
       <tr className="tz-group-row">
-        <th colSpan={6}>
+        <th>
+          <GroupCheck ids={list.map((x) => x.id)} label={type} />
+        </th>
+        <th colSpan={7}>
           {type}{" "}
           <span className="tz-num font-normal">
             · {done}/{list.length} משויכים
@@ -201,6 +240,9 @@ function GroupRows({
       </tr>
       {list.map((x) => (
         <tr key={x.id}>
+          <td>
+            <RowCheck id={x.id} label={`${type} ${x.serial}`} />
+          </td>
           <th scope="row">
             <Link href={`/kesher/serials?sel=${x.id}`} className="no-underline">
               <Serial>{x.serial}</Serial>
@@ -223,6 +265,9 @@ function GroupRows({
           </td>
           <td>
             <SeenChip seen={lastSeen.get(x.id)} staleDays={staleDays} now={now} />
+          </td>
+          <td className="py-0">
+            <RowEdit id={x.id} label={`${type} ${x.serial}`} />
           </td>
         </tr>
       ))}

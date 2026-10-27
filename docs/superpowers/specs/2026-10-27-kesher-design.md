@@ -177,7 +177,7 @@ While both run, the sheet is the record: a change made only in the app (e.g. a n
 
 **Companies** are matched to `units` (kind company) by `searchKey` of the name (so `פלת"צ` = `פלת״צ`). An unknown company is "couldn't read" with "הפלוגה X לא קיימת — יש להוסיף אותה בניהול מערכת". Units are never created. **עיט is not a unit yet** (answered): add it in `/admin/units` before the first import, or its rows stay under "couldn't read". Serials are matched by `normalizeSerial`.
 
-**Soldiers.** The sheet has names only. A name is matched to `people` by `searchKey` of the full name among the active soldiers of that row's company (subtree): one match → linked; none → "couldn't read" ("החייל X לא נמצא בפלוגה Y ברשימת דוח 1"); several → "couldn't read" listing the candidates with their platoon, and the admin can pick one in the preview (the choice applies to that file's import only). Never a fuzzy match. The holding line is separate from the serial line: a צ׳ whose holder can't be matched is still imported with its location; only its holder stays empty and appears in "דורש טיפול" until set by hand or by a later import. While דוח 1 covers only part of the battalion, expect many such rows; the preview groups them per name.
+**Soldiers.** The sheet has names only. A name is matched to `people` by `searchKey` of the full name among the active soldiers of that row's company (subtree): one match → linked; none → "couldn't read" ("החייל X לא נמצא בפלוגה Y ברשימת דוח 1"); several → "couldn't read" listing the candidates with their platoon, and the admin can pick one in the preview (the choice applies to that file's import only). **Close names (changed 2026-10-27):** the company tabs often hold a first name only, a last name only or a different spelling, so when no name matches exactly the closest active soldier of that company is offered (`guessName` in `@gdud/core`: word by word, any order, final letters and doubled ו/י forgiven). One clear fit is linked and its line says "התאמה משוערת" with the candidates in a picker, so the admin confirms or changes it; several close fits stay "couldn't read" until one is picked. Nothing links without showing on the preview. The holding line is separate from the serial line: a צ׳ whose holder can't be matched is still imported with its location; only its holder stays empty and appears in "דורש טיפול" until set by hand or by a later import. While דוח 1 covers only part of the battalion, expect many such rows; the preview groups them per name.
 
 | Sheet tab | → | Key | Notes |
 |---|---|---|---|
@@ -204,7 +204,7 @@ No developer CLI for kesher; tests drive `read → diff → apply` directly with
 
 - `docs/SECURITY.md` applies in full. The data: links between soldiers (from `people`) and the devices they hold, kesher roles and frames, device serial numbers, which company holds which device, and vehicle numbers (האמר). The module stores no personal numbers, phones or emails of its own; it reads `people` under the existing policy.
 - **ביטחון מידע approval: yes (answered).** Recorded in `docs/SECURITY.md` → Approvals.
-- Imports: admin only, size limit, parsed in memory, file not stored, no formulas evaluated (cached values only), emails and access codes skipped by design, soldier matches exact only.
+- Imports: admin only, size limit, parsed in memory, file not stored, no formulas evaluated (cached values only), emails and access codes skipped by design, soldier matches exact or shown on the preview as a guess to confirm.
 - Push payloads: company names and counts only.
 - The real `.xlsx` stays out of git (already covered by `*.xlsx`). Tests use invented data.
 
@@ -216,7 +216,7 @@ No developer CLI for kesher; tests drive `read → diff → apply` directly with
 4. **מחתים and מדווח are the signed-in user**, not a picked soldier — the person at the keyboard is the one doing it. The old log's typed issuer names are kept as history only.
 5. **תפקיד and מסגרת stay text** (with suggestions): they are kesher jobs, not דוח 1 data.
 6. **Holdings survive a soldier's move or removal** and are flagged, not deleted.
-7. **Imported soldiers: exact name match within the company only**; anything else waits for a person to decide.
+7. **Imported soldiers: within the company only** — exact names link; a close name links only as a guess shown on the preview with its candidates; anything ambiguous waits for a person to decide.
 8. **`warehouse_tracked`** replaces the old partial-stock switch, as one setting instead of a hidden config.
 9. **Location fixes are separate from sign/return** and logged as `serial_edit`, so the יומן never shows a "sign" nobody did.
 10. **Push subscriptions become shared** (renamed from doch1's table) rather than a second kesher table, so one device subscription serves every module.

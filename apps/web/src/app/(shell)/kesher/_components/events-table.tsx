@@ -3,11 +3,13 @@ import { KESHER_EVENT_LABEL, type KesherEventKind } from "@gdud/core";
 import { Chip, Serial } from "@gdud/ui";
 import { Empty } from "@/components/page-parts";
 import { fmtWhen } from "@/lib/logistics/format";
+import { CompanyChip, type CompanyRef } from "./ui";
 
 export interface EventRow {
   id: number;
   at: Date;
   kind: KesherEventKind;
+  unitId: string | null;
   company: string | null;
   personName: string | null;
   personRole: string | null;
@@ -29,7 +31,18 @@ const TONE: Partial<Record<KesherEventKind, "ok" | "brigade" | "signed" | "admin
   legacy: "admin",
 };
 
-export function EventsTable({ rows, compact, now = new Date() }: { rows: readonly EventRow[]; compact?: boolean; now?: Date }) {
+export function EventsTable({
+  rows,
+  companies,
+  compact,
+  now = new Date(),
+}: {
+  rows: readonly EventRow[];
+  /** unit id → name and color, for the company chip (the row's own text when the unit is gone) */
+  companies: ReadonlyMap<string, CompanyRef>;
+  compact?: boolean;
+  now?: Date;
+}) {
   if (!rows.length) return <Empty>אין רישום תואם</Empty>;
   return (
     <table className="tz-table">
@@ -51,7 +64,7 @@ export function EventsTable({ rows, compact, now = new Date() }: { rows: readonl
               {fmtWhen(r.at, now)}
               {r.backdated ? <span className="tz-row-sub text-xs">רטרואקטיבי</span> : null}
             </td>
-            <td>{r.company ?? "—"}</td>
+            <td>{r.company ? <CompanyChip company={{ name: r.company, color: companies.get(r.unitId ?? "")?.color ?? null }} /> : "—"}</td>
             <td>
               {r.personName ?? "—"}
               {!compact && r.personRole ? <span className="tz-row-sub text-xs">{r.personRole}</span> : null}
@@ -63,6 +76,7 @@ export function EventsTable({ rows, compact, now = new Date() }: { rows: readonl
             {compact ? null : <td className="tz-num">{r.qty ?? ""}</td>}
             <td>
               <Chip tone={TONE[r.kind] ?? "signed"}>{r.kind === "legacy" && r.details ? r.details : KESHER_EVENT_LABEL[r.kind]}</Chip>
+              {!compact && r.details && (r.kind === "assign" || r.kind === "serial_edit") ? <span className="tz-row-sub whitespace-normal text-xs">{r.details}</span> : null}
             </td>
           </tr>
         ))}

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { desc, schema, withUser } from "@gdud/db";
-import { Icon } from "@gdud/ui";
+import { Icon, tintStyle } from "@gdud/ui";
 import { Kpi, PageHeader, Panel, SmallTile } from "@/components/page-parts";
 import { kesherAccess } from "@/lib/kesher/access";
 import { companyStatus, groupBy, leftCompany, loadKesher, loadLastChecks, loadLastSeen, placeTotal, stockKey } from "@/lib/kesher/data";
@@ -9,7 +9,7 @@ import { companiesOf } from "@/lib/logistics/data";
 import { fmtCount, fmtDate, fmtWhen } from "@/lib/logistics/format";
 import { requireModule } from "@/lib/session";
 import { EventsTable } from "./_components/events-table";
-import { Meter, ReportChip } from "./_components/ui";
+import { CompanyDot, Meter, ReportChip, companyRefs } from "./_components/ui";
 
 export const metadata = { title: "מחלקת קשר" };
 
@@ -80,12 +80,18 @@ export default async function KesherOverview() {
         title="סקירה"
         sub={`${fmtCount(data.serials.length)} צ׳ בגדוד · ${bulkCount} סוגי ציוד משלים · עודכן ${fmtWhen(now, now)}`}
         actions={
-          access.isAdmin ? (
-            <Link href="/kesher/import" className="tz-btn tz-btn-tinted tz-btn-sm">
-              <Icon name="upload" size={16} />
-              ייבוא מהגיליון
+          <>
+            <Link href="/kesher/reports" className="tz-btn tz-btn-tinted tz-btn-sm">
+              <Icon name="report" size={16} />
+              הפקת דוחות
             </Link>
-          ) : null
+            {access.isAdmin ? (
+              <Link href="/kesher/import" className="tz-btn tz-btn-tinted tz-btn-sm">
+                <Icon name="upload" size={16} />
+                ייבוא מהגיליון
+              </Link>
+            ) : null}
+          </>
         }
       />
 
@@ -138,15 +144,18 @@ export default async function KesherOverview() {
                   const last = lastChecks.get(c.id);
                   const total = placeTotal(data, c.id);
                   return (
-                    <tr key={c.id} className={mine ? "tz-hover" : undefined}>
+                    <tr key={c.id} className={`${mine ? "tz-hover" : ""} ${c.color ? "tz-tint" : ""}`} style={tintStyle(c.color)}>
                       <th scope="row" className="font-semibold">
-                        {mine ? (
-                          <Link href={`/kesher/companies/${c.id}`} className="text-inherit no-underline">
-                            {c.name}
-                          </Link>
-                        ) : (
-                          c.name
-                        )}
+                        <span className="inline-flex items-center gap-2">
+                          <CompanyDot color={c.color} />
+                          {mine ? (
+                            <Link href={`/kesher/companies/${c.id}`} className="text-inherit no-underline">
+                              {c.name}
+                            </Link>
+                          ) : (
+                            c.name
+                          )}
+                        </span>
                       </th>
                       <td className="tz-num">{fmtCount(n)}</td>
                       <td>{mine ? <Meter done={assigned(c.id)} total={n} /> : <span className="text-xs text-ink-muted">—</span>}</td>
@@ -182,7 +191,7 @@ export default async function KesherOverview() {
             action={<Link href="/kesher/log" className="text-[13px] font-semibold text-primary no-underline">ליומן המלא</Link>}
             bodyClassName="overflow-x-auto"
           >
-            <EventsTable rows={events} compact now={now} />
+            <EventsTable rows={events} companies={companyRefs(s.units)} compact now={now} />
           </Panel>
         </div>
 

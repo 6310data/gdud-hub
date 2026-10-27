@@ -8,7 +8,7 @@ import { kesherAccess } from "@/lib/kesher/access";
 import { fmtCount, fmtWhen } from "@/lib/logistics/format";
 import { requireModule } from "@/lib/session";
 import { EventsTable } from "../_components/events-table";
-import { Meter, SegLinks } from "../_components/ui";
+import { CompanyChip, Meter, SegLinks, companyRefs } from "../_components/ui";
 
 export const metadata = { title: "יומן" };
 
@@ -36,7 +36,7 @@ export default async function KesherLog({ searchParams }: { searchParams: Promis
   const access = kesherAccess(s);
   const f = searchSchema.parse(await searchParams);
   const now = new Date();
-  const companyName = new Map(access.companies.map((u) => [u.id, u.name]));
+  const companies = companyRefs(s.units);
   const current = { tab: f.tab === "rep" ? "rep" : undefined, q: f.q, unit: f.unit, kind: f.kind };
 
   const result = await withUser(s.claims, async (tx) => {
@@ -113,7 +113,7 @@ export default async function KesherLog({ searchParams }: { searchParams: Promis
 
       <div className="tz-table-wrap">
         {f.tab === "sign" ? (
-          <EventsTable rows={events} now={now} />
+          <EventsTable rows={events} companies={companies} now={now} />
         ) : reports.length ? (
           <table className="tz-table">
             <thead>
@@ -132,7 +132,7 @@ export default async function KesherLog({ searchParams }: { searchParams: Promis
                 return (
                   <tr key={r.id}>
                     <td className="whitespace-nowrap text-ink-muted">{fmtWhen(r.at, now)}</td>
-                    <td>{companyName.get(r.unitId) ?? "—"}</td>
+                    <td>{companies.get(r.unitId) ? <CompanyChip company={companies.get(r.unitId)!} /> : "—"}</td>
                     <td>
                       {r.reporterName ?? "—"}
                       {r.note ? <span className="tz-row-sub text-xs">{r.note}</span> : null}

@@ -48,7 +48,8 @@ export type IconName =
   | "contact"
   | "report"
   | "apps"
-  | "bell";
+  | "bell"
+  | "truck";
 
 const PATHS: Record<IconName, ReactNode> = {
   home: <path d="M4 11.5 12 5l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H5a1 1 0 0 1-1-1z" />,
@@ -250,6 +251,14 @@ const PATHS: Record<IconName, ReactNode> = {
     <>
       <path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15z" />
       <path d="M10 20.5a2 2 0 0 0 4 0" />
+    </>
+  ),
+  truck: (
+    <>
+      <path d="M3 6.5h10.5v9.5H3z" />
+      <path d="M13.5 9.5h4l3.5 3.5v3h-7.5" />
+      <circle cx="7" cy="17.5" r="1.8" />
+      <circle cx="17" cy="17.5" r="1.8" />
     </>
   ),
   apps: (
