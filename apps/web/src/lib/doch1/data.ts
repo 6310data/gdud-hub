@@ -121,6 +121,9 @@ export interface MemberVM extends ReportMember, ServiceDates {
   sheetRow: number | null;
   /** מיקום בשבצ״ק */
   locationId: string | null;
+  /** צפי הגעה / סטטוס גיוס values (doch1_field_options) */
+  arrivalOptionId: string | null;
+  enlistmentOptionId: string | null;
 }
 
 export interface RoundCompanyVM {
@@ -153,6 +156,8 @@ export async function loadMembers(tx: Tx, roundId: string, units: UnitNode[]): P
       sheetTab: members.sheetTab,
       sheetRow: members.sheetRow,
       locationId: members.locationId,
+      arrivalOptionId: members.arrivalOptionId,
+      enlistmentOptionId: members.enlistmentOptionId,
       name: people.fullName,
       roleTitle: people.roleTitle,
       unitId: people.unitId,
@@ -179,6 +184,8 @@ export async function loadMembers(tx: Tx, roundId: string, units: UnitNode[]): P
       sheetTab: r.sheetTab,
       sheetRow: r.sheetRow,
       locationId: r.locationId,
+      arrivalOptionId: r.arrivalOptionId,
+      enlistmentOptionId: r.enlistmentOptionId,
     });
   }
   return out.sort((a, b) => byHe(a.name, b.name));

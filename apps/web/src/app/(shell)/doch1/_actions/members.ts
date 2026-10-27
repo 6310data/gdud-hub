@@ -6,11 +6,11 @@
  */
 import { z } from "zod";
 import { can } from "@gdud/auth";
-import { and, eq, inArray, schema, withUser } from "@gdud/db";
+import { and, count, eq, inArray, schema, withUser } from "@gdud/db";
 import { actionError, UserError, type ActionResult } from "@/lib/action-result";
 import { dayParam, doch1Ctx, firstIssue, NO_PERMISSION, NO_ROUND, revalidateDoch1, uuid } from "./common";
 
-const { people, doch1Members: members } = schema;
+const { people, doch1Members: members, doch1Days: days, doch1FieldOptions: fieldOptions } = schema;
 
 const input = z.object({ personId: uuid, inReport: z.boolean() });
 
@@ -103,28 +103,58 @@ const detailsInput = z.object({
     .nullable(),
   roleTitle: optText(60),
   dmhCategory: optText(30),
-  enlistmentStatus: optText(40),
-  arrivalForecast: optText(40),
+  /** צפי הגעה / סטטוס גיוס values of the round; null = blank */
+  arrivalOptionId: uuid.nullable(),
+  enlistmentOptionId: uuid.nullable(),
   hasDisc: z.boolean().nullable(),
   notes: optText(500),
+  /** mark "not arriving" although the soldier already has reported days */
+  force: z.boolean().optional(),
 });
 
 export type SoldierDetailsInput = z.input<typeof detailsInput>;
 
+/** Marking "not arriving" would hide this many reported days of the soldier: ask first. */
+export type SoldierDetailsResult = ActionResult | { confirmDays: number };
+
 /**
  * The soldier card's "עריכה": phone and תפקיד בפועל (people) and the round fields (doch1_members).
  * Company user or admin covering the soldier — people_update and doch1_members_update check the same.
+ * A "not arriving" צפי הגעה hides the soldier on every day of the round, past ones too: when they
+ * already have reported days, nothing is saved and `confirmDays` comes back (the card offers a
+ * release date instead) unless `force` is set.
  */
-export async function updateSoldierDetails(raw: SoldierDetailsInput): Promise<ActionResult> {
+export async function updateSoldierDetails(raw: SoldierDetailsInput): Promise<SoldierDetailsResult> {
   const ctx = await doch1Ctx();
   if (!ctx) return NO_ROUND;
   const parsed = detailsInput.safeParse(raw);
   if (!parsed.success) return { error: firstIssue(parsed.error) };
-  const { personId, phone, roleTitle, ...round } = parsed.data;
+  const { personId, phone, roleTitle, force, ...round } = parsed.data;
+  let confirmDays = 0;
   try {
     await withUser(ctx.s.claims, async (tx) => {
       const [person] = await tx.select({ unitId: people.unitId }).from(people).where(eq(people.id, personId));
       if (!person || !can(ctx.s.user, "doch1", ["admin", "company_user"], person.unitId, ctx.s.parents)) throw new UserError(NO_PERMISSION.error);
+      if (round.arrivalOptionId && !force) {
+        const [[next], [cur]] = await Promise.all([
+          tx.select({ effect: fieldOptions.effect }).from(fieldOptions).where(eq(fieldOptions.id, round.arrivalOptionId)),
+          tx
+            .select({ effect: fieldOptions.effect })
+            .from(members)
+            .leftJoin(fieldOptions, eq(fieldOptions.id, members.arrivalOptionId))
+            .where(and(eq(members.roundId, ctx.round.id), eq(members.personId, personId))),
+        ]);
+        if (next?.effect === "not_arriving" && cur?.effect !== "not_arriving") {
+          const [reported] = await tx
+            .select({ n: count() })
+            .from(days)
+            .where(and(eq(days.roundId, ctx.round.id), eq(days.personId, personId)));
+          if (reported && reported.n > 0) {
+            confirmDays = reported.n;
+            return;
+          }
+        }
+      }
       const r = await tx
         .update(members)
         .set(round)
@@ -136,6 +166,7 @@ export async function updateSoldierDetails(raw: SoldierDetailsInput): Promise<Ac
   } catch (err) {
     return { error: actionError(err) };
   }
+  if (confirmDays) return { confirmDays };
   revalidateDoch1();
   return { ok: true };
 }

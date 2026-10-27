@@ -15,19 +15,23 @@ export interface SoldierVM {
   callUpOn: Day | null;
   releasedOn: Day | null;
   arriving: boolean;
+  /** the צפי הגעה value's name, for a soldier marked not arriving */
+  arrivalName: string | null;
   /** the user may set this soldier's dates (with "בחירה") */
   editable: boolean;
 }
 
-type Filter = "all" | "listed" | "no-call-up" | "upcoming" | "released";
+type Filter = "all" | "listed" | "no-call-up" | "upcoming" | "released" | "not-arriving";
 type Change = { personIds: string[]; callUpOn?: Day | null; releasedOn?: Day | null };
 
 const FILTERS: Array<[Filter, string, (m: SoldierVM, today: Day) => boolean]> = [
   ["all", "הכל", () => true],
   ["listed", "בדוח היום", (m, today) => inService(m, today)],
-  ["no-call-up", "בלי תאריך גיוס", (m) => !m.callUpOn],
-  ["upcoming", "עוד לא גויסו", (m, today) => !!m.callUpOn && m.callUpOn > today],
-  ["released", "שוחררו", (m, today) => !!m.releasedOn && m.releasedOn < today],
+  ["no-call-up", "בלי תאריך גיוס", (m) => m.arriving && !m.callUpOn],
+  ["upcoming", "עוד לא גויסו", (m, today) => m.arriving && !!m.callUpOn && m.callUpOn > today],
+  ["released", "שוחררו", (m, today) => m.arriving && !!m.releasedOn && m.releasedOn < today],
+  // marked "not arriving": listed on no day, whatever the dates (the soldier card switches them back)
+  ["not-arriving", "לא מגיעים", (m) => !m.arriving],
 ];
 
 /** The soldiers of one company with their call-up / release dates. A row opens the soldier card; "בחירה" sets dates for a selection. */
@@ -124,7 +128,9 @@ export function SoldiersBoard({ rows: serverRows, today, initialFilter, back }: 
                   {m.name}
                   <span className="tz-row-sub">{[m.sub, m.inReport ? null : "לא נספר בדוח"].filter(Boolean).join(" · ")}</span>
                 </span>
-                {m.callUpOn ? (
+                {!m.arriving ? (
+                  <span className="tz-chip tz-chip-broken">{m.arrivalName ?? "לא מגיע"}</span>
+                ) : m.callUpOn ? (
                   <span className="tz-chip tz-chip-signed">
                     גיוס <span className="tz-num">{fmtDay(m.callUpOn)}</span>
                   </span>

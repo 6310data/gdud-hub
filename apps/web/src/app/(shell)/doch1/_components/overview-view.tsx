@@ -17,6 +17,8 @@ export interface OverviewProps {
   dayQuery: string;
   rows: CompanySummary[];
   total: Summary;
+  /** not-arriving soldiers of the visible companies (outside every count) */
+  notArriving: number;
   scope: string | null;
   missing: MissingByCompany[];
   trend: TrendPoint[];
@@ -25,7 +27,7 @@ export interface OverviewProps {
 }
 
 /** Battalion overview (mockup screens 01 / 06). Presentational: the page loads the data. */
-export function OverviewView({ dateLine, dayNav, when, dayQuery, rows, total, scope, missing, trend, isAdmin, canCopy }: OverviewProps) {
+export function OverviewView({ dateLine, dayNav, when, dayQuery, rows, total, notArriving, scope, missing, trend, isAdmin, canCopy }: OverviewProps) {
   const scoped = scope ? rows.find((r) => r.unitId === scope)! : null;
   const summary = scoped?.summary ?? total;
   const legend = [
@@ -74,7 +76,7 @@ export function OverviewView({ dateLine, dayNav, when, dayQuery, rows, total, sc
       <div className="flex flex-wrap items-start gap-[18px]">
         <section className="flex min-w-0 flex-[2_1_560px] flex-col gap-1.5">
           <h2 className="tz-section-header">מצב לפי פלוגה</h2>
-          <CompanyTable rows={rows} total={total} groupNames={total.groups.map((g) => g.name)} isAdmin={isAdmin} dayQuery={dayQuery} />
+          <CompanyTable rows={rows} total={total} notArriving={notArriving} groupNames={total.groups.map((g) => g.name)} isAdmin={isAdmin} dayQuery={dayQuery} />
           <p className="tz-section-footer">פלוגה שאינה פעילה בסבב אינה נספרת. ״לא בסד״כ״ הם מי שדווחו בסטטוס שלא נספר בסד״כ.</p>
         </section>
         <section className="flex min-w-0 flex-[1_1_320px] flex-col gap-1.5">

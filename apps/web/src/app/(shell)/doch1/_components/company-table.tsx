@@ -7,6 +7,8 @@ export interface CompanySummary {
   unitId: string;
   name: string;
   summary: Summary;
+  /** soldiers marked "not arriving": outside every count, shown next to them */
+  notArriving: number;
 }
 
 const OK_COMPLETION = 0.9;
@@ -35,6 +37,22 @@ function Completion({ value, bar = true }: { value: number; bar?: boolean }) {
   );
 }
 
+/** "לא מגיעים" of a company, linking to them on חיילים. */
+function NotArrivingCell({ n, unitId }: { n: number; unitId?: string }) {
+  if (!n) return <td className="tz-num tz-zero">0</td>;
+  return (
+    <td className="tz-num">
+      {unitId ? (
+        <Link href={`/doch1/soldiers?unit=${unitId}&show=not-arriving`} className="tz-cell-link" style={{ color: "var(--ink-muted)" }}>
+          {n.toLocaleString("he-IL")}
+        </Link>
+      ) : (
+        <span style={{ color: "var(--ink-muted)" }}>{n.toLocaleString("he-IL")}</span>
+      )}
+    </td>
+  );
+}
+
 function MissingCell({ n }: { n: number }) {
   return (
     <td>
@@ -53,12 +71,15 @@ function MissingCell({ n }: { n: number }) {
 export function CompanyTable({
   rows,
   total,
+  notArriving,
   groupNames,
   isAdmin,
   dayQuery,
 }: {
   rows: CompanySummary[];
   total: Summary;
+  /** not-arriving soldiers of the visible companies; the column shows only when there are any */
+  notArriving: number;
   groupNames: string[];
   isAdmin: boolean;
   /** "" for today, else "&day=…" */
@@ -72,6 +93,7 @@ export function CompanyTable({
           <tr>
             <th>פלוגה</th>
             <th>ברשימה</th>
+            {notArriving ? <th title="לא נספרים בשום עמודה">לא מגיעים</th> : null}
             <th>בסד״כ</th>
             {groupNames.map((g) => (
               <th key={g}>{g}</th>
@@ -90,6 +112,7 @@ export function CompanyTable({
                 </Link>
               </th>
               <Num n={r.summary.roster} muted />
+              {notArriving ? <NotArrivingCell n={r.notArriving} unitId={r.unitId} /> : null}
               <Num n={r.summary.inSadak} strong />
               {groupNames.map((g) => (
                 <Num key={g} n={groupCount(r.summary, g)} />
@@ -115,6 +138,7 @@ export function CompanyTable({
           <tr>
             <th scope="row">סה״כ גדוד</th>
             <Num n={total.roster} />
+            {notArriving ? <NotArrivingCell n={notArriving} /> : null}
             <Num n={total.inSadak} />
             {groupNames.map((g) => (
               <Num key={g} n={groupCount(total, g)} />

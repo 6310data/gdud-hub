@@ -2,10 +2,11 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
-import { hebrewDayLabel, type Day, type SoldierRoundStats, type StatusDef, type StripCell, type StripLegend } from "@gdud/core";
+import { addDays, hebrewDayLabel, type Day, type SoldierRoundStats, type StatusDef, type StripCell, type StripLegend } from "@gdud/core";
 import { Avatar, Icon, Serial, Spinner } from "@gdud/ui";
 import { setDayStatus } from "../../../_actions/days";
 import { setInReport, setServiceDates, updateSoldierDetails } from "../../../_actions/members";
+import type { FieldValues } from "@/lib/doch1/soldier";
 import { StatusChip } from "../../../_components/status-chip";
 import { StatusSheet } from "../../../today/_components/status-sheet";
 import { UndoToast } from "../../../today/_components/undo-toast";
@@ -21,8 +22,13 @@ export interface CardSoldier {
   callUpOn: Day | null;
   releasedOn: Day | null;
   dmhCategory: string | null;
-  arrivalForecast: string | null;
-  enlistmentStatus: string | null;
+  arrivalOptionId: string | null;
+  enlistmentOptionId: string | null;
+  /** the values' names, for everyone who sees the card */
+  arrivalName: string | null;
+  enlistmentName: string | null;
+  /** false = marked not arriving: listed on no day of the round */
+  arriving: boolean;
   hasDisc: boolean | null;
   notes: string | null;
 }
@@ -96,8 +102,8 @@ export function SoldierCard({
   locked: boolean;
   /** company user / admin covering the soldier: details and "לא נספר בדוח" */
   canEdit: boolean;
-  /** values used in the round, suggested in the edit sheet */
-  values: { enlistment: string[]; arrival: string[]; dmh: string[] } | null;
+  /** the round's value lists and דמ״ח suggestions for the edit sheet (null = can't edit) */
+  values: FieldValues | null;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -105,6 +111,8 @@ export function SoldierCard({
   const [sheet, setSheet] = useState<"status" | "edit" | null>(null);
   const [toast, setToast] = useState<Undo | null>(null);
   const [showLog, setShowLog] = useState(false);
+  /** "not arriving" was picked for a soldier with reported days: what to save once the user decides */
+  const [confirm, setConfirm] = useState<{ days: number; details: Details } | null>(null);
 
   const byId = useMemo(() => new Map(statuses.map((s) => [s.id, s])), [statuses]);
   const active = useMemo(() => statuses.filter((s) => s.active), [statuses]);
@@ -126,6 +134,24 @@ export function SoldierCard({
       }
     });
   }
+
+  /** Save the edit sheet; `force` = mark "not arriving" even though the soldier has reported days. */
+  const saveDetails = (d: Details, force = false) => {
+    setError(undefined);
+    start(async () => {
+      const { callUpOn, releasedOn, ...details } = d;
+      if (callUpOn !== soldier.callUpOn || releasedOn !== soldier.releasedOn) {
+        const r = await setServiceDates({ personIds: [soldier.personId], callUpOn, releasedOn });
+        if (r?.error) return setError(r.error);
+      }
+      const r = await updateSoldierDetails({ personId: soldier.personId, ...details, force });
+      if (r && "confirmDays" in r) return setConfirm({ days: r.confirmDays, details: d });
+      if (r?.error) return setError(r.error);
+      setConfirm(null);
+      setSheet(null);
+      router.refresh();
+    });
+  };
 
   const pick = (statusId: string | null) => {
     setSheet(null);
@@ -339,8 +365,17 @@ export function SoldierCard({
 
       <h2 className="tz-section-header pt-[22px]">{roundName}</h2>
       <div className="tz-group">
-        <Value title="סטטוס גיוס" value={soldier.enlistmentStatus} />
-        <Value title="צפי הגעה" value={soldier.arrivalForecast} />
+        <Value title="סטטוס גיוס" value={soldier.enlistmentName} />
+        <div className="tz-row">
+          <span className="tz-row-body">
+            <span className="tz-row-title">צפי הגעה</span>
+            {soldier.arriving ? (
+              <span className="tz-row-value">{soldier.arrivalName || "—"}</span>
+            ) : (
+              <span className="tz-chip tz-chip-broken">{soldier.arrivalName ?? "לא מגיע"} · לא מגיע בסבב</span>
+            )}
+          </span>
+        </div>
         <Value title="תאריך גיוס" value={soldier.callUpOn ? dmy(soldier.callUpOn) : null} num />
         {soldier.releasedOn ? <Value title="תאריך שחרור" value={dmy(soldier.releasedOn)} num /> : null}
         <Value title="תפקיד לדמ״ח" value={soldier.dmhCategory} />
@@ -425,18 +460,22 @@ export function SoldierCard({
           soldier={soldier}
           values={values}
           pending={pending}
-          onClose={closeSheet}
-          onSave={({ callUpOn, releasedOn, ...details }) =>
-            act(
-              async () => {
-                if (callUpOn !== soldier.callUpOn || releasedOn !== soldier.releasedOn) {
-                  const r = await setServiceDates({ personIds: [soldier.personId], callUpOn, releasedOn });
-                  if (r?.error) return r;
+          onClose={() => {
+            setConfirm(null);
+            closeSheet();
+          }}
+          onSave={(d) => saveDetails(d)}
+          confirm={
+            confirm
+              ? {
+                  days: confirm.days,
+                  // releasing from yesterday needs a call-up date on or before it
+                  releaseFrom:
+                    confirm.details.callUpOn && addDays(day, -1) >= confirm.details.callUpOn ? addDays(day, -1) : null,
+                  onRelease: (from: Day) => saveDetails({ ...confirm.details, releasedOn: from, arrivalOptionId: soldier.arrivalOptionId }),
+                  onForce: () => saveDetails(confirm.details, true),
                 }
-                return updateSoldierDetails({ personId: soldier.personId, ...details });
-              },
-              () => setSheet(null),
-            )
+              : null
           }
         />
       ) : null}
@@ -462,25 +501,31 @@ type Details = {
   phone: string | null;
   roleTitle: string | null;
   dmhCategory: string | null;
-  enlistmentStatus: string | null;
-  arrivalForecast: string | null;
+  enlistmentOptionId: string | null;
+  arrivalOptionId: string | null;
   hasDisc: boolean | null;
   notes: string | null;
 };
 
-/** "עריכה": the service dates, phone, תפקיד בפועל and the round fields. Free text with the round's values as suggestions. */
+/**
+ * "עריכה": the service dates, phone, תפקיד בפועל and the round fields. צפי הגעה and סטטוס גיוס are
+ * picked from the round's lists; תפקיד לדמ״ח is free text with the round's values as suggestions.
+ */
 function EditSheet({
   soldier,
   values,
   pending,
   onClose,
   onSave,
+  confirm,
 }: {
   soldier: CardSoldier;
-  values: { enlistment: string[]; arrival: string[]; dmh: string[] };
+  values: FieldValues;
   pending: boolean;
   onClose: () => void;
   onSave: (v: Details) => void;
+  /** "not arriving" picked for a soldier with reported days */
+  confirm: { days: number; releaseFrom: Day | null; onRelease: (from: Day) => void; onForce: () => void } | null;
 }) {
   const [v, setV] = useState({
     callUpOn: soldier.callUpOn ?? "",
@@ -488,8 +533,8 @@ function EditSheet({
     phone: soldier.phone ?? "",
     roleTitle: soldier.roleTitle ?? "",
     dmhCategory: soldier.dmhCategory ?? "",
-    enlistmentStatus: soldier.enlistmentStatus ?? "",
-    arrivalForecast: soldier.arrivalForecast ?? "",
+    enlistmentOptionId: soldier.enlistmentOptionId ?? "",
+    arrivalOptionId: soldier.arrivalOptionId ?? "",
     hasDisc: soldier.hasDisc,
     notes: soldier.notes ?? "",
   });
@@ -503,7 +548,22 @@ function EditSheet({
 
   const order = v.callUpOn && v.releasedOn && v.releasedOn < v.callUpOn;
 
-  const text = (label: string, k: "phone" | "roleTitle" | "dmhCategory" | "enlistmentStatus" | "arrivalForecast", list?: string[]) => (
+  const pickList = (label: string, k: "arrivalOptionId" | "enlistmentOptionId", list: FieldValues["arrival"]) => (
+    <label className="tz-field">
+      <span className="tz-label">{label}</span>
+      <select className="tz-input" value={v[k]} onChange={set(k)}>
+        <option value="">—</option>
+        {list.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.name}
+            {o.effect === "not_arriving" ? " (לא מופיע בסבב)" : ""}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+
+  const text = (label: string, k: "phone" | "roleTitle" | "dmhCategory", list?: string[]) => (
     <label className="tz-field">
       <span className="tz-label">{label}</span>
       <input
@@ -535,7 +595,14 @@ function EditSheet({
         aria-label={`עריכת פרטים · ${soldier.name}`}
         onSubmit={(e) => {
           e.preventDefault();
-          if (!order) onSave({ ...v, callUpOn: v.callUpOn || null, releasedOn: v.releasedOn || null });
+          if (!order)
+            onSave({
+              ...v,
+              callUpOn: v.callUpOn || null,
+              releasedOn: v.releasedOn || null,
+              arrivalOptionId: v.arrivalOptionId || null,
+              enlistmentOptionId: v.enlistmentOptionId || null,
+            });
         }}
       >
         <div className="tz-grabber" />
@@ -550,6 +617,23 @@ function EditSheet({
           </button>
         </div>
         <div className="flex flex-col gap-3 px-4">
+          {confirm ? (
+            <div role="alert" className="tz-alert tz-alert-error m-0 flex flex-col items-start gap-2">
+              <span>
+                לחייל יש <span className="tz-num">{confirm.days}</span> ימי דיווח בסבב. ״לא מגיע״ מסתיר אותם מכל הספירות, גם בימים שעברו. לסמן תאריך שחרור במקום?
+              </span>
+              <span className="flex flex-wrap gap-2">
+                {confirm.releaseFrom ? (
+                  <button type="button" className="tz-btn tz-btn-filled tz-btn-sm" disabled={pending} onClick={() => confirm.onRelease(confirm.releaseFrom!)}>
+                    שחרור מ־{confirm.releaseFrom.slice(8, 10)}.{confirm.releaseFrom.slice(5, 7)}
+                  </button>
+                ) : null}
+                <button type="button" className="tz-btn tz-btn-plain tz-btn-sm" disabled={pending} onClick={confirm.onForce}>
+                  לסמן לא מגיע
+                </button>
+              </span>
+            </div>
+          ) : null}
           <div className="grid grid-cols-2 gap-3">
             <label className="tz-field min-w-0">
               <span className="tz-label">תאריך גיוס</span>
@@ -570,8 +654,8 @@ function EditSheet({
           {text("טלפון", "phone")}
           {text("תפקיד בפועל", "roleTitle")}
           {text("תפקיד לדמ״ח", "dmhCategory", values.dmh)}
-          {text("סטטוס גיוס", "enlistmentStatus", values.enlistment)}
-          {text("צפי הגעה", "arrivalForecast", values.arrival)}
+          {pickList("צפי הגעה", "arrivalOptionId", values.arrival)}
+          {pickList("סטטוס גיוס", "enlistmentOptionId", values.enlistment)}
           <div className="tz-field">
             <span className="tz-label">דיסקית</span>
             <div className="tz-seg" role="tablist" aria-label="דיסקית">

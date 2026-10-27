@@ -56,7 +56,7 @@ export default async function Doch1Copy({ searchParams }: { searchParams: Promis
   const { lines, firstRow } = sheetColumnLines(
     data.members.map((m) => ({ sheetRow: inSheet(m) ? m.sheetRow : null, value: sheetValue.get(data.day.get(m.personId) ?? "") ?? "" })),
   );
-  // a soldier not listed that day (before call-up / after release) keeps their sheet row and value, but isn't missing
+  // a soldier not listed that day (before call-up / after release / not arriving) keeps their sheet row and value, but isn't missing
   const listed = listedOn(data.members, day);
   const notInSheet = listed.filter((m) => !inSheet(m));
   const anchors = sheetRowAnchors(data.members.map((m) => ({ sheetRow: inSheet(m) ? m.sheetRow : null, name: m.name })));

@@ -143,7 +143,7 @@ export function callUpBrigadeText(input: { battalionName: string; day: Day; tota
 - Modify: `apps/web/src/app/(shell)/doch1/copy/…` (not-arriving rows kept, not counted as missing, like out-of-service)
 
 - [ ] **Step 1:** (Done in Task 2: every `ServiceDates` builder sets `arriving` through `memberArriving`.) Load `arrivalOptionId` / `enlistmentOptionId` where the screens below need them.
-- [ ] **Step 2:** Add a db test in `packages/db/test/` (or extend an existing doch1 loader test) that loads members of a round with one not-arriving soldier who has day entries and asserts `listedOn` drops them while their `doch1_days` rows remain.
+- [ ] **Step 2:** The loaders live in the web app, which has no test setup: the `memberArriving` expression was checked once on PGlite (blank / arriving / not arriving → true / true / false). `inService` itself is covered in `counting.test.ts`, and `soldierStrip` keeps a not-arriving soldier's reported days.
 - [ ] **Step 3: Soldier card.** "לא מגיע בסבב" tag; edit form pickers for צפי הגעה and סטטוס גיוס from `loadFieldOptions` (blank allowed). The action: when the new arrival value is `not_arriving` and the soldier has `doch1_days` rows in the round, return `{ confirm: { days: N } }` unless `force` is set. The form shows "לחייל יש N ימי דיווח בסבב. לסמן תאריך שחרור במקום?" with "שחרור מאתמול" (sets `released_on` = yesterday, not the value) and "לסמן לא מגיע".
 - [ ] **Step 4: חיילים filter and overview count.** The overview's not-arriving count is per company plus total, outside the KPI sums.
 - [ ] **Step 5:** `pnpm test && pnpm typecheck && pnpm lint`. By hand: mark a soldier "לא מגיע" → gone from today, board, overview counts and reminders; on the filter; switch back → returns.
