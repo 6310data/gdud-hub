@@ -1060,3 +1060,244 @@ describe("department master admins", () => {
     expect(rows.some((r) => r.actorUserId === logMaster.appId && r.action === "insert")).toBe(true);
   });
 });
+
+describe("kesher", () => {
+  const {
+    kesherItems: items,
+    kesherKitItems: kits,
+    kesherSerials: serials,
+    kesherHolders: holders,
+    kesherStock: stock,
+    kesherChecks: checks,
+    kesherCheckLines: lines,
+    kesherEvents: events,
+    kesherSettings: settings,
+  } = schema;
+
+  const kAdmin: TestUser = { authId: randomUUID(), email: "kesher-admin@example.com" };
+  const kViewer: TestUser = { authId: randomUUID(), email: "kesher-viewer@example.com" };
+  const plsrUser: TestUser = { authId: randomUUID(), email: "kesher-plsr@example.com" };
+  const plsrUser2: TestUser = { authId: randomUUID(), email: "kesher-plsr2@example.com" };
+  const plsrAdmin: TestUser = { authId: randomUUID(), email: "kesher-plsr-admin@example.com" };
+  const plntUser: TestUser = { authId: randomUUID(), email: "kesher-plnt@example.com" };
+  const kesherUsers = [kAdmin, kViewer, plsrUser, plsrUser2, plsrAdmin, plntUser];
+
+  const k = { radio: "", battery: "", amp: "", sPlsr: "", sPlsr2: "", sPlnt: "", sWh: "", plsrSoldier: "", plsrGone: "", plntSoldier: "" };
+
+  beforeAll(async () => {
+    const rows = await db
+      .insert(appUsers)
+      .values(kesherUsers.map((u) => ({ email: u.email, authUserId: u.authId })))
+      .returning();
+    for (const u of kesherUsers) u.appId = rows.find((r) => r.email === u.email)!.id;
+    await db.insert(memberships).values([
+      { userId: kAdmin.appId!, module: "kesher", role: "admin", unitId: null },
+      { userId: kViewer.appId!, module: "kesher", role: "user", unitId: null },
+      { userId: plsrUser.appId!, module: "kesher", role: "user", unitId: ids.plsr },
+      { userId: plsrUser2.appId!, module: "kesher", role: "user", unitId: ids.plsr },
+      { userId: plsrAdmin.appId!, module: "kesher", role: "admin", unitId: ids.plsr },
+      { userId: plntUser.appId!, module: "kesher", role: "user", unitId: ids.plnt },
+    ]);
+    const ppl = await db
+      .insert(people)
+      .values([
+        { unitId: ids.plsr1, fullName: "קשר פלסר" },
+        { unitId: ids.plsr, fullName: "קשר פלסר שהשתחרר", active: false },
+        { unitId: ids.plnt, fullName: "קשר פלנט" },
+      ])
+      .returning();
+    [k.plsrSoldier, k.plsrGone, k.plntSoldier] = ppl.map((p) => p.id) as [string, string, string];
+
+    const its = await db
+      .insert(items)
+      .values([
+        { name: "710", kind: "serial" },
+        { name: "סוללות קטנות", kind: "bulk" },
+        { name: "מגבר", kind: "bulk" },
+      ])
+      .returning();
+    [k.radio, k.battery, k.amp] = its.map((i) => i.id) as [string, string, string];
+    const ss = await db
+      .insert(serials)
+      .values([
+        { itemId: k.radio, serial: "489001", location: "company", unitId: ids.plsr },
+        { itemId: k.radio, serial: "489002", location: "company", unitId: ids.plsr },
+        { itemId: k.radio, serial: "489003", location: "company", unitId: ids.plnt },
+        { itemId: k.radio, serial: "489004" },
+      ])
+      .returning();
+    [k.sPlsr, k.sPlsr2, k.sPlnt, k.sWh] = ss.map((s) => s.id) as [string, string, string, string];
+    await as(kAdmin, async (tx) => {
+      await tx.insert(holders).values([
+        { serialId: k.sPlsr, unitId: ids.plsr, signerPersonId: k.plsrSoldier, signerRole: "קשר מ״פ" },
+        { serialId: k.sPlsr2, unitId: ids.plsr },
+        // unit_id always comes from the serial (trigger), whatever the caller sends
+        { serialId: k.sPlnt, unitId: ids.plsr, signerPersonId: k.plntSoldier },
+      ]);
+      await tx.insert(stock).values([
+        { itemId: k.battery, unitId: null, qty: 40 },
+        { itemId: k.battery, unitId: ids.plsr, qty: 8 },
+      ]);
+      await tx.insert(events).values([
+        { kind: "sign", unitId: ids.plsr, company: "פלס״ר", personId: k.plsrSoldier, personName: "קשר פלסר", serial: "489001" },
+        { kind: "sign", unitId: ids.plnt, company: "פלנ״ט", personId: k.plntSoldier, personName: "קשר פלנט", serial: "489003" },
+        { kind: "stock_edit", item: "סוללות קטנות", qty: 40 },
+      ]);
+    });
+  });
+
+  it("users without a kesher membership see nothing", async () => {
+    for (const t of [items, serials, stock, settings]) expect(await as(clerk, (tx) => tx.select().from(t))).toHaveLength(0);
+    expect(await as(clerk, (tx) => tx.select().from(holders))).toHaveLength(0);
+    expect(await as(clerk, (tx) => tx.select().from(events))).toHaveLength(0);
+    expect(await as(stranger, (tx) => tx.select().from(serials))).toHaveLength(0);
+  });
+
+  it("every member reads the catalogue, every צ׳ and its location, and the quantities", async () => {
+    expect(await as(plntUser, (tx) => tx.select().from(items))).toHaveLength(3);
+    expect(await as(plntUser, (tx) => tx.select().from(serials))).toHaveLength(4);
+    expect(await as(plntUser, (tx) => tx.select().from(stock))).toHaveLength(2);
+    expect(await as(plntUser, (tx) => tx.select().from(settings))).toHaveLength(1);
+  });
+
+  it("only a battalion admin writes the catalogue, צ׳, quantities and settings (a company admin can't)", async () => {
+    for (const u of [plsrUser, plsrAdmin, kViewer]) {
+      await rejects(as(u, (tx) => tx.insert(items).values({ name: `x-${u.email}`, kind: "bulk" })));
+      await rejects(as(u, (tx) => tx.insert(serials).values({ itemId: k.radio, serial: "9" })));
+      await rejects(as(u, (tx) => tx.insert(stock).values({ itemId: k.amp, qty: 1 })));
+      expect(await as(u, (tx) => tx.update(stock).set({ qty: 99 }).where(eq(stock.itemId, k.battery)).returning())).toHaveLength(0);
+      expect(await as(u, (tx) => tx.update(serials).set({ location: "warehouse", unitId: null }).where(eq(serials.id, k.sPlsr)).returning())).toHaveLength(0);
+      expect(await as(u, (tx) => tx.update(settings).set({ checkStaleDays: 3 }).returning())).toHaveLength(0);
+    }
+    const ok = await as(kAdmin, (tx) => tx.update(settings).set({ checkStaleDays: 7 }).returning());
+    expect(ok).toHaveLength(1);
+  });
+
+  it("the serial number and its device type never change", async () => {
+    await rejects(as(su, (tx) => tx.update(serials).set({ serial: "evil" }).where(eq(serials.id, k.sWh))));
+    await rejects(as(su, (tx) => tx.update(serials).set({ itemId: k.battery }).where(eq(serials.id, k.sWh))));
+  });
+
+  it("a צ׳ needs a device type and a company unit; stock needs ציוד משלים", async () => {
+    await rejects(as(kAdmin, (tx) => tx.insert(serials).values({ itemId: k.battery, serial: "500" })));
+    await rejects(as(kAdmin, (tx) => tx.insert(serials).values({ itemId: k.radio, serial: "501", location: "company", unitId: ids.plsr1 })));
+    await rejects(as(kAdmin, (tx) => tx.insert(serials).values({ itemId: k.radio, serial: "502", location: "company" })));
+    await rejects(as(kAdmin, (tx) => tx.insert(stock).values({ itemId: k.radio, qty: 1 })));
+    await rejects(as(kAdmin, (tx) => tx.insert(stock).values({ itemId: k.amp, unitId: ids.plsr, qty: -1 })));
+  });
+
+  it("the warehouse goes below zero only while it isn't tracked", async () => {
+    await rejects(as(kAdmin, (tx) => tx.update(stock).set({ qty: -2 }).where(and(eq(stock.itemId, k.battery), sql`${stock.unitId} is null`))));
+    await as(kAdmin, async (tx) => {
+      await tx.update(settings).set({ warehouseTracked: false });
+      await tx.update(stock).set({ qty: -2 }).where(and(eq(stock.itemId, k.battery), sql`${stock.unitId} is null`));
+      await tx.update(stock).set({ qty: 40 }).where(and(eq(stock.itemId, k.battery), sql`${stock.unitId} is null`));
+      await tx.update(settings).set({ warehouseTracked: true });
+    });
+  });
+
+  it("holders: a company user sees their company's, not another's; battalion members see all", async () => {
+    expect((await as(plsrUser, (tx) => tx.select().from(holders))).map((h) => h.serialId).sort()).toEqual([k.sPlsr, k.sPlsr2].sort());
+    expect(await as(plsrUser2, (tx) => tx.select().from(holders))).toHaveLength(2);
+    expect((await as(plntUser, (tx) => tx.select().from(holders))).map((h) => h.serialId)).toEqual([k.sPlnt]);
+    expect(await as(kViewer, (tx) => tx.select().from(holders))).toHaveLength(3);
+  });
+
+  it("a holder row takes its company from the צ׳ and is created by a battalion admin only", async () => {
+    await rejects(as(plsrAdmin, (tx) => tx.insert(holders).values({ serialId: k.sWh, unitId: ids.plsr })));
+    // a warehouse צ׳ has no company
+    await rejects(as(kAdmin, (tx) => tx.insert(holders).values({ serialId: k.sWh, unitId: ids.plsr })));
+    const [h] = await db.select().from(holders).where(eq(holders.serialId, k.sPlsr));
+    expect(h!.unitId).toBe(ids.plsr);
+    expect(h!.signedBy).toBe(kAdmin.appId);
+  });
+
+  it("a company user sets the holder from their company — not another company's soldier, not an inactive one", async () => {
+    const ok = await as(plsrUser, (tx) =>
+      tx.update(holders).set({ holderPersonId: k.plsrSoldier, holderRole: "קשר מ״מ", frame: "חפ״ק" }).where(eq(holders.serialId, k.sPlsr2)).returning(),
+    );
+    expect(ok).toHaveLength(1);
+    await rejects(as(plsrUser, (tx) => tx.update(holders).set({ holderPersonId: k.plntSoldier }).where(eq(holders.serialId, k.sPlsr2))));
+    await rejects(as(plsrUser, (tx) => tx.update(holders).set({ holderPersonId: k.plsrGone }).where(eq(holders.serialId, k.sPlsr2))));
+    // another company's row is not even visible
+    expect(await as(plsrUser, (tx) => tx.update(holders).set({ frame: "x" }).where(eq(holders.serialId, k.sPlnt)).returning())).toHaveLength(0);
+  });
+
+  it("only a battalion admin changes who signed for a צ׳", async () => {
+    await rejects(as(plsrUser, (tx) => tx.update(holders).set({ signerPersonId: null }).where(eq(holders.serialId, k.sPlsr))));
+    await rejects(as(plsrAdmin, (tx) => tx.update(holders).set({ signerRole: "x" }).where(eq(holders.serialId, k.sPlsr))));
+    await rejects(as(su, (tx) => tx.update(holders).set({ unitId: ids.plnt }).where(eq(holders.serialId, k.sPlsr))));
+    await rejects(as(kAdmin, (tx) => tx.update(holders).set({ signerPersonId: k.plntSoldier }).where(eq(holders.serialId, k.sPlsr))));
+    const r = await as(kAdmin, (tx) => tx.update(holders).set({ signerRole: "סמל קשר" }).where(eq(holders.serialId, k.sPlsr)).returning());
+    expect(r[0]!.signerRole).toBe("סמל קשר");
+  });
+
+  it("a צ׳ on a company can't be deleted; moving it drops its holder row", async () => {
+    await rejects(as(kAdmin, (tx) => tx.delete(serials).where(eq(serials.id, k.sPlsr2))));
+    await as(kAdmin, (tx) => tx.update(serials).set({ location: "company", unitId: ids.plnt }).where(eq(serials.id, k.sPlsr2)));
+    expect(await db.select().from(holders).where(eq(holders.serialId, k.sPlsr2))).toHaveLength(0);
+    await as(kAdmin, (tx) => tx.update(serials).set({ location: "warehouse", unitId: null }).where(eq(serials.id, k.sPlsr2)));
+    expect(await as(kAdmin, (tx) => tx.delete(serials).where(eq(serials.id, k.sPlsr2)).returning())).toHaveLength(1);
+  });
+
+  it("תקן: lines are ציוד משלים and never loop", async () => {
+    await as(kAdmin, (tx) =>
+      tx.insert(kits).values([
+        { parentItemId: k.radio, itemId: k.amp, qty: 1 },
+        { parentItemId: k.amp, itemId: k.battery, qty: 2 },
+      ]),
+    );
+    await rejects(as(kAdmin, (tx) => tx.insert(kits).values({ parentItemId: k.battery, itemId: k.amp })));
+    await rejects(as(kAdmin, (tx) => tx.insert(kits).values({ parentItemId: k.amp, itemId: k.radio })));
+    await rejects(as(plsrUser, (tx) => tx.insert(kits).values({ parentItemId: k.radio, itemId: k.battery })));
+  });
+
+  it("דוח צ׳: filed for the user's own company only, with its own צ׳, in their name", async () => {
+    const [c] = await as(plsrUser, (tx) =>
+      tx.insert(checks).values({ unitId: ids.plsr, total: 1, found: 1, reporterName: "מישהו אחר", byUser: kAdmin.appId! }).returning(),
+    );
+    expect(c!.byUser).toBe(plsrUser.appId);
+    expect(c!.reporterName).toBe(plsrUser.email);
+    await as(plsrUser, (tx) => tx.insert(lines).values({ checkId: c!.id, serialId: k.sPlsr, serial: "489001", found: true }));
+    await rejects(as(plsrUser, (tx) => tx.insert(lines).values({ checkId: c!.id, serialId: k.sPlnt, serial: "489003", found: true })));
+    // another user of the same company can't add lines to someone else's report
+    await rejects(as(plsrUser2, (tx) => tx.insert(lines).values({ checkId: c!.id, serialId: k.sPlsr, serial: "x", found: false })));
+    await rejects(as(plsrUser, (tx) => tx.insert(checks).values({ unitId: ids.plnt, total: 1, found: 1 })));
+    await rejects(as(plsrUser, (tx) => tx.insert(checks).values({ unitId: ids.plsr, total: 1, found: 1, sheetKey: "x" })));
+    expect(await as(plsrUser2, (tx) => tx.select().from(checks))).toHaveLength(1);
+    expect(await as(plsrUser2, (tx) => tx.select().from(lines))).toHaveLength(1);
+    expect(await as(plntUser, (tx) => tx.select().from(checks))).toHaveLength(0);
+    expect(await as(plntUser, (tx) => tx.select().from(lines))).toHaveLength(0);
+  });
+
+  it("notified_at is never set by a user; imported reports are marked notified", async () => {
+    const [c] = await as(plsrUser, (tx) => tx.insert(checks).values({ unitId: ids.plsr, total: 2, found: 1, notifiedAt: new Date() }).returning());
+    expect(c!.notifiedAt).toBeNull();
+    await rejects(as(su, (tx) => tx.update(checks).set({ notifiedAt: new Date() }).where(eq(checks.id, c!.id))));
+    await rejects(as(su, (tx) => tx.delete(checks).where(eq(checks.id, c!.id))));
+    const [imported] = await as(kAdmin, (tx) =>
+      tx.insert(checks).values({ unitId: ids.plnt, total: 3, found: 3, reporterName: "מדווח מהגיליון", sheetKey: "rep:1" }).returning(),
+    );
+    expect(imported!.notifiedAt).not.toBeNull();
+    expect(imported!.byUser).toBeNull();
+    expect(imported!.reporterName).toBe("מדווח מהגיליון");
+  });
+
+  it("events: company rows scoped; rows without company and soldier visible to all; append-only, in the actor's name", async () => {
+    const plsr = await as(plsrUser, (tx) => tx.select().from(events));
+    expect(plsr.map((e) => e.kind).sort()).toEqual(["sign", "stock_edit"]);
+    expect(await as(kViewer, (tx) => tx.select().from(events))).toHaveLength(3);
+    const [e] = await as(plsrUser, (tx) => tx.insert(events).values({ kind: "assign", unitId: ids.plsr, actorName: "x" }).returning());
+    expect(e!.actorName).toBe(plsrUser.email);
+    await rejects(as(plsrUser, (tx) => tx.insert(events).values({ kind: "assign", unitId: ids.plnt })));
+    await rejects(as(plsrUser, (tx) => tx.insert(events).values({ kind: "stock_edit" })));
+    await rejects(as(plsrUser, (tx) => tx.insert(events).values({ kind: "assign", unitId: ids.plsr, actorUserId: kAdmin.appId! })));
+    await rejects(as(su, (tx) => tx.delete(events).where(eq(events.id, e!.id))));
+    await rejects(as(clerk, (tx) => tx.insert(events).values({ kind: "assign", unitId: ids.plsr })));
+  });
+
+  it("kesher changes are audited with the acting user", async () => {
+    const rows = await db.select().from(auditLog).where(eq(auditLog.tableName, "kesher_holders"));
+    expect(rows.some((r) => r.actorUserId === plsrUser.appId && r.action === "update")).toBe(true);
+  });
+});
