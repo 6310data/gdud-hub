@@ -3,7 +3,7 @@
  * against the app, and applying the selected lines — against the real migrations on PGlite.
  */
 import { randomUUID } from "node:crypto";
-import { count, eq } from "drizzle-orm";
+import { count, eq, isNotNull } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import writeXlsxFile, { type SheetData } from "write-excel-file/node";
 import { runAsUser, type JwtClaims, type Tx } from "../src/index";
@@ -11,6 +11,8 @@ import {
   applyLogistics,
   cellText,
   diffLogistics,
+  logKind,
+  logRowKey,
   readXlsx,
   SheetFileError,
   summarizeImport,
@@ -413,7 +415,7 @@ describe("applyLogistics", () => {
 
   it("applies every default line as a battalion logistics admin", async () => {
     const { result } = await importAs(admin, sheets, tabs);
-    expect(result).toEqual({ applied: { new: 2, change: 2, appOnly: 0, error: 0 }, blocked: [] });
+    expect(result).toEqual({ applied: { new: 2, change: 2, appOnly: 0, error: 0 }, blocked: [], logEvents: 0 });
     const history = await assignmentsOf("7710433");
     expect(history.find((a) => a.personId === s.dani)!.returnedAt).not.toBeNull();
     expect(history.find((a) => a.personId === s.ron)!.returnedAt).toBeNull();
@@ -449,10 +451,12 @@ describe("applyLogistics", () => {
   });
 
   it("summarizes the import without cell values", () => {
-    const result = { applied: { new: 7, change: 6, appOnly: 1, error: 0 }, blocked: [] };
+    const result = { applied: { new: 7, change: 6, appOnly: 1, error: 0 }, blocked: [], logEvents: 0 };
     expect(summarizeImport("לוגיסטיקה.xlsx", ["serials", "assignments"], result, 3)).toBe(
       "לוגיסטיקה.xlsx · לשוניות: טבלת צ, גדודי · חדשים 7 · שינויים 6 · הוסרו 1 · לא סומנו 3",
     );
+    expect(summarizeImport("a.xlsx", ["log"], { ...result, logEvents: 40 }, 0)).toContain("לשוניות: לוג · ");
+    expect(summarizeImport("a.xlsx", ["log"], { ...result, logEvents: 40 }, 0)).toMatch(/ · פעולות מהלוג 40$/);
   });
 
   it("a battalion logistics admin can log a sheet_import event with no soldier", async () => {
@@ -577,6 +581,112 @@ describe("re-importing right after applying, every tab", () => {
     expect(first.applied.new).toBeGreaterThan(5);
     const again = await diffLogistics(s.db as unknown as Tx, sheets, tabs);
     expect(again.lines.filter((l) => l.group !== "appOnly" || l.selectable)).toEqual([]);
+  });
+});
+
+/* ── לוג ──────────────────────────────────────────────────────────────────── */
+
+describe("the 'לוג' tab", () => {
+  let s: Seeded;
+  const admin = { sub: randomUUID(), email: "log-history@example.com" };
+  const companyAdmin = { sub: randomUUID(), email: "log-plsr@example.com" };
+  const claims = (u: { sub: string; email: string }): JwtClaims => ({
+    ...u,
+    app_metadata: { provider: "google" },
+    user_metadata: { email_verified: true },
+  });
+  const LINK = "https://drive.google.com/file/d/abc/view";
+  /** תאריך | תפקיד | פעולה | שם מלא | פריט | צ | הערות | קישור */
+  const log: Sheets = {
+    log: rows(
+      ["01/08/2026 09:15", "מנהל · a@x.com", "החתמה", "דני כהן", "M4 קצר", "77-10433", "מחתים: רס״פ", LINK],
+      ["01/08/2026 09:20", "מנהל · a@x.com", "סנכרון סטטוסים", "", "", "", "סומנו חתום: 3", ""],
+      ["02/08/2026 11:00", "מנהל · a@x.com", "חייל חדש", "רון לוי", "", "7654321", "פלנ״ט", ""],
+      ["02/08/2026 12:00", "מנהל · a@x.com", "זיכוי", "חייל שעזב", "M4 קצר", "9990002", "", "PDF נכשל: timeout"],
+      ["02/08/2026 12:00", "מנהל · a@x.com", "זיכוי", "חייל שעזב", "M4 קצר", "9990002", "", "PDF נכשל: timeout"],
+      ["אתמול", "מנהל", "זיכוי", "", "", "", "", ""],
+    ),
+  };
+  const importAs = (u: typeof admin, sheets: Sheets) =>
+    runAsUser(s.db as never, claims(u), async (tx) => {
+      const diff = await diffLogistics(tx, sheets, ["log"]);
+      return { diff, result: await applyLogistics(tx, diff, new Set(diff.lines.filter((l) => l.defaultOn).map((l) => l.id))) };
+    });
+  const imported = () => s.db.select().from(logisticsEvents).where(isNotNull(logisticsEvents.sheetKey)).orderBy(logisticsEvents.id);
+
+  beforeAll(async () => {
+    s = await seed();
+    const users = await s.db
+      .insert(appUsers)
+      .values([
+        { email: admin.email, authUserId: admin.sub, displayName: "מייבא" },
+        { email: companyAdmin.email, authUserId: companyAdmin.sub },
+      ])
+      .returning();
+    await s.db.insert(memberships).values([
+      { userId: users[0]!.id, module: "logistics", role: "admin", unitId: null },
+      { userId: users[1]!.id, module: "logistics", role: "admin", unitId: s.ids.plsr },
+    ]);
+  });
+
+  it("readXlsx recognises the tab", async () => {
+    const book = await readXlsx(await xlsx({ "לוג": [["תאריך", "תפקיד", "פעולה"], [new Date(Date.UTC(2026, 7, 1, 9, 15)), "מנהל", "החתמה"]] }));
+    expect(book.tabs[0]).toEqual({ name: "לוג", key: "log", rows: 1 });
+    expect(book.sheets.log![0]!.cells[0]).toBe("01/08/2026 09:15");
+  });
+
+  it("all new rows are one line; an unreadable date is an error", async () => {
+    const diff = await diffLogistics(s.db as unknown as Tx, log, ["log"]);
+    const line = diff.lines.find((l) => l.kind === "log.add");
+    const rest = diff.lines.filter((l) => l !== line);
+    expect(line).toMatchObject({ sheet: "log", kind: "log.add", group: "new", selectable: true, defaultOn: true });
+    expect(line!.after).toBe("5 פעולות · 01/08/2026 – 02/08/2026");
+    expect(rest).toEqual([expect.objectContaining({ id: "log:error:7", group: "error", message: 'תאריך לא תקין "אתמול"' })]);
+  });
+
+  it("a company-scoped admin can't import history (RLS)", async () => {
+    await expect(importAs(companyAdmin, log)).rejects.toThrow();
+    expect(await imported()).toEqual([]);
+  });
+
+  it("writes each row as an event: kind, soldier, sheet actor and link kept", async () => {
+    const { result } = await importAs(admin, log);
+    expect(result.logEvents).toBe(5);
+    const ev = await imported();
+    expect(ev.map((e) => e.kind)).toEqual(["sign", "legacy", "person_add", "return", "return"]);
+    expect(ev[0]).toMatchObject({
+      personId: s.dani,
+      personName: "דני כהן",
+      serial: "7710433",
+      details: "מחתים: רס״פ",
+      sheetActor: "מנהל · a@x.com",
+      actorName: "מייבא",
+      sheetLink: LINK,
+    });
+    expect(ev[0]!.at.toISOString()).toBe("2026-08-01T06:15:00.000Z");
+    expect(ev[1]!.details).toBe("סנכרון סטטוסים | סומנו חתום: 3");
+    // the personal number in the צ column finds the soldier and isn't stored as a serial
+    expect(ev[2]).toMatchObject({ personId: s.ron, serial: null });
+    // a soldier the app doesn't have keeps the name; a non-link קישור goes to the details
+    expect(ev[3]).toMatchObject({ personId: null, personName: "חייל שעזב", details: "PDF נכשל: timeout", sheetLink: null });
+  });
+
+  it("re-importing the same tab adds nothing; a new row at the end is the only one added", async () => {
+    const again = await diffLogistics(s.db as unknown as Tx, log, ["log"]);
+    expect(again.lines.filter((l) => l.group === "new")).toEqual([]);
+    expect(again.identical.log).toBe(5);
+    const more: Sheets = { log: [...log.log!, { row: 8, cells: ["03/08/2026 08:00", "מנהל", "אפסון", "דני כהן", "M4 קצר", "7710432", "", ""] }] };
+    const { result } = await importAs(admin, more);
+    expect(result.logEvents).toBe(1);
+    expect((await imported()).at(-1)!.kind).toBe("store");
+  });
+
+  it("maps every action the old script wrote", () => {
+    expect(logKind("זיכוי (העברה)")).toBe("transfer");
+    expect(logKind(" טופס  ציוד חתום ")).toBe("holdings_form");
+    expect(logKind("הוספת צ׳")).toBe("serials_add");
+    expect(logKind("תיקון נוסחה אוטומטי")).toBe("legacy");
+    expect(logRowKey(["a"], 0)).not.toBe(logRowKey(["a"], 1));
   });
 });
 

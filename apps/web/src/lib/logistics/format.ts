@@ -17,13 +17,14 @@ export function fmtDateTime(v: Date | string | null | undefined): string {
   return `${fmtDate(v)} · ${time(new Date(v))}`;
 }
 
-/** "היום 10:42" / "אתמול 18:20" / "28.09 18:05" */
+/** "היום 10:42" / "אתמול 18:20" / "28.09 18:05"; another year: "28.09.2025 18:05" */
 export function fmtWhen(v: Date | string | null | undefined, now: Date = new Date()): string {
   if (!v) return "";
   const d = new Date(v);
   const yesterday = new Date(now.getTime() - 86_400_000);
   if (dayKey(d) === dayKey(now)) return `היום ${time(d)}`;
   if (dayKey(d) === dayKey(yesterday)) return `אתמול ${time(d)}`;
+  if (dayKey(d).slice(0, 4) !== dayKey(now).slice(0, 4)) return `${fmtDate(d)} ${time(d)}`;
   const dm = d.toLocaleDateString("he-IL", { timeZone: TZ, day: "2-digit", month: "2-digit" }).replace(/\//g, ".");
   return `${dm} ${time(d)}`;
 }

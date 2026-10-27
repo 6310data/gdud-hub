@@ -24,6 +24,7 @@ const KIND_LABEL: Partial<Record<LineKind, string>> = {
   "storage.release": "שחרור מאפסון",
   "serial.delete": "מחיקה",
   "kit.remove": "הסרה מהתקן",
+  "log.add": "היסטוריה",
 };
 const GROUP_LABEL: Record<LineGroup, string> = { new: "חדש", change: "שינוי", appOnly: "רק באפליקציה", error: "שגיאה" };
 const DANGER_CHIP: CSSProperties = { background: "var(--danger-soft)", color: "var(--danger)" };

@@ -35,7 +35,7 @@ function wizardSteps(step: Step, busy: Step | null): StepItem[] {
   }));
 }
 
-const DEFAULT_TABS: readonly SheetKey[] = ["serials", "assignments", "storage"];
+const DEFAULT_TABS: readonly SheetKey[] = ["serials", "assignments", "storage", "log"];
 
 /** An action call that never throws: a rejected request (too large, network) becomes a Hebrew error. */
 async function safe<T>(call: () => Promise<ActionOutcome<T>>): Promise<ActionOutcome<T>> {
@@ -316,6 +316,7 @@ function ResultStep({ result, lines, onAgain }: { result: ApplyResult; lines: Pr
     <section className="tz-card flex flex-col gap-3 p-4">
       <p role="status" className="tz-alert tz-alert-ok m-0">
         הייבוא נשמר · חדשים {a.new} · שינויים {a.change} · הוסרו {a.appOnly}
+        {result.logEvents ? ` · ${result.logEvents} פעולות נוספו ללוג` : ""}
       </p>
       {result.blocked.length ? (
         <>
