@@ -48,6 +48,8 @@ export const LOGISTICS_EVENT_KINDS = [
   "person_update",
   "person_remove",
   "sheet_import",
+  /** a 'לוג' row of the old sheet whose action has no app kind (e.g. סנכרון סטטוסים) */
+  "legacy",
 ] as const;
 export type EventKind = (typeof LOGISTICS_EVENT_KINDS)[number];
 
@@ -68,6 +70,7 @@ export const EVENT_LABEL: Record<EventKind, string> = {
   person_update: "עדכון חייל",
   person_remove: "הסרת חייל",
   sheet_import: "ייבוא מהגיליון",
+  legacy: "פעולה מהגיליון",
 };
 
 /* ── serials ─────────────────────────────────────────────────────────────── */

@@ -18,8 +18,8 @@ const paramsSchema = z.object({
   q: z.string().max(80).optional().catch(undefined),
   person: z.uuid().optional().catch(undefined),
   inactive: z.literal("1").optional().catch(undefined),
-  /** only soldiers with nothing signed on them */
-  empty: z.literal("1").optional().catch(undefined),
+  /** hide soldiers with nothing signed on them */
+  signed: z.literal("1").optional().catch(undefined),
 });
 
 export default async function PeoplePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -39,53 +39,47 @@ export default async function PeoplePage({ searchParams }: { searchParams: Promi
   const selectedPerson = sp.person ? people.find((p) => p.id === sp.person) : undefined;
   // default tab: the selected soldier's company, else the first company the user can see
   const unit = sp.unit ?? selectedPerson?.companyId ?? companies[0]?.id ?? "all";
-  const current = { unit, q: sp.q, person: sp.person, inactive: sp.inactive, empty: sp.empty };
+  const current = { unit, q: sp.q, person: sp.person, inactive: sp.inactive, signed: sp.signed };
 
   const inScope = (p: PersonVM) => (unit === "all" ? true : unit === "none" ? !p.companyId : p.companyId === unit);
   const visible = (p: PersonVM) => p.active || (sp.inactive === "1" && (holdingsBy.get(p.id)?.length ?? 0) > 0);
   const serialHits = (p: PersonVM): HoldingVM[] =>
     sp.q ? (holdingsBy.get(p.id) ?? []).filter((h) => matches(sp.q!, h.serial, h.itemName)) : [];
   const holdsNothing = (p: PersonVM) => !holdingsBy.get(p.id)?.length;
-  const emptyCount = people.filter((p) => inScope(p) && p.active && holdsNothing(p)).length;
+  const signedCount = people.filter((p) => inScope(p) && p.active && !holdsNothing(p)).length;
   const list = people
     .filter((p) => inScope(p) && visible(p))
-    .filter((p) => !sp.empty || holdsNothing(p))
+    .filter((p) => !sp.signed || !holdsNothing(p))
     .filter((p) => !sp.q || matches(sp.q, p.name, p.personalNumber, p.phone) || serialHits(p).length > 0);
 
   const groupKey = (p: PersonVM) => (unit === "all" ? (p.companyName ?? "ללא פלוגה") : (p.platoonName ?? "ללא מחלקה"));
   const groups = [...groupBy(list, groupKey).entries()].sort(([a], [b]) => byHe(a, b));
-  const emptyHref = withParams("/logistics/people", current, { empty: sp.empty ? null : "1", person: null });
+  const signedHref = withParams("/logistics/people", current, { signed: sp.signed ? null : "1", person: null });
   const unitName = unit === "all" ? "כל הגדוד" : unit === "none" ? "ללא פלוגה" : (companies.find((c) => c.id === unit)?.name ?? "פלוגה");
   const totalItems = list.reduce((n, p) => n + (holdingsBy.get(p.id)?.length ?? 0), 0);
-  const addUnit = unit !== "all" && unit !== "none" ? unit : undefined;
+  const summaryUnit = unit !== "all" && unit !== "none" ? unit : undefined;
 
   return (
     <>
       <PageHeader
         title={unitName}
-        sub={sp.empty ? `${fmtCount(list.length)} חיילים בלי ציוד חתום` : `${fmtCount(list.length)} חיילים · ${fmtCount(totalItems)} פריטים מוחתמים`}
+        sub={`${fmtCount(list.length)} חיילים${sp.signed ? " עם ציוד חתום" : ""} · ${fmtCount(totalItems)} פריטים מוחתמים`}
         actions={
           <>
             <form className="tz-search min-w-[220px] bg-surface" role="search">
               <input type="hidden" name="unit" value={unit} />
               {sp.inactive ? <input type="hidden" name="inactive" value="1" /> : null}
-              {sp.empty ? <input type="hidden" name="empty" value="1" /> : null}
+              {sp.signed ? <input type="hidden" name="signed" value="1" /> : null}
               <Icon name="search" size={15} />
               <input type="search" name="q" defaultValue={sp.q} placeholder={`חיפוש ב${unitName}: שם, מ.א, צ׳ או פריט`} aria-label="חיפוש בפלוגה" />
             </form>
-            <Link href={emptyHref} aria-pressed={!!sp.empty} className={`tz-btn tz-btn-sm ${sp.empty ? "tz-btn-filled" : "tz-btn-tinted"}`}>
-              בלי ציוד חתום
-              <span className="tz-num">{fmtCount(emptyCount)}</span>
+            <Link href={signedHref} aria-pressed={!!sp.signed} className={`tz-btn tz-btn-sm ${sp.signed ? "tz-btn-filled" : "tz-btn-tinted"}`}>
+              עם ציוד חתום
+              <span className="tz-num">{fmtCount(signedCount)}</span>
             </Link>
-            <Link href={withParams("/logistics/summary", {}, { unit: addUnit })} className="tz-btn tz-btn-tinted tz-btn-sm">
+            <Link href={withParams("/logistics/summary", {}, { unit: summaryUnit })} className="tz-btn tz-btn-tinted tz-btn-sm">
               סיכום אמצעים
             </Link>
-            {access.isAdmin ? (
-              <Link href={withParams("/logistics/people/new", {}, { unit: addUnit })} className="tz-btn tz-btn-filled tz-btn-sm">
-                <Icon name="plus" size={16} />
-                חייל חדש
-              </Link>
-            ) : null}
           </>
         }
       />
@@ -168,7 +162,7 @@ export default async function PeoplePage({ searchParams }: { searchParams: Promi
               </tbody>
             </table>
           ) : (
-            <Empty>{sp.q ? "אין תוצאות" : sp.empty ? "לכל החיילים במסגרת הזו יש ציוד חתום" : "אין חיילים במסגרת הזו"}</Empty>
+            <Empty>{sp.q ? "אין תוצאות" : sp.signed ? "לאף חייל במסגרת הזו אין ציוד חתום" : "אין חיילים במסגרת הזו"}</Empty>
           )}
         </div>
 

@@ -12,6 +12,7 @@ export const SHEET_NAMES = {
   people: "אלפון גדודי",
   assignments: "גדודי",
   storage: "אפסון",
+  log: "לוג",
 } as const;
 export type SheetKey = keyof typeof SHEET_NAMES;
 export const SHEET_KEYS = Object.keys(SHEET_NAMES) as SheetKey[];

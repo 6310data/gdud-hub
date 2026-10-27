@@ -1,5 +1,5 @@
 {
-  "id": "3e2643b6-714c-4710-a47d-b2bc6702eae7",
+  "id": "883c002c-5d0c-4bab-a02f-0b149f7bed78",
   "prevId": "4e3e1b4a-57a3-4275-bee1-b90f9a3be176",
   "version": "7",
   "dialect": "postgresql",
@@ -835,6 +835,24 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
+        },
+        "sheet_actor": {
+          "name": "sheet_actor",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sheet_link": {
+          "name": "sheet_link",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sheet_key": {
+          "name": "sheet_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -864,6 +882,22 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "logistics_events_sheet_key": {
+          "name": "logistics_events_sheet_key",
+          "columns": [
+            {
+              "expression": "sheet_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"logistics_events\".\"sheet_key\" is not null",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -900,7 +934,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "logistics_events_sheet_link": {
+          "name": "logistics_events_sheet_link",
+          "value": "\"logistics_events\".\"sheet_link\" is null or \"logistics_events\".\"sheet_link\" ~ '^https://'"
+        }
+      },
       "isRLSEnabled": true
     },
     "public.logistics_forms": {
@@ -1597,107 +1636,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": true
-    },
-    "public.doch1_dmh_categories": {
-      "name": "doch1_dmh_categories",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "round_id": {
-          "name": "round_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "listed": {
-          "name": "listed",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "sort_order": {
-          "name": "sort_order",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "doch1_dmh_categories_round_name": {
-          "name": "doch1_dmh_categories_round_name",
-          "columns": [
-            {
-              "expression": "round_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "name",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "doch1_dmh_categories_round_id_doch1_rounds_id_fk": {
-          "name": "doch1_dmh_categories_round_id_doch1_rounds_id_fk",
-          "tableFrom": "doch1_dmh_categories",
-          "tableTo": "doch1_rounds",
-          "columnsFrom": [
-            "round_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "doch1_dmh_categories_name_len": {
-          "name": "doch1_dmh_categories_name_len",
-          "value": "length(\"doch1_dmh_categories\".\"name\") between 1 and 30"
-        }
-      },
       "isRLSEnabled": true
     },
     "public.doch1_import_mappings": {
@@ -2407,113 +2345,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": true
-    },
-    "public.doch1_report_groups": {
-      "name": "doch1_report_groups",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "round_id": {
-          "name": "round_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "commander": {
-          "name": "commander",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "unit_ids": {
-          "name": "unit_ids",
-          "type": "uuid[]",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::uuid[]"
-        },
-        "sort_order": {
-          "name": "sort_order",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "doch1_report_groups_round_name": {
-          "name": "doch1_report_groups_round_name",
-          "columns": [
-            {
-              "expression": "round_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "name",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "doch1_report_groups_round_id_doch1_rounds_id_fk": {
-          "name": "doch1_report_groups_round_id_doch1_rounds_id_fk",
-          "tableFrom": "doch1_report_groups",
-          "tableTo": "doch1_rounds",
-          "columnsFrom": [
-            "round_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "doch1_report_groups_text_len": {
-          "name": "doch1_report_groups_text_len",
-          "value": "length(\"doch1_report_groups\".\"name\") between 1 and 40 and length(coalesce(\"doch1_report_groups\".\"commander\", '')) <= 60 and cardinality(\"doch1_report_groups\".\"unit_ids\") <= 30"
-        }
-      },
       "isRLSEnabled": true
     },
     "public.doch1_round_companies": {
@@ -3323,12 +3154,6 @@
           "notNull": true,
           "default": false
         },
-        "location_id": {
-          "name": "location_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "active": {
           "name": "active",
           "type": "boolean",
@@ -3415,19 +3240,6 @@
             "id"
           ],
           "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "doch1_statuses_location_id_doch1_locations_id_fk": {
-          "name": "doch1_statuses_location_id_doch1_locations_id_fk",
-          "tableFrom": "doch1_statuses",
-          "tableTo": "doch1_locations",
-          "columnsFrom": [
-            "location_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
           "onUpdate": "no action"
         },
         "doch1_statuses_replaces_id_doch1_statuses_id_fk": {
@@ -3601,7 +3413,8 @@
         "person_add",
         "person_update",
         "person_remove",
-        "sheet_import"
+        "sheet_import",
+        "legacy"
       ]
     },
     "public.logistics_form_kind": {

@@ -67,13 +67,25 @@ export function EventsTable({ rows, showDetails = false }: { rows: EventRow[]; s
                 ) : null}
               </td>
               {showDetails ? <td className="max-w-[360px] truncate whitespace-normal text-[13px] text-ink-muted">{e.details}</td> : null}
-              <td className="text-ink-muted">{e.actorName ?? "—"}</td>
+              <td className="text-ink-muted">
+                {e.sheetActor ? (
+                  <span title={e.actorName ? `יובא מהגיליון ע״י ${e.actorName}` : "יובא מהגיליון"}>
+                    {e.sheetActor} <span className="tz-footnote">· גיליון</span>
+                  </span>
+                ) : (
+                  (e.actorName ?? "—")
+                )}
+              </td>
               <td className="text-ink-muted">{fmtWhen(e.at, now)}</td>
               <td>
                 {e.formId ? (
                   <Link href={`/logistics/forms/${e.formId}`} className="text-[13px] font-semibold">
                     טופס
                   </Link>
+                ) : e.sheetLink ? (
+                  <a href={e.sheetLink} target="_blank" rel="noopener noreferrer" className="text-[13px] font-semibold">
+                    טופס
+                  </a>
                 ) : null}
               </td>
             </tr>

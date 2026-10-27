@@ -185,6 +185,19 @@ export const logisticsEvents = pgTable(
     serial: text("serial"),
     details: text("details"),
     formId: uuid("form_id").references(() => logisticsForms.id, { onDelete: "set null" }),
+    /**
+     * Rows imported from the old sheet's 'לוג' tab. actor_name is always the importer (trigger),
+     * so the sheet's 'תפקיד' cell is kept here; `sheet_link` is its 'קישור' (a Drive PDF);
+     * `sheet_key` identifies the row so a re-import never duplicates it.
+     */
+    sheetActor: text("sheet_actor"),
+    sheetLink: text("sheet_link"),
+    sheetKey: text("sheet_key"),
   },
-  (t) => [index("logistics_events_at_idx").on(t.at), index("logistics_events_person_idx").on(t.personId)],
+  (t) => [
+    index("logistics_events_at_idx").on(t.at),
+    index("logistics_events_person_idx").on(t.personId),
+    uniqueIndex("logistics_events_sheet_key").on(t.sheetKey).where(sql`${t.sheetKey} is not null`),
+    check("logistics_events_sheet_link", sql`${t.sheetLink} is null or ${t.sheetLink} ~ '^https://'`),
+  ],
 ).enableRLS();

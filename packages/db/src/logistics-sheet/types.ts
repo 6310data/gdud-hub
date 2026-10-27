@@ -1,4 +1,4 @@
-import type { Condition, KitLine } from "@gdud/core";
+import type { Condition, EventKind, KitLine } from "@gdud/core";
 import type { SheetKey } from "./sheet";
 
 /** How a preview groups a line: new in the sheet, will change, only in the app, couldn't read. */
@@ -20,8 +20,24 @@ export type ChangeOp =
   | { t: "assignment.return"; assignmentId: string }
   /** dates are ISO strings */
   | { t: "storage.add"; personId: string; serial: string | null; itemName: string; storedAt: string; releasedAt: string | null }
-  | { t: "storage.release"; storageId: string; releasedAt: string };
+  | { t: "storage.release"; storageId: string; releasedAt: string }
+  /** every 'לוג' row the app doesn't have yet, as one line */
+  | { t: "log.add"; events: LogEventRow[] };
 export type OpKind = ChangeOp["t"];
+
+/** One old 'לוג' row as a logistics_events row (`at` is an ISO string). */
+export interface LogEventRow {
+  at: string;
+  kind: EventKind;
+  sheetActor: string | null;
+  personId: string | null;
+  personName: string | null;
+  item: string | null;
+  serial: string | null;
+  details: string | null;
+  sheetLink: string | null;
+  sheetKey: string;
+}
 export type LineKind = OpKind | "error";
 
 export interface ChangeLine {
