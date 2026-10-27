@@ -1,9 +1,8 @@
 import type { Condition, EventKind, KitLine } from "@gdud/core";
+import type { LineGroup } from "../sheet-import/preview";
 import type { SheetKey } from "./sheet";
 
-/** How a preview groups a line: new in the sheet, will change, only in the app, couldn't read. */
-export type LineGroup = "new" | "change" | "appOnly" | "error";
-export const LINE_GROUPS: readonly LineGroup[] = ["new", "change", "appOnly", "error"];
+export { LINE_GROUPS, type LineGroup } from "../sheet-import/preview";
 
 /** One write. Items and serials that are new in the same import are referenced by name / serial. */
 export type ChangeOp =
