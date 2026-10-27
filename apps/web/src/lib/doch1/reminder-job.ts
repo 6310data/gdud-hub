@@ -10,6 +10,7 @@ import "server-only";
  */
 import { inService, isDue, israelClock, israelToday, reminderMessages, type ReminderMessage, type ReminderRecipient } from "@gdud/core";
 import { and, eq, inArray, isNull, schema, systemDb } from "@gdud/db";
+import { memberArriving } from "./data";
 import { sendPush } from "./push";
 
 const { units, people, appUsers, memberships } = schema;
@@ -83,7 +84,7 @@ export async function runReminderJob(now: Date): Promise<ReminderJobResult> {
 
   /* missing reports today, counted into every unit above the soldier */
   const memberRows = await db
-    .select({ personId: members.personId, inReport: members.inReport, callUpOn: members.callUpOn, releasedOn: members.releasedOn, unitId: people.unitId })
+    .select({ personId: members.personId, inReport: members.inReport, callUpOn: members.callUpOn, releasedOn: members.releasedOn, arriving: memberArriving, unitId: people.unitId })
     .from(members)
     .innerJoin(people, eq(people.id, members.personId))
     .where(eq(members.roundId, round.id));

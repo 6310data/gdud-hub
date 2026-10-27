@@ -103,7 +103,7 @@ describe("statusFlagsChanged", () => {
 });
 
 describe("inService", () => {
-  const m = { callUpOn: "2026-09-06", releasedOn: "2026-10-20" };
+  const m = { callUpOn: "2026-09-06", releasedOn: "2026-10-20", arriving: true };
   it("lists a soldier from the call-up date through the release date", () => {
     expect(inService(m, "2026-09-05")).toBe(false);
     expect(inService(m, "2026-09-06")).toBe(true);
@@ -112,8 +112,12 @@ describe("inService", () => {
     expect(inService({ ...m, releasedOn: null }, "2026-12-10")).toBe(true);
   });
   it("never lists a soldier without a call-up date", () => {
-    expect(inService({ callUpOn: null, releasedOn: null }, "2026-10-20")).toBe(false);
-    expect(inServiceBetween({ callUpOn: null, releasedOn: null }, "2026-08-23", "2026-12-10")).toBe(false);
+    expect(inService({ callUpOn: null, releasedOn: null, arriving: true }, "2026-10-20")).toBe(false);
+    expect(inServiceBetween({ callUpOn: null, releasedOn: null, arriving: true }, "2026-08-23", "2026-12-10")).toBe(false);
+  });
+  it("never lists a soldier marked not arriving, whatever the dates", () => {
+    expect(inService({ ...m, arriving: false }, "2026-09-10")).toBe(false);
+    expect(inServiceBetween({ ...m, arriving: false }, "2026-08-23", "2026-12-10")).toBe(false);
   });
   it("inServiceBetween is true when any day of the range is listed", () => {
     expect(inServiceBetween(m, "2026-08-30", "2026-09-06")).toBe(true);

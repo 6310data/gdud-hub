@@ -5,6 +5,7 @@ import "server-only";
  */
 import type { AuditEntry, Day } from "@gdud/core";
 import { and, asc, eq, schema, sql, type Tx } from "@gdud/db";
+import { memberArriving } from "./data";
 
 const { people, doch1Members: members, doch1Days: days } = schema;
 
@@ -18,6 +19,8 @@ export interface SoldierVM {
   inReport: boolean;
   callUpOn: Day | null;
   releasedOn: Day | null;
+  /** false = marked not arriving (listed on no day) */
+  arriving: boolean;
   dmhCategory: string | null;
   arrivalForecast: string | null;
   enlistmentStatus: string | null;
@@ -38,6 +41,7 @@ export async function loadSoldier(tx: Tx, roundId: string, personId: string): Pr
       inReport: members.inReport,
       callUpOn: members.callUpOn,
       releasedOn: members.releasedOn,
+      arriving: memberArriving,
       dmhCategory: members.dmhCategory,
       arrivalForecast: members.arrivalForecast,
       enlistmentStatus: members.enlistmentStatus,

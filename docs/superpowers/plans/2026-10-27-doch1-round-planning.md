@@ -88,26 +88,23 @@ export interface ServiceDates {
 }
 // inService / inServiceBetween: `m.arriving &&` first.
 
-// planning.ts
-export interface RosterRow { personalNumber: string; firstName: string; lastName: string; companyKey: string; platoonKey: string; phone: string | null; role: string | null; isOfficer: boolean | null; }
-export interface RosterMember { personId: string; personalNumber: string; firstName: string; lastName: string; unitId: string; phone: string | null; role: string | null; isOfficer: boolean | null; }
-export type RosterField = "name" | "unit" | "phone" | "role" | "isOfficer";
-export interface RosterDiff {
-  added: RosterRow[];                       // not in people
-  returning: { row: RosterRow; personId: string }[]; // in people, not in base round
-  changed: { row: RosterRow; member: RosterMember; fields: RosterField[] }[];
-  missing: RosterMember[];                  // in base round, not in file
-  unchanged: { row: RosterRow; member: RosterMember }[];
-  problems: { row: number; message: string }[]; // duplicates, bad number
-}
-export function diffRoster(rows: RosterRow[], base: RosterMember[], people: Map<string, string /* personalNumber → personId */>, unitOf: (row: RosterRow) => string | null): RosterDiff;
-export function planningProgress(members: { companyId: string; arrival: ArrivalEffect | null }[]): Map<string, { total: number; arriving: number; notArriving: number; blank: number }>;
+// planning.ts (as built)
+export interface RosterRow { line: number; personalNumber: string; fullName: string; company: string; platoon: string; phone: string | null; role: string | null; }
+export type ResolvedRow = Omit<RosterRow, "personalNumber"> & { personalNumber: string; unitId: string };
+export interface RosterMember { personId: string; personalNumber: string | null; fullName: string; unitId: string; phone: string | null; role: string | null; }
+export type RosterField = "name" | "unit" | "phone" | "role"; // people has no officer flag
+export interface RosterMatch { row: ResolvedRow; member: RosterMember; fields: RosterField[] }
+export interface RosterDiff { added: ResolvedRow[]; returning: RosterMatch[]; changed: RosterMatch[]; unchanged: { row: ResolvedRow; member: RosterMember }[]; missing: RosterMember[]; problems: { line: number; message: string }[]; }
+export function diffRoster(input: { rows: readonly RosterRow[]; base: readonly RosterMember[]; known: ReadonlyMap<string, RosterMember>; unitOf: (row: RosterRow) => string | null }): RosterDiff;
+export function planningProgress(members: { companyId: string; arrival: ArrivalEffect | null }[]): Map<string /* companyId | "all" */, { total: number; arriving: number; notArriving: number; blank: number }>;
 
-// call-up.ts
-export interface CallUpMember { personId: string; companyId: string; callUpOn: Day | null; releasedOn: Day | null; arriving: boolean; enlistment: EnlistmentEffect | null; enlistmentOptionId: string | null; }
-export function expectedOn(m: CallUpMember, day: Day): boolean;
-export function callUpSummary(members: CallUpMember[], day: Day): Map<string /* companyId | "all" */, { expected: number; arrived: number; pending: number; postponed: number; released: number; percent: number | null; byOption: Map<string, number> }>;
-export function callUpBrigadeText(input: { battalion: string; day: Day; rows: { company: string; expected: number; arrived: number; percent: number | null }[] }): string;
+// call-up.ts (as built)
+export interface CallUpMember extends ServiceDates { personId: string; companyId: string; enlistment: EnlistmentEffect | null; enlistmentOptionId: string | null; }
+/** arriving, and called up by that day or already marked (a postponed soldier stays in) */
+export function inCallUp(m: CallUpMember, day: Day): boolean;
+export function callUpSummary(members: readonly CallUpMember[], day: Day): { total: CallUpCounts; byCompany: Map<string, CallUpCounts> };
+// CallUpCounts: called, expected (= called − postponed − released), arrived, pending (incl. not marked), postponed, released, percent | null, byOption
+export function callUpBrigadeText(input: { battalionName: string; day: Day; total: CallUpCounts; companies: { name: string; summary: CallUpCounts }[] }): string;
 ```
 
 - [ ] **Step 1: Failing tests.**
@@ -116,7 +113,7 @@ export function callUpBrigadeText(input: { battalion: string; day: Day; rows: { 
   - `call-up.test.ts`: postponed and released leave `expected`; a not-arriving member isn't expected; `percent` null when expected is 0; the brigade text has no names (assert no `personId` / name substring) and matches a snapshot.
 - [ ] **Step 2:** `pnpm --filter @gdud/core test` → fails.
 - [ ] **Step 3:** Implement. Keep `diffRoster` pure; units are resolved by the caller through `unitOf`.
-- [ ] **Step 4:** Tests green. `pnpm typecheck` lists every place that builds a `ServiceDates` without `arriving`. That list is Task 4's work list.
+- [ ] **Step 4:** Tests green. `pnpm typecheck` lists every place that builds a `ServiceDates` without `arriving`: set it in those loaders now (`memberArriving` in `apps/web/src/lib/doch1/data.ts`, a `not exists` on the "not arriving" value), so the branch stays green.
 - [ ] **Step 5: Commit** `feat(doch1): not-arriving soldiers aren't listed; roster diff and call-up summary`.
 
 ### Task 3: Settings — round state and value lists
@@ -145,7 +142,7 @@ export function callUpBrigadeText(input: { battalion: string; day: Day; rows: { 
 - Modify: `apps/web/src/app/(shell)/doch1/_actions/members.ts` (`arrivalOptionId`, `enlistmentOptionId` replace the text fields; the mid-round check)
 - Modify: `apps/web/src/app/(shell)/doch1/copy/…` (not-arriving rows kept, not counted as missing, like out-of-service)
 
-- [ ] **Step 1:** Make every `ServiceDates` builder set `arriving` from the option's effect (`effect !== 'not_arriving'`; blank → true). Typecheck green.
+- [ ] **Step 1:** (Done in Task 2: every `ServiceDates` builder sets `arriving` through `memberArriving`.) Load `arrivalOptionId` / `enlistmentOptionId` where the screens below need them.
 - [ ] **Step 2:** Add a db test in `packages/db/test/` (or extend an existing doch1 loader test) that loads members of a round with one not-arriving soldier who has day entries and asserts `listedOn` drops them while their `doch1_days` rows remain.
 - [ ] **Step 3: Soldier card.** "לא מגיע בסבב" tag; edit form pickers for צפי הגעה and סטטוס גיוס from `loadFieldOptions` (blank allowed). The action: when the new arrival value is `not_arriving` and the soldier has `doch1_days` rows in the round, return `{ confirm: { days: N } }` unless `force` is set. The form shows "לחייל יש N ימי דיווח בסבב. לסמן תאריך שחרור במקום?" with "שחרור מאתמול" (sets `released_on` = yesterday, not the value) and "לסמן לא מגיע".
 - [ ] **Step 4: חיילים filter and overview count.** The overview's not-arriving count is per company plus total, outside the KPI sums.
@@ -272,7 +269,7 @@ export async function activateRound(tx: Tx, planningRoundId: string): Promise<{ 
 - Modify: nav (`components/app-shell.tsx`): "יום גיוס", shown for the active round
 
 - [ ] **Step 1:** Implement `setEnlistment`: zod; for a `postponed` value require a new date after the current call-up date; for `released` a date on or after the call-up date (the existing `doch1_members_service_dates` check backs this up).
-- [ ] **Step 2:** Page and components using `expectedOn` / `callUpSummary` / `callUpBrigadeText` from Task 2. Viewers see the summary only.
+- [ ] **Step 2:** Page and components using `inCallUp` / `callUpSummary` / `callUpBrigadeText` from Task 2. Viewers see the summary only.
 - [ ] **Step 3:** `pnpm test && pnpm typecheck && pnpm lint`. By hand: mark התייצב, נדחה (new date → soldier disappears from today until then), שוחרר (release date set); summary % matches a hand count.
 - [ ] **Step 4: Commit** `feat(doch1): call-up day screen`.
 

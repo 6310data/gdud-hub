@@ -103,7 +103,7 @@ describe("soldierRoundStats", () => {
 
 describe("soldierStrip", () => {
   const round = { startsOn: "2026-08-23", endsOn: "2026-12-10" };
-  const member = { callUpOn: "2026-10-02", releasedOn: null, inReport: true };
+  const member = { callUpOn: "2026-10-02", releasedOn: null, arriving: true, inReport: true };
 
   it("missing only while listed in the report; legend by status order", () => {
     const days = run("2026-10-03", ["home", "gaza", null, "gaza"]);
@@ -118,6 +118,12 @@ describe("soldierStrip", () => {
 
   it("a soldier out of the report has no missing days", () => {
     const { missing } = soldierStrip(new Map(), statuses, { ...member, inReport: false }, round, "2026-10-05", "2026-10-06");
+    expect(missing).toBe(0);
+  });
+
+  it("a soldier marked not arriving has no missing days, but their reported days still show", () => {
+    const { cells, missing } = soldierStrip(run("2026-10-05", ["gaza"]), statuses, { ...member, arriving: false }, round, "2026-10-05", "2026-10-06");
+    expect(cells.map((c) => c.kind)).toEqual(["status", "off"]);
     expect(missing).toBe(0);
   });
 

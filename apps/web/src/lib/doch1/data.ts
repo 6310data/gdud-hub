@@ -4,10 +4,16 @@ import "server-only";
  * back is already filtered by RLS (a platoon commander sees their platoon).
  */
 import { byHe, inService, inServiceBetween, placement, type Day, type ReportMember, type ServiceDates, type StatusDef, type UnitNode } from "@gdud/core";
-import { and, asc, eq, inArray, schema, type Tx } from "@gdud/db";
+import { and, asc, eq, inArray, schema, sql, type Tx } from "@gdud/db";
 
 const { people, doch1Rounds: rounds, doch1RoundCompanies: roundCompanies, doch1Statuses: statuses } = schema;
-const { doch1Members: members, doch1Days: days } = schema;
+const { doch1Members: members, doch1Days: days, doch1FieldOptions: fieldOptions } = schema;
+
+/**
+ * `ServiceDates.arriving` of a doch1_members row, for a select: false only when the soldier's
+ * צפי הגעה value is a "not arriving" one (blank counts as arriving).
+ */
+export const memberArriving = sql<boolean>`not exists (select 1 from ${fieldOptions} where ${fieldOptions.id} = ${members.arrivalOptionId} and ${fieldOptions.effect} = 'not_arriving')`;
 
 export interface RoundVM {
   id: string;
@@ -113,6 +119,7 @@ export async function loadMembers(tx: Tx, roundId: string, units: UnitNode[]): P
       inReport: members.inReport,
       callUpOn: members.callUpOn,
       releasedOn: members.releasedOn,
+      arriving: memberArriving,
       sheetTab: members.sheetTab,
       sheetRow: members.sheetRow,
       locationId: members.locationId,
@@ -135,6 +142,7 @@ export async function loadMembers(tx: Tx, roundId: string, units: UnitNode[]): P
       inReport: r.inReport,
       callUpOn: r.callUpOn,
       releasedOn: r.releasedOn,
+      arriving: r.arriving,
       name: r.name,
       roleTitle: r.roleTitle,
       unitId: r.unitId,

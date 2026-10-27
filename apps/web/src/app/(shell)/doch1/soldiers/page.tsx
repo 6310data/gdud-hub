@@ -46,6 +46,7 @@ export default async function Doch1Soldiers({ searchParams }: { searchParams: Pr
       inReport: m.inReport,
       callUpOn: m.callUpOn,
       releasedOn: m.releasedOn,
+      arriving: m.arriving,
       editable: can(s.user, "doch1", ["admin", "company_user"], m.unitId, s.parents),
     }));
 

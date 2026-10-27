@@ -14,6 +14,7 @@ export interface SoldierVM {
   inReport: boolean;
   callUpOn: Day | null;
   releasedOn: Day | null;
+  arriving: boolean;
   /** the user may set this soldier's dates (with "בחירה") */
   editable: boolean;
 }
