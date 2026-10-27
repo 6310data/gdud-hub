@@ -7,8 +7,10 @@ import type { Session } from "@/lib/session";
  * (packages/db/migrations/0005_doch1_security.sql, 0008_doch1_standby_security.sql).
  */
 export interface Doch1Access {
-  /** battalion-wide doch1 admin (or super admin): every company, past days, settings, import */
+  /** battalion-wide doch1 admin or master admin (or super admin): every company, past days, import */
   isAdmin: boolean;
+  /** battalion-wide doch1 master admin (or super admin): settings and the department's roles */
+  isMaster: boolean;
   /** any doch1 role */
   canView: boolean;
   /** battalion overview: admin or viewer */
@@ -40,6 +42,7 @@ export function doch1Access({ user, parents }: Pick<Session, "user" | "parents">
   const battalionWide = isAdmin || scopes.includes(null);
   return {
     isAdmin,
+    isMaster: can(user, "doch1", ["master_admin"], null),
     canView: can(user, "doch1", "any"),
     canOverview: isAdmin || can(user, "doch1", ["viewer"]),
     canCopy: isAdmin || can(user, "doch1", ["company_user"]),

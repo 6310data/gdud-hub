@@ -177,12 +177,12 @@ export default async function Doch1Standby({ searchParams }: { searchParams: Pro
       {!available.size ? (
         <p className="tz-alert m-0" style={{ background: "var(--status-broken-soft)", color: "var(--status-broken)" }}>
           אף סטטוס לא מסומן ״זמין לכוננות״, ולכן כל הצוותים נראים חסרים.{" "}
-          {access.isAdmin ? (
+          {access.isMaster ? (
             <Link href="/doch1/settings#statuses" className="font-semibold text-inherit">
               לסמן בהגדרות › סטטוסים
             </Link>
           ) : (
-            "מנהל גדודי צריך לסמן אותם בהגדרות."
+            "מנהל ראשי צריך לסמן אותם בהגדרות."
           )}
         </p>
       ) : null}

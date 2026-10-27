@@ -18,7 +18,7 @@ import {
 } from "./report-tables";
 
 /** The reports screen (mockup 04). Presentational: the page loads and counts. */
-export function ReportsView({ data, isAdmin, clock }: { data: ReportsData; isAdmin: boolean; clock: string }) {
+export function ReportsView({ data, isAdmin, isMaster, clock }: { data: ReportsData; isAdmin: boolean; isMaster: boolean; clock: string }) {
   const { day, today, round, reports: r } = data;
   const dayParam = day === today ? null : day;
   const back = dayHref("/doch1/reports", {}, dayParam);
@@ -87,7 +87,7 @@ export function ReportsView({ data, isAdmin, clock }: { data: ReportsData; isAdm
       {hints.length ? (
         <p className="tz-callout m-0 text-[14px]">
           {hints.join(" · ")}.{" "}
-          {isAdmin ? (
+          {isMaster ? (
             <Link href="/doch1/settings#reports" className="font-semibold text-primary">
               הגדרות › דוחות
             </Link>

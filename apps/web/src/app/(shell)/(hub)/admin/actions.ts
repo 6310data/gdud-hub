@@ -131,6 +131,8 @@ const unitSchema = z.object({
     .refine((s) => s === null || /^#[0-9a-fA-F]{6}$/.test(s), "צבע בפורמט ‎#1e3a5f"),
 });
 
+const unitColorSchema = unitSchema.pick({ color: true }).extend({ unitId: uuid });
+
 export async function createUnit(_: ActionResult, fd: FormData): Promise<ActionResult> {
   const s = await adminSession();
   if (!s) return NO_PERMISSION;
@@ -142,6 +144,24 @@ export async function createUnit(_: ActionResult, fd: FormData): Promise<ActionR
     return { error: dbErrorMessage(e) };
   }
   revalidatePath("/admin/units");
+  return { ok: true };
+}
+
+/** A unit's color — the company's color across every department (tiles, table columns). */
+export async function setUnitColor(_: ActionResult, fd: FormData): Promise<ActionResult> {
+  const s = await adminSession();
+  if (!s) return NO_PERMISSION;
+  const parsed = unitColorSchema.safeParse(Object.fromEntries(fd));
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "קלט לא תקין" };
+  try {
+    await withUser(s.claims, (tx) =>
+      tx.update(schema.units).set({ color: parsed.data.color }).where(eq(schema.units.id, parsed.data.unitId)),
+    );
+  } catch (e) {
+    return { error: dbErrorMessage(e) };
+  }
+  // the color shows in every module
+  revalidatePath("/", "layout");
   return { ok: true };
 }
 

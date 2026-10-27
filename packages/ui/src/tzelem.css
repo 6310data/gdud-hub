@@ -176,6 +176,9 @@ a.tz-row, button.tz-row { cursor: pointer; }
 .tz-table .tz-zero { color: var(--chevron); }
 .tz-table a { color: var(--primary); text-decoration: none; }
 .tz-table a.tz-cell-link { color: inherit; display: block; }
+/* a company's column or row, in the company's color lightened (style --tint: the unit color; tintStyle()) */
+.tz-table .tz-tint { background: color-mix(in srgb, var(--tint) 9%, var(--surface-100)); }
+.tz-table :is(thead, tfoot) .tz-tint { background: color-mix(in srgb, var(--tint) 16%, var(--surface-100)); }
 .tz-num { font-variant-numeric: tabular-nums; }
 
 .tz-kpi { display: flex; align-items: center; gap: 10px; padding: 14px 16px; color: var(--ink); text-decoration: none; }

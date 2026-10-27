@@ -8,6 +8,8 @@ export interface SummaryColumn {
   label: string;
   /** link target in the roster */
   unitId?: string;
+  /** the company's color (a platoon column: its own, else its company's) — tints the column */
+  color?: string | null;
 }
 
 export interface SummaryMatrix {
@@ -34,12 +36,13 @@ export async function buildSummary(tx: Tx, units: readonly UnitNode[], companyId
     return p.platoonId ?? NONE;
   };
 
+  const companyColor = units.find((u) => u.id === companyId)?.color ?? null;
   const columns: SummaryColumn[] = companyId
     ? units
         .filter((u) => u.kind === "platoon" && u.active && u.parentId === companyId)
         .sort((a, b) => a.sortOrder - b.sortOrder || byHe(a.name, b.name))
-        .map((u) => ({ key: u.id, label: u.name, unitId: companyId }))
-    : companiesOf(units).map((c) => ({ key: c.id, label: c.name, unitId: c.id }));
+        .map((u) => ({ key: u.id, label: u.name, unitId: companyId, color: u.color ?? companyColor }))
+    : companiesOf(units).map((c) => ({ key: c.id, label: c.name, unitId: c.id, color: c.color }));
 
   const signed = new Map<string, Map<string, number>>(); // itemId → column → n
   for (const h of holdings) {

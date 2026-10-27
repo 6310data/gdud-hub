@@ -50,7 +50,7 @@ Apply the new migrations (`0004_doch1`, `0005_doch1_security`, and for שבצ״�
 pnpm db:migrate
 ```
 
-For the reports screen also `0015_doch1_reports` (דמ״ח categories, 10א groups, a status's camp).
+For the reports screen also `0016_doch1_reports` (דמ״ח categories, 10א groups, a status's camp).
 
 Then Supabase → Advisors → Security Advisor should show no new warnings.
 
@@ -173,7 +173,7 @@ Settings (admin), הגדרות › דוחות:
 - **שורות 10א** — name, commander and units (companies and מסגרות). A soldier falls in the first row naming their מסגרת, else the first naming their company.
 - **הגדרות › סטטוסים › מחנה בדוחות** — set it on the camp statuses (מיוערת → מחנה מיוערת). Like "זמין לכוננות" it is not versioned: changing it changes past days' reports too.
 
-Differences from the sheet to know when comparing: the סדיר / מילואים columns and the attached forces (שריון, גששים, צמה) are not in the app yet; 15א's "+1 קב״ן" is not added; in section F the sheet leaves "יום התארגנות אחרון" out of every column — the app has a column for every status that is not off duty. Migration: `0015_doch1_reports` (`pnpm db:migrate`).
+Differences from the sheet to know when comparing: the סדיר / מילואים columns and the attached forces (שריון, גששים, צמה) are not in the app yet; 15א's "+1 קב״ן" is not added; in section F the sheet leaves "יום התארגנות אחרון" out of every column — the app has a column for every status that is not off duty. Migration: `0016_doch1_reports` (`pnpm db:migrate`).
 
 ## Moving between days
 

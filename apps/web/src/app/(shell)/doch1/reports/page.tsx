@@ -18,5 +18,5 @@ export default async function Doch1Reports({ searchParams }: { searchParams: Pro
   const sp = await searchParams;
   const data = await loadReportsData(s, sp.day);
   if (!data) return null; // the layout shows "אין סבב פעיל"
-  return <ReportsView data={data} isAdmin={access.isAdmin} clock={israelClock(new Date())} />;
+  return <ReportsView data={data} isAdmin={access.isAdmin} isMaster={access.isMaster} clock={israelClock(new Date())} />;
 }

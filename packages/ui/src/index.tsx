@@ -2,7 +2,7 @@
  * Tzelem React components — thin wrappers over the tz- classes in tzelem.css.
  * Server-component safe (no hooks); interactive pieces live in the app.
  */
-import type { AnchorHTMLAttributes, ButtonHTMLAttributes, ElementType, ReactNode } from "react";
+import type { AnchorHTMLAttributes, ButtonHTMLAttributes, CSSProperties, ElementType, ReactNode } from "react";
 
 const cx = (...c: Array<string | false | null | undefined>) => c.filter(Boolean).join(" ");
 
@@ -476,6 +476,11 @@ export function Chip({ tone, children }: { tone: "ok" | "broken" | "brigade" | "
 }
 
 /* ── Serial / personal number / phone (always LTR, mono) ── */
+/** `.tz-tint` style for a company's table column or row: its color, lightened. No color → no tint. */
+export function tintStyle(color: string | null | undefined): CSSProperties | undefined {
+  return color ? ({ "--tint": color } as CSSProperties) : undefined;
+}
+
 export function Serial({ children }: { children: ReactNode }) {
   return <span className="tz-serial">{children}</span>;
 }

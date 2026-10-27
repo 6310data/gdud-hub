@@ -21,7 +21,7 @@ const user = (memberships: AppUser["memberships"], isSuperAdmin = false): AppUse
 describe("can()", () => {
   const clerk = user([
     { module: "doch1", role: "company_user", unitId: "plsr" },
-    { module: "logistics", role: "viewer", unitId: "plsr" },
+    { module: "logistics", role: "company_user", unitId: "plsr" },
   ]);
 
   it("allows the clerk's own company and everything below it", () => {
@@ -39,7 +39,17 @@ describe("can()", () => {
 
   it("checks the role, not just the module", () => {
     expect(can(clerk, "logistics", ["admin"], "plsr", parents)).toBe(false);
-    expect(can(clerk, "logistics", ["viewer"], "plsr", parents)).toBe(true);
+    expect(can(clerk, "logistics", ["company_user"], "plsr", parents)).toBe(true);
+  });
+
+  it("a master admin passes admin checks, an admin doesn't pass master checks", () => {
+    const master = user([{ module: "logistics", role: "master_admin", unitId: null }]);
+    const admin = user([{ module: "logistics", role: "admin", unitId: null }]);
+    expect(can(master, "logistics", ["admin"], "plsr", parents)).toBe(true);
+    expect(can(master, "logistics", ["master_admin"], null)).toBe(true);
+    expect(can(master, "doch1", ["admin"])).toBe(false);
+    expect(can(admin, "logistics", ["master_admin"])).toBe(false);
+    expect(scopesFor(master, "logistics", ["admin"])).toEqual([null]);
   });
 
   it("module-level check passes with any scoped membership", () => {
