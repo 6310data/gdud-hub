@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import writeXlsxFile, { type SheetData } from "write-excel-file/node";
-import { runAsUser, type JwtClaims } from "../src/index";
+import { runAsUser, type JwtClaims, type Tx } from "../src/index";
 import {
   applyKesher,
   bookFromTabs,
@@ -176,7 +176,7 @@ const find = (d: SheetDiff, pred: (l: ChangeLine) => boolean) => d.lines.find(pr
 describe("kesher import", () => {
   let s: Seeded;
   let sheets: KesherSheets;
-  const as = <T>(fn: Parameters<typeof runAsUser<T>>[2]) => runAsUser(s.db as never, claims(admin), fn);
+  const as = <T>(fn: (tx: Tx) => Promise<T>) => runAsUser(s.db as never, claims(admin), fn);
   const diff = (sh: KesherSheets, tabs = ALL_TABS, picks = new Map<string, string>()) => as((tx) => diffKesher(tx, sh, tabs, picks));
   /** diff + apply in one transaction, like the Server Action */
   const importAll = (sh: KesherSheets, tabs = ALL_TABS, picks = new Map<string, string>(), choose: (d: SheetDiff) => string[] = defaults) =>
