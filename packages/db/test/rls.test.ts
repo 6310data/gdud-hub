@@ -194,7 +194,7 @@ describe("app_users & memberships", () => {
       tx.insert(appUsers).values({ email: "new@example.com" }).returning(),
     );
     await as(coreAdmin, (tx) =>
-      tx.insert(memberships).values({ userId: u!.id, module: "logistics", role: "viewer", unitId: ids.plnt }),
+      tx.insert(memberships).values({ userId: u!.id, module: "logistics", role: "company_user", unitId: ids.plnt }),
     );
   });
 
@@ -347,8 +347,8 @@ describe("logistics", () => {
     await db.insert(memberships).values([
       { userId: logAdmin.appId!, module: "logistics", role: "admin", unitId: null },
       { userId: plsrAdmin.appId!, module: "logistics", role: "admin", unitId: ids.plsr },
-      { userId: plsrViewer.appId!, module: "logistics", role: "viewer", unitId: ids.plsr },
-      { userId: plntViewer.appId!, module: "logistics", role: "viewer", unitId: ids.plnt },
+      { userId: plsrViewer.appId!, module: "logistics", role: "company_user", unitId: ids.plsr },
+      { userId: plntViewer.appId!, module: "logistics", role: "company_user", unitId: ids.plnt },
     ]);
 
     const [item] = await db.insert(items).values({ name: "M4 קצר", category: "נשק" }).returning();
@@ -951,5 +951,70 @@ describe("doch1", () => {
       const rows = await db.select().from(auditLog).where(eq(auditLog.tableName, "doch1_standby_members"));
       expect(rows.some((r) => r.actorUserId === plsrClerk.appId)).toBe(true);
     });
+  });
+});
+
+describe("department master admins", () => {
+  const logMaster: TestUser = { authId: randomUUID(), email: "log-master@example.com" };
+  const plsrMaster: TestUser = { authId: randomUUID(), email: "plsr-master@example.com" };
+  const logPlain: TestUser = { authId: randomUUID(), email: "log-plain-admin@example.com" };
+  const target: TestUser = { authId: randomUUID(), email: "target@example.com" };
+  const users = [logMaster, plsrMaster, logPlain, target];
+  const { logisticsItems: items } = schema;
+
+  beforeAll(async () => {
+    const rows = await db
+      .insert(appUsers)
+      .values(users.map((u) => ({ email: u.email, authUserId: u.authId })))
+      .returning();
+    for (const u of users) u.appId = rows.find((r) => r.email === u.email)!.id;
+    await db.insert(memberships).values([
+      { userId: logMaster.appId!, module: "logistics", role: "master_admin", unitId: null },
+      { userId: plsrMaster.appId!, module: "logistics", role: "master_admin", unitId: ids.plsr },
+      { userId: logPlain.appId!, module: "logistics", role: "admin", unitId: null },
+    ]);
+  });
+
+  const grant = (u: TestUser, module: "logistics" | "doch1" | "core", role: string, unitId: string | null) =>
+    as(u, (tx) => tx.insert(memberships).values({ userId: target.appId!, module, role, unitId }).returning());
+
+  it("a master admin has every admin right in the department", async () => {
+    const [it] = await as(logMaster, (tx) => tx.insert(items).values({ name: "פריט מנהל ראשי", category: "כללי" }).returning());
+    expect(it).toBeDefined();
+    await db.delete(items).where(eq(items.id, it!.id));
+  });
+
+  it("sees the invited users (to pick from), a plain admin doesn't", async () => {
+    expect((await as(logMaster, (tx) => tx.select().from(appUsers))).length).toBeGreaterThan(4);
+    expect(await as(logPlain, (tx) => tx.select().from(appUsers))).toHaveLength(1);
+  });
+
+  it("grants and removes roles in their own department only", async () => {
+    expect(await grant(logMaster, "logistics", "company_user", ids.plnt)).toHaveLength(1);
+    await rejects(grant(logMaster, "doch1", "admin", null));
+    await rejects(grant(logMaster, "core", "admin", null));
+    await rejects(grant(logPlain, "logistics", "company_user", ids.plsr));
+    const seen = await as(logMaster, (tx) => tx.select().from(memberships).where(eq(memberships.userId, target.appId!)));
+    expect(seen.map((m) => m.module)).toEqual(["logistics"]);
+    expect(
+      await as(logMaster, (tx) =>
+        tx.update(memberships).set({ module: "doch1" }).where(eq(memberships.userId, target.appId!)).catch(() => "rejected"),
+      ),
+    ).toBe("rejected");
+    expect(await as(logMaster, (tx) => tx.delete(memberships).where(eq(memberships.userId, target.appId!)).returning())).toHaveLength(1);
+  });
+
+  it("a company-scoped master admin manages only roles inside that company", async () => {
+    expect(await grant(plsrMaster, "logistics", "company_user", ids.plsr1)).toHaveLength(1);
+    await rejects(grant(plsrMaster, "logistics", "admin", ids.plnt));
+    await rejects(grant(plsrMaster, "logistics", "admin", null));
+    const seen = await as(plsrMaster, (tx) => tx.select().from(memberships).where(eq(memberships.module, "logistics")));
+    expect(seen.every((m) => m.unitId === ids.plsr || m.unitId === ids.plsr1)).toBe(true);
+    await db.delete(memberships).where(eq(memberships.userId, target.appId!));
+  });
+
+  it("role changes are audited with the acting master admin", async () => {
+    const rows = await db.select().from(auditLog).where(eq(auditLog.tableName, "memberships"));
+    expect(rows.some((r) => r.actorUserId === logMaster.appId && r.action === "insert")).toBe(true);
   });
 });

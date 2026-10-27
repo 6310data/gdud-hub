@@ -24,12 +24,10 @@ export default async function Doch1Layout({ children }: { children: React.ReactN
     ...(access.canCopy ? [{ href: "/doch1/copy", label: "העתקה לגיליון", short: "העתקה", icon: "table" } as const] : []),
     ...(access.isAdmin ? [{ href: "/doch1/brigade", label: "דוח לחטיבה", short: "לחטיבה", icon: "send" } as const] : []),
   ];
-  const bottom: AppNavItem[] = access.isAdmin
-    ? [
-        { href: "/doch1/import", label: "ייבוא הגיליון", short: "ייבוא", icon: "upload" },
-        { href: "/doch1/settings", label: "הגדרות", icon: "gear" },
-      ]
-    : [];
+  const bottom: AppNavItem[] = [
+    ...(access.isAdmin ? [{ href: "/doch1/import", label: "ייבוא הגיליון", short: "ייבוא", icon: "upload" } as const] : []),
+    ...(access.isMaster ? [{ href: "/doch1/settings", label: "הגדרות", icon: "gear" } as const] : []),
+  ];
 
   return (
     <AppShell
@@ -45,9 +43,9 @@ export default async function Doch1Layout({ children }: { children: React.ReactN
         <div className="tz-card flex flex-col items-start gap-2 p-5">
           <h2 className="tz-headline">אין סבב פעיל</h2>
           <p className="tz-footnote m-0">
-            {access.isAdmin ? "כדי להתחיל, צרו סבב והפעילו אותו בהגדרות." : "מנהל גדודי צריך להגדיר סבב פעיל."}
+            {access.isMaster ? "כדי להתחיל, צרו סבב והפעילו אותו בהגדרות." : "מנהל ראשי צריך להגדיר סבב פעיל."}
           </p>
-          {access.isAdmin ? (
+          {access.isMaster ? (
             <Link href="/doch1/settings" className="tz-btn tz-btn-tinted tz-btn-sm">
               להגדרות
             </Link>

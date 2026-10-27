@@ -22,6 +22,8 @@ references/                old Apps Script / platoon-web code to port (not built
 
 - **Sign-in:** Google only. The account's email must be invited first (`/admin`), otherwise the user lands on "אין לך עדיין גישה".
 - **Membership:** a user has a role per module, optionally limited to a unit (a company covers its platoons and teams). No unit = whole battalion.
+- **Department roles** (לוגיסטיקה, דוח 1): **מנהל ראשי** (`master_admin`) — everything an admin does, plus the department's settings page and its own roles (who holds which role in that department, for already-invited users); **מנהל** (`admin`) — day-to-day work; **משתמש פלוגה** (`company_user`) — their own company (in logistics: view and print, no החתמה / זיכוי). `can()` and SQL `has_role()` count a master admin as an admin.
+- **Company colors:** one color per company, shared by all departments; edited in `/admin/units`. Tables tint a company's column or row with it (`.tz-tint`).
 - **Super admin:** sees and edits everything. Created with the bootstrap script.
 - **Enforced twice:** `can()` in the app decides what to show; Postgres Row-Level Security (in `packages/db/migrations/0001_security.sql`) decides what data actually comes back. Every user query goes through `withUser(claims, tx => …)`, which runs as the `authenticated` role with the user's JWT.
 

@@ -117,7 +117,7 @@ export default async function LogisticsOverview() {
 
           <Panel title="פלוגות" action={<span className="text-xs text-ink-muted">פריטים מוחתמים</span>}>
             {companies.map((c) => (
-              <CompanyRow key={c.id} href={`/logistics/people?unit=${c.id}`} name={c.name} count={holdingsByCompany.get(c.id)?.length ?? 0} />
+              <CompanyRow key={c.id} href={`/logistics/people?unit=${c.id}`} name={c.name} color={c.color} count={holdingsByCompany.get(c.id)?.length ?? 0} />
             ))}
             {holdingsByCompany.get(null)?.length ? (
               <CompanyRow href="/logistics/people?unit=none" name="ללא פלוגה" count={holdingsByCompany.get(null)!.length} />
@@ -144,9 +144,10 @@ function AttentionRow({ href, tile, title, sub }: { href: string; tile: React.Re
   );
 }
 
-function CompanyRow({ href, name, count }: { href: string; name: string; count: number }) {
+function CompanyRow({ href, name, color, count }: { href: string; name: string; color?: string | null; count: number }) {
   return (
     <Link href={href} className="tz-row">
+      <span aria-hidden="true" className="size-2.5 flex-none self-center rounded-full" style={{ background: color ?? "var(--tile-neutral)" }} />
       <span className="tz-row-body min-h-[42px] py-0">
         <span className="tz-row-title text-[14px]">{name}</span>
         <span className="tz-num text-[14px] text-ink-muted">{fmtCount(count)}</span>

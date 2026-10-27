@@ -1,11 +1,12 @@
 import Link from "next/link";
 import type { Summary } from "@gdud/core";
-import { Icon } from "@gdud/ui";
+import { Icon, tintStyle } from "@gdud/ui";
 import { ReminderButton } from "./reminder-button";
 
 export interface CompanySummary {
   unitId: string;
   name: string;
+  color: string | null;
   summary: Summary;
 }
 
@@ -83,7 +84,7 @@ export function CompanyTable({
         </thead>
         <tbody>
           {rows.map((r) => (
-            <tr key={r.unitId} className="tz-hover">
+            <tr key={r.unitId} className={`tz-hover ${r.color ? "tz-tint" : ""}`} style={tintStyle(r.color)}>
               <th scope="row" className="font-semibold">
                 <Link href={`/doch1/today?unit=${r.unitId}${dayQuery}`} className="tz-cell-link">
                   {r.name}

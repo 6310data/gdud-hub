@@ -5,6 +5,7 @@ import { doch1Access } from "@/lib/doch1/access";
 import { countMembersByCompany, loadMembers, loadRoundCompanies, loadStatuses, toRoundVM } from "@/lib/doch1/data";
 import { loadLocations, loadStandbyTypes, loadTeams, loadVehicles } from "@/lib/doch1/standby";
 import { fmtDay } from "@/lib/doch1/format";
+import { DepartmentRoles } from "@/components/department-roles/department-roles";
 import { requireModule } from "@/lib/session";
 import { CompaniesTable, type CompanyRow } from "./_components/companies-table";
 import { RoundForm } from "./_components/round-form";
@@ -19,6 +20,7 @@ const SECTIONS = [
   { id: "statuses", label: "סטטוסים", color: "var(--bar-broken)" },
   { id: "standby", label: "שבצ״ק, כוננות ורכבים", color: "var(--tile-broken)" },
   { id: "rounds", label: "סבבים", color: "var(--tile-neutral)" },
+  { id: "roles", label: "הרשאות", color: "var(--tile-ok)" },
 ] as const;
 
 const dm = (day: string) => `${day.slice(8, 10)}.${day.slice(5, 7)}`;
@@ -46,7 +48,7 @@ function RoundPreview({ battalion, round }: { battalion: string; round: { name: 
 
 export default async function Doch1Settings() {
   const s = await requireModule("doch1");
-  if (!doch1Access(s).isAdmin) notFound();
+  if (!doch1Access(s).isMaster) notFound();
 
   const data = await withUser(s.claims, async (tx) => {
     const rounds = await tx.select().from(schema.doch1Rounds).orderBy(desc(schema.doch1Rounds.startsOn));
@@ -96,7 +98,7 @@ export default async function Doch1Settings() {
       .join(", "),
   }));
   const battalion = s.units.find((u) => u.kind === "battalion")?.name ?? "גדוד";
-  const sections = SECTIONS.filter((x) => active || x.id === "round" || x.id === "rounds");
+  const sections = SECTIONS.filter((x) => active || x.id === "round" || x.id === "rounds" || x.id === "roles");
 
   return (
     <div className="flex flex-col gap-[22px] lg:flex-row lg:items-start lg:gap-8">
@@ -183,6 +185,11 @@ export default async function Doch1Settings() {
             </div>
           </section>
         ) : null}
+
+        <section id="roles" className="flex scroll-mt-6 flex-col gap-1.5">
+          <h2 className="px-4 pb-1 text-[20px] font-bold leading-[26px]">הרשאות</h2>
+          <DepartmentRoles s={s} module="doch1" />
+        </section>
       </div>
     </div>
   );

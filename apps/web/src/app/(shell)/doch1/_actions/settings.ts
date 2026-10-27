@@ -2,14 +2,14 @@
 /**
  * דוח 1 settings: the round (dates and daily times), companies in the round (+ the pilot
  * switch "reported in the app from"), statuses, and the שבצ״ק settings — locations,
- * standby types, the vehicle registry. Battalion-wide doch1 admins only.
+ * standby types, the vehicle registry. Battalion-wide doch1 master admins only.
  */
 import { z } from "zod";
 import { israelToday, LOCATION_KINDS, STANDBY_LEVELS, STATUS_FLAG_KEYS, statusFlagsChanged, VEHICLE_STATES } from "@gdud/core";
 import { and, eq, gte, lt, ne, schema, withUser, type Tx } from "@gdud/db";
 import { actionError, UserError, type ActionResult } from "@/lib/action-result";
 import { toStatusDef } from "@/lib/doch1/data";
-import { dayParam, doch1AdminSession, firstIssue, NO_PERMISSION, revalidateDoch1, uuid } from "./common";
+import { dayParam, doch1MasterSession, firstIssue, NO_PERMISSION, revalidateDoch1, uuid } from "./common";
 
 const { doch1Rounds: rounds, doch1RoundCompanies: roundCompanies, doch1Statuses: statuses, doch1Days: days } = schema;
 const { doch1Locations: locations, doch1StandbyTypes: standbyTypes, doch1Vehicles: vehicles } = schema;
@@ -45,7 +45,7 @@ const roundInput = z
   .refine((r) => r.endsOn >= r.startsOn, { message: "סיום הסבב לפני תחילתו" });
 
 export async function saveRound(_: ActionResult, fd: FormData): Promise<ActionResult> {
-  const s = await doch1AdminSession();
+  const s = await doch1MasterSession();
   if (!s) return NO_PERMISSION;
   const parsed = roundInput.safeParse(Object.fromEntries(fd));
   if (!parsed.success) return { error: firstIssue(parsed.error) };
@@ -81,7 +81,7 @@ const roundCompanyInput = z.object({
 });
 
 export async function saveRoundCompany(_: ActionResult, fd: FormData): Promise<ActionResult> {
-  const s = await doch1AdminSession();
+  const s = await doch1MasterSession();
   if (!s) return NO_PERMISSION;
   const parsed = roundCompanyInput.safeParse(Object.fromEntries(fd));
   if (!parsed.success) return { error: firstIssue(parsed.error) };
@@ -123,7 +123,7 @@ const statusInput = z
  * new version (the old one stays, inactive, for those days); days from today on move to the new one.
  */
 export async function saveStatus(_: ActionResult, fd: FormData): Promise<ActionResult> {
-  const s = await doch1AdminSession();
+  const s = await doch1MasterSession();
   if (!s) return NO_PERMISSION;
   const parsed = statusInput.safeParse(Object.fromEntries(fd));
   if (!parsed.success) return { error: firstIssue(parsed.error) };
@@ -168,7 +168,7 @@ export async function saveStatus(_: ActionResult, fd: FormData): Promise<ActionR
 
 /** Validates and saves one settings row; `write` returns how many rows it wrote (0 = not found). */
 async function saveRow<S extends z.ZodType>(fd: FormData, schemaIn: S, write: (tx: Tx, v: z.output<S>) => Promise<number>): Promise<ActionResult> {
-  const s = await doch1AdminSession();
+  const s = await doch1MasterSession();
   if (!s) return NO_PERMISSION;
   const parsed = schemaIn.safeParse(Object.fromEntries(fd));
   if (!parsed.success) return { error: firstIssue(parsed.error) };

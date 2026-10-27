@@ -2,7 +2,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { CONDITION_LABEL, type Condition } from "@gdud/core";
-import { Avatar, Chip, Icon, type IconName } from "@gdud/ui";
+import { Avatar, Chip, Icon, tintStyle, type IconName } from "@gdud/ui";
 
 export function PageHeader({ title, sub, actions }: { title: ReactNode; sub?: ReactNode; actions?: ReactNode }) {
   return (
@@ -103,8 +103,13 @@ export function Empty({ children }: { children: ReactNode }) {
 }
 
 /** Numbers that are 0 are dimmed in tables. */
-export function NumCell({ n, strong }: { n: number; strong?: boolean }) {
-  return <td className={`tz-num ${n ? "" : "tz-zero"} ${strong ? "font-semibold" : ""}`}>{n.toLocaleString("he-IL")}</td>;
+/** A count cell; `tint` = the company's color, for a company's column (see .tz-tint). */
+export function NumCell({ n, strong, tint }: { n: number; strong?: boolean; tint?: string | null }) {
+  return (
+    <td className={`tz-num ${n ? "" : "tz-zero"} ${strong ? "font-semibold" : ""} ${tint ? "tz-tint" : ""}`} style={tintStyle(tint)}>
+      {n.toLocaleString("he-IL")}
+    </td>
+  );
 }
 
 /** Builds "?a=1&b=2" from the current params with some changed (undefined/null/"" removes a key). */

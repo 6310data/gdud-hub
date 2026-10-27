@@ -6,7 +6,7 @@ import { Chip, Field, LargeTitle, Row, Section } from "@gdud/ui";
 import { ActionButton } from "@/components/action-button";
 import { ActionForm } from "@/components/action-form";
 import { requireSession } from "@/lib/session";
-import { createUnit, setUnitActive } from "../actions";
+import { createUnit, setUnitActive, setUnitColor } from "../actions";
 
 export const metadata = { title: "מבנה הגדוד" };
 
@@ -23,7 +23,7 @@ export default async function UnitsPage() {
       </Link>
       <LargeTitle sub="הרשאות לפי מסגרת חלות על כל מה שמתחתיה">מבנה הגדוד</LargeTitle>
 
-      <Section header={`מסגרות · ${units.length}`}>
+      <Section header={`מסגרות · ${units.length}`} footer="צבע הפלוגה מופיע בכל המחלקות: באריחים ובגוון בהיר בעמודות ובשורות של הפלוגה בטבלאות.">
         {tree.map((u) => (
           <Row
             key={u.id}
@@ -38,6 +38,18 @@ export default async function UnitsPage() {
             trailing={
               <>
                 {!u.active ? <Chip tone="signed">לא פעיל</Chip> : null}
+                {u.kind !== "battalion" ? (
+                  <ActionForm action={setUnitColor} submitLabel="שמירת צבע" variant="plain" className="flex items-center gap-1">
+                    <input type="hidden" name="unitId" value={u.id} />
+                    <input
+                      name="color"
+                      type="color"
+                      aria-label={`הצבע של ${u.name}`}
+                      className="h-8 w-10 cursor-pointer rounded-md border-0 bg-transparent p-0"
+                      defaultValue={u.color ?? "#7a8699"}
+                    />
+                  </ActionForm>
+                ) : null}
                 {u.kind !== "battalion" ? (
                   <ActionButton action={setUnitActive.bind(null, u.id, !u.active)} label={u.active ? "השבתה" : "הפעלה"} />
                 ) : null}

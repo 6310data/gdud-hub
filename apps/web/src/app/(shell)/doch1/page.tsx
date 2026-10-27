@@ -50,7 +50,7 @@ export default async function Doch1Overview({ searchParams }: { searchParams: Pr
   const dayStatuses = data.days.get(day)!;
   const listed = listedOn(data.members, day);
   const ofCompany = (id: string) => listed.filter((m) => m.companyId === id);
-  const rows: CompanySummary[] = companies.map((c) => ({ unitId: c.id, name: c.name, summary: summarize(ofCompany(c.id), dayStatuses, data.statuses) }));
+  const rows: CompanySummary[] = companies.map((c) => ({ unitId: c.id, name: c.name, color: c.color, summary: summarize(ofCompany(c.id), dayStatuses, data.statuses) }));
   const visible = data.members.filter((m) => companies.some((c) => c.id === m.companyId));
   const total = summarize(listedOn(visible, day), dayStatuses, data.statuses);
   const scope = sp.unit && rows.some((r) => r.unitId === sp.unit) ? sp.unit : null;

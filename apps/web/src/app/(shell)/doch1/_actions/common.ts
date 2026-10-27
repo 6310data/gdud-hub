@@ -36,10 +36,10 @@ export async function doch1Ctx(): Promise<Doch1Ctx | null> {
   return { s, access: doch1Access(s, loaded.companyIds), round: loaded.round };
 }
 
-/** Session of a battalion-wide doch1 admin, active round or not (settings must work before the first round). */
-export async function doch1AdminSession(): Promise<Session | null> {
+/** Session of a battalion-wide doch1 master admin, active round or not (settings must work before the first round). */
+export async function doch1MasterSession(): Promise<Session | null> {
   const s = await getSession();
-  return s && doch1Access(s).isAdmin ? s : null;
+  return s && doch1Access(s).isMaster ? s : null;
 }
 
 export function revalidateDoch1(): void {

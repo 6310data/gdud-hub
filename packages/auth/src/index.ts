@@ -10,6 +10,7 @@
  * rules with Row-Level Security, so a bug here can hide a button but can never leak data.
  */
 import {
+  MASTER_ROLE,
   MODULES,
   lineage,
   type ModuleId,
@@ -56,11 +57,14 @@ export function can<M extends ModuleId>(
   if (!user) return false;
   if (user.isSuperAdmin) return true;
   return user.memberships.some(
-    (m) =>
-      m.module === module &&
-      (roles === "any" || (roles as readonly string[]).includes(m.role)) &&
-      covers(m.unitId, target, parents),
+    (m) => m.module === module && roleMatches(m.role, roles) && covers(m.unitId, target, parents),
   );
+}
+
+/** A master admin counts as an admin of their department (same rule as SQL has_role()). */
+function roleMatches(role: string, roles: readonly string[] | "any"): boolean {
+  if (roles === "any" || roles.includes(role)) return true;
+  return role === MASTER_ROLE && roles.includes("admin");
 }
 
 /** Modules the user can open, in registry order. */
@@ -79,7 +83,7 @@ export function scopesFor<M extends ModuleId>(
   const out = new Set<string | null>();
   for (const m of user.memberships) {
     if (m.module !== module) continue;
-    if (roles !== "any" && !(roles as readonly string[]).includes(m.role)) continue;
+    if (!roleMatches(m.role, roles)) continue;
     out.add(m.unitId);
   }
   return [...out];
