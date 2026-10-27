@@ -1,13 +1,15 @@
 import { z } from "zod";
 import { byHe } from "@gdud/core";
 import { withUser } from "@gdud/db";
-import { Chip, tintStyle } from "@gdud/ui";
-import { Empty, PageHeader, Panel } from "@/components/page-parts";
-import { groupBy, loadKesher, stockKey } from "@/lib/kesher/data";
+import { Empty, PageHeader } from "@/components/page-parts";
+import { kesherAccess } from "@/lib/kesher/access";
+import { groupBy, loadKesher, loadKitLines, stockKey } from "@/lib/kesher/data";
 import { companiesOf } from "@/lib/logistics/data";
 import { fmtCount } from "@/lib/logistics/format";
 import { requireModule } from "@/lib/session";
 import { SegLinks } from "../_components/ui";
+import { KitEditor } from "./_components/kit-editor";
+import { StockEditor, type StockCol, type StockRow } from "./_components/stock-editor";
 
 export const metadata = { title: "ציוד משלים" };
 
@@ -15,12 +17,16 @@ const searchSchema = z.object({ tab: z.enum(["stock", "kits"]).catch("stock") })
 
 /**
  * ציוד משלים (mockup #/stock): quantities per place (not personal — every member reads them) and the
- * תקן. Phase 1: read-only; "עדכון כמויות" and the תקן steppers arrive in Phase 2.
+ * תקן. A battalion kesher admin edits the quantities, מלאי כללי and the תקן lines here.
  */
 export default async function KesherStock({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const s = await requireModule("kesher");
+  const access = kesherAccess(s);
   const f = searchSchema.parse(await searchParams);
-  const data = await withUser(s.claims, (tx) => loadKesher(tx, s.units));
+  const { data, kitLines } = await withUser(s.claims, async (tx) => {
+    const [data, kitLines] = await Promise.all([loadKesher(tx, s.units), f.tab === "kits" ? loadKitLines(tx) : Promise.resolve([])]);
+    return { data, kitLines };
+  });
   const bulk = data.items.filter((i) => i.kind === "bulk");
   const inWarehouse = bulk.reduce((n, i) => n + (data.stock.get(stockKey(i.id, null)) ?? 0), 0);
 
@@ -34,121 +40,41 @@ export default async function KesherStock({ searchParams }: { searchParams: Prom
           { href: "/kesher/stock?tab=kits", label: "תקן ציוד משלים", on: f.tab === "kits" },
         ]}
       />
-      {f.tab === "kits" ? <Kits data={data} /> : <StockTable data={data} companies={companiesOf(s.units)} />}
+      {f.tab === "kits" ? (
+        <>
+          <KitEditor items={data.items.map((i) => ({ id: i.id, name: i.name, bulk: i.kind === "bulk" }))} lines={kitLines} canEdit={access.isAdmin} />
+          <p className="tz-section-footer">בהחתמה, כל צ׳ מוסיף אוטומטית את הציוד המשלים שלו לפי התקן. פריט משלים שיש לו תקן משלו (למשל מגבר) מוסיף גם אותו, בשרשור.</p>
+        </>
+      ) : (
+        <StockTable data={data} companies={companiesOf(s.units)} canEdit={access.isAdmin} />
+      )}
     </>
   );
 }
 
 type Data = Awaited<ReturnType<typeof loadKesher>>;
 
-function StockTable({ data, companies }: { data: Data; companies: ReturnType<typeof companiesOf> }) {
+function StockTable({ data, companies, canEdit }: { data: Data; companies: ReturnType<typeof companiesOf>; canEdit: boolean }) {
   const bulk = data.items.filter((i) => i.kind === "bulk");
   if (!bulk.length) return <div className="tz-card"><Empty>עדיין אין ציוד משלים. מייבאים אותו מלשונית &quot;כללי&quot; של הגיליון.</Empty></div>;
-  const cols = [{ id: null as string | null, name: "במחסן", color: null as string | null }, ...companies.map((c) => ({ id: c.id, name: c.name, color: c.color }))];
+  const cols: StockCol[] = [{ id: null, name: "במחסן", color: null }, ...companies.map((c) => ({ id: c.id, name: c.name, color: c.color }))];
   const cats = [...groupBy(bulk, (i) => i.category ?? "")].sort(([a], [b]) => (a ? (b ? byHe(a, b) : -1) : 1));
+  const rows: [string, StockRow[]][] = cats.map(([cat, list]) => [
+    cat,
+    list.map((i) => ({
+      id: i.id,
+      name: i.name,
+      brigadeQty: i.brigadeQty,
+      qty: Object.fromEntries(cols.map((c) => [c.id ?? "", data.stock.get(stockKey(i.id, c.id)) ?? 0])),
+    })),
+  ]);
   return (
     <>
-      <div className="tz-table-wrap">
-        <table className="tz-table">
-          <thead>
-            <tr>
-              <th>פריט</th>
-              {cols.map((c) => (
-                <th key={c.id ?? "wh"} className={c.color ? "tz-tint" : undefined} style={tintStyle(c.color)}>
-                  {c.name}
-                </th>
-              ))}
-              <th>סה״כ</th>
-              <th className="max-md:hidden">מלאי חטיבה</th>
-            </tr>
-          </thead>
-          <tbody>
-            {cats.map(([cat, list]) => (
-              <CategoryRows key={cat || "—"} cat={cat} list={list} cols={cols} data={data} />
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <StockEditor cats={rows} cols={cols} canEdit={canEdit} warehouseTracked={data.warehouseTracked} />
       <p className="tz-section-footer">
         {data.warehouseTracked ? "" : "המחסן לא מנוהל (מלאי חלקי): הכמויות בעמודת המחסן לא מעודכנות בהחתמה ובזיכוי. "}
-        מלאי חטיבה = הכמות לפי קבלות החטיבה. &quot;מעל&quot; מסמן פריט שרשום אצלנו יותר ממה שהחטיבה החתימה.
+        מלאי כללי = הכמות הכוללת של הפריט בגדוד (מעמודת &quot;מלאי כללי&quot; בגיליון, או מקבלות החטיבה). &quot;מעל&quot; מסמן פריט שרשום אצלנו יותר מהמלאי הכללי.
       </p>
-    </>
-  );
-}
-
-function CategoryRows({ cat, list, cols, data }: { cat: string; list: Data["items"]; cols: { id: string | null; name: string; color: string | null }[]; data: Data }) {
-  return (
-    <>
-      <tr className="tz-group-row">
-        <th colSpan={cols.length + 3}>{cat || "ללא קטגוריה"}</th>
-      </tr>
-      {list.map((i) => {
-        const qty = (unitId: string | null) => data.stock.get(stockKey(i.id, unitId)) ?? 0;
-        const total = cols.reduce((n, c) => n + qty(c.id), 0);
-        return (
-          <tr key={i.id}>
-            <th scope="row">{i.name}</th>
-            {cols.map((c) => {
-              const n = qty(c.id);
-              const wh = c.id === null;
-              const cls = wh ? (!data.warehouseTracked ? "text-ink-muted" : n <= 1 ? "font-semibold text-danger" : "font-semibold") : n ? "" : "tz-zero";
-              return (
-                <td key={c.id ?? "wh"} className={`tz-num ${cls} ${c.color ? "tz-tint" : ""}`} style={tintStyle(c.color)}>
-                  {fmtCount(n)}
-                </td>
-              );
-            })}
-            <td className="tz-num font-semibold">{fmtCount(total)}</td>
-            <td className="tz-num max-md:hidden">
-              {i.brigadeQty === null ? <span className="tz-zero">—</span> : fmtCount(i.brigadeQty)}
-              {i.brigadeQty !== null && total > i.brigadeQty ? (
-                <>
-                  {" "}
-                  <Chip tone="broken">מעל</Chip>
-                </>
-              ) : null}
-            </td>
-          </tr>
-        );
-      })}
-    </>
-  );
-}
-
-function Kits({ data }: { data: Data }) {
-  const parents = [...data.kits.keys()].sort(byHe);
-  const bulkNames = new Set(data.items.filter((i) => i.kind === "bulk").map((i) => i.name));
-  if (!parents.length) return <div className="tz-card"><Empty>עדיין אין תקן. מייבאים אותו מלשונית &quot;תקן ציוד משלים&quot; של הגיליון.</Empty></div>;
-  return (
-    <>
-      <div className="flex flex-wrap items-start gap-[22px]">
-        {parents.map((p) => (
-          <div key={p} className="min-w-0 flex-[1_1_300px]">
-            <Panel
-              title={
-                <span className="inline-flex items-center gap-2">
-                  {p}
-                  {bulkNames.has(p) ? <Chip tone="brigade">ציוד משלים</Chip> : null}
-                </span>
-              }
-            >
-              {data.kits.get(p)!.map((k) => (
-                <div key={k.item} className="tz-row">
-                  <span className="tz-row-body min-h-[42px] py-0">
-                    <span className="tz-row-title text-[14px]">
-                      {k.item}
-                      {data.kits.has(k.item) ? <span className="tz-row-sub text-xs">כולל את התקן שלו</span> : null}
-                    </span>
-                    <span className="tz-num">×{k.qty}</span>
-                  </span>
-                </div>
-              ))}
-            </Panel>
-          </div>
-        ))}
-      </div>
-      <p className="tz-section-footer">בהחתמה, כל צ׳ מוסיף אוטומטית את הציוד המשלים שלו לפי התקן. פריט משלים שיש לו תקן משלו (למשל מגבר) מוסיף גם אותו, בשרשור.</p>
     </>
   );
 }

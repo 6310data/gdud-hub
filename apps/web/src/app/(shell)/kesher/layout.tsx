@@ -17,8 +17,9 @@ export default async function KesherLayout({ children }: { children: React.React
     { href: "/kesher/vehicles", label: "ציוד על רכבים", short: "רכבים", icon: "truck" },
     { href: "/kesher/log", label: "יומן", icon: "clock" },
   ];
-  // החתמה, זיכוי, קליטה and דוח צ׳ come with Phase 2 (docs/superpowers/plans/2026-10-27-kesher-phase1.md)
+  // החתמה, זיכוי and קליטה come with Phase 2 (docs/superpowers/plans/2026-10-27-kesher-phase1.md)
   const actions: AppNavItem[] = [
+    ...(access.companies.length ? [{ href: "/kesher/check", label: "דוח צ׳", icon: "check" } as const] : []),
     { href: "/kesher/reports", label: "הפקת דוחות", short: "דוחות", icon: "report" },
     ...(access.isAdmin ? [{ href: "/kesher/import", label: "ייבוא מהגיליון", short: "ייבוא", icon: "upload" } as const] : []),
   ];

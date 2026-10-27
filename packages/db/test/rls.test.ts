@@ -1401,4 +1401,30 @@ describe("kesher", () => {
     const rows = await db.select().from(auditLog).where(eq(auditLog.tableName, "kesher_holders"));
     expect(rows.some((r) => r.actorUserId === plsrUser.appId && r.action === "update")).toBe(true);
   });
+
+  it("ציוד משלים screen: only a battalion admin sets מלאי כללי and changes or removes a תקן line", async () => {
+    for (const u of [plsrUser, plsrAdmin, kViewer]) {
+      expect(await as(u, (tx) => tx.update(items).set({ brigadeQty: 5 }).where(eq(items.id, k.battery)).returning())).toHaveLength(0);
+      expect(await as(u, (tx) => tx.update(kits).set({ qty: 3 }).where(eq(kits.itemId, k.battery)).returning())).toHaveLength(0);
+      expect(await as(u, (tx) => tx.delete(kits).where(eq(kits.itemId, k.battery)).returning())).toHaveLength(0);
+    }
+    expect(await as(kAdmin, (tx) => tx.update(items).set({ brigadeQty: 70 }).where(eq(items.id, k.battery)).returning())).toHaveLength(1);
+    // מלאי כללי is for ציוד משלים only
+    await rejects(as(kAdmin, (tx) => tx.update(items).set({ brigadeQty: 1 }).where(eq(items.id, k.radio))));
+    await rejects(as(kAdmin, (tx) => tx.update(items).set({ brigadeQty: -1 }).where(eq(items.id, k.battery))));
+    expect(await as(kAdmin, (tx) => tx.update(kits).set({ qty: 3 }).where(eq(kits.itemId, k.battery)).returning())).toHaveLength(1);
+    await rejects(as(kAdmin, (tx) => tx.update(kits).set({ qty: 100 }).where(eq(kits.itemId, k.battery))));
+    expect(await as(kAdmin, (tx) => tx.delete(kits).where(eq(kits.itemId, k.battery)).returning())).toHaveLength(1);
+  });
+
+  it("דוח צ׳ from the app: the reporter adds every line of their company and its check event", async () => {
+    await as(plntUser, async (tx) => {
+      const [c] = await tx.insert(checks).values({ unitId: ids.plnt, total: 1, found: 0, note: "בתיקון" }).returning();
+      await tx.insert(lines).values({ checkId: c!.id, serialId: k.sPlnt, serial: "489003", item: "710", found: false });
+      await tx.insert(events).values({ kind: "check", unitId: ids.plnt, company: "פלנ״ט", qty: 1, details: "0/1 נראו בעין" });
+    });
+    const seen = await as(plntUser, (tx) => tx.select().from(lines).where(eq(lines.serialId, k.sPlnt)));
+    expect(seen.map((l) => l.found)).toEqual([false]);
+    expect((await as(plsrUser, (tx) => tx.select().from(events))).some((e) => e.kind === "check")).toBe(false);
+  });
 });
