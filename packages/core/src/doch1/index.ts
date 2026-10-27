@@ -6,3 +6,4 @@ export * from "./outputs";
 export * from "./reminders";
 export * from "./soldier";
 export * from "./standby";
+export * from "./reports";

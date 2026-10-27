@@ -12,6 +12,7 @@ The daily personnel report module (`/doch1`). Design: `docs/superpowers/specs/20
 | Tables | `packages/db/src/schema/doch1.ts` → `migrations/0004_doch1.sql`, `0007_doch1_standby.sql` |
 | RLS, grants, the lock guard (`GD001` locked day, `GD002` outside the round) | `migrations/0005_doch1_security.sql`, `0008_doch1_standby_security.sql`, tested in `packages/db/test/rls.test.ts` |
 | כרטיס חייל | `apps/web/src/app/(shell)/doch1/soldiers/[personId]/` (loaders: `apps/web/src/lib/doch1/soldier.ts`; numbers and change-log text: `packages/core/src/doch1/soldier.ts`, `changes.ts`) |
+| דוחות (`/doch1/reports`, Excel at `/doch1/reports/export`) | page: `apps/web/src/app/(shell)/doch1/reports/`; loader: `apps/web/src/lib/doch1/reports.ts`; counting: `packages/core/src/doch1/reports.ts`; xlsx writer: `packages/db/src/xlsx.ts` |
 | שבצ״ק וכוננות pages | `apps/web/src/app/(shell)/doch1/standby/` (actions: `_actions/standby.ts`; loaders: `apps/web/src/lib/doch1/standby.ts`) |
 | Sheet import (xlsx → parse → plan → apply) | `packages/db/src/doch1-import/`, tested in `packages/db/test/doch1-import.test.ts` |
 | Push sender + reminder job | `apps/web/src/lib/doch1/push.ts`, `reminder-job.ts`, endpoint `apps/web/src/app/api/doch1/cron/route.ts` |
@@ -48,6 +49,8 @@ Apply the new migrations (`0004_doch1`, `0005_doch1_security`, and for שבצ״�
 ```bash
 pnpm db:migrate
 ```
+
+For the reports screen also `0015_doch1_reports` (דמ״ח categories, 10א groups, a status's camp).
 
 Then Supabase → Advisors → Security Advisor should show no new warnings.
 
@@ -152,9 +155,29 @@ Mockup screen 09. Opens from a row on חיילים, from "כרטיס חייל" i
 
 Migration: `0013_doch1_person_log` (`pnpm db:migrate`).
 
+## דוחות (`/doch1/reports`)
+
+Mockup screen 04 — the sheet's `דוחות` tab, built from דוח 1 and the שבצ״ק of the day (`?day=`). The battalion admin and viewers see every company; a company user sees their own company (RLS); platoon commanders don't have it. "ייצוא לאקסל" downloads the same numbers, a sheet per report. Counting is `buildReports()` in `packages/core/src/doch1/reports.ts`, by flags and settings only, as in `sheet-structure.md` "Reports in דוחות":
+
+- **לפי מסגרת ומיקום** (section A) — a row per company × location, empty rows hidden. An **outpost** row counts the soldiers whose שבצ״ק location is that outpost, whatever today's status (as the sheet), and all of them are across the border. A **camp** row counts the soldiers whose status today is set to that camp ("מחנה בדוחות" on the status), across the border only by the status flag. Columns are the round's דמ״ח categories (below); a blank or unknown תפקיד לדמ״ח is יתר. Only soldiers listed on the day and counted in the report.
+- **15א** (section C) — per company: the statuses that need an outpost, split by שבצ״ק outpost; their total; the camps; total. A highlighted row has soldiers with such a status and no outpost.
+- **10א** (section D) — per camp, the soldiers there by report group (below); without groups, a row per company.
+- **The listed category** (section E, מט״בים) — soldiers whose category is marked "רשימה שמית", with today's status and location; "זמינים" = status marked זמין לכוננות.
+- **בקרת נתונים** (section B) — per company: listed, not on duty, missing, on duty, needs-outpost without an outpost, at an outpost with another status, in the שבצ״ק. A red number jumps to the soldiers.
+- **בדיקות נתונים** — each check lists its soldiers, linked to their card: no status today; counts in the סד״כ but no שבצ״ק location; needs-outpost status without an outpost; at an outpost with another status; has a שבצ״ק location but isn't in today's report (not called up, released, "לא נספר בדוח"); no צפי הגעה (in the report, not released); the same מספר אישי on two soldiers (digits only, leading zeros ignored); no מספר אישי.
+- **סד״כ לפי מסגרת** (section F) — per company a row per מסגרת: the needs-outpost statuses by outpost (+ ללא מוצב), a column per other status (versions merged by name; an off-duty status has none), missing, total (listed − not on duty).
+
+Settings (admin), הגדרות › דוחות:
+
+- **קטגוריות דמ״ח** — the R1 columns in order. A soldier's תפקיד לדמ״ח is matched by name (gershayim and spaces ignored). "יצירה מהנתונים" adds a category for every value the round's soldiers have. Without categories the report takes the values from the data, most used first. Mark the מט״ב category "רשימה שמית".
+- **שורות 10א** — name, commander and units (companies and מסגרות). A soldier falls in the first row naming their מסגרת, else the first naming their company.
+- **הגדרות › סטטוסים › מחנה בדוחות** — set it on the camp statuses (מיוערת → מחנה מיוערת). Like "זמין לכוננות" it is not versioned: changing it changes past days' reports too.
+
+Differences from the sheet to know when comparing: the סדיר / מילואים columns and the attached forces (שריון, גששים, צמה) are not in the app yet; 15א's "+1 קב״ן" is not added; in section F the sheet leaves "יום התארגנות אחרון" out of every column — the app has a column for every status that is not off duty. Migration: `0015_doch1_reports` (`pnpm db:migrate`).
+
 ## Moving between days
 
-The overview, the today screen, copy-to-sheet and the brigade report take `?day=YYYY-MM-DD` (inside the round) and show "יום קודם / יום הבא", a date picker and "היום". The board moves a week at a time. שבצ״ק וכוננות takes `?day=` too: availability, readiness and the status checks follow that day's report, while teams, vehicles and locations are always the current ones (they are not stored per day); the team editor works on today.
+The overview, the today screen, copy-to-sheet, the brigade report and the reports take `?day=YYYY-MM-DD` (inside the round) and show "יום קודם / יום הבא", a date picker and "היום". The board moves a week at a time. שבצ״ק וכוננות takes `?day=` too: availability, readiness and the status checks follow that day's report, while teams, vehicles and locations are always the current ones (they are not stored per day); the team editor works on today.
 
 ## Status changes during a round
 

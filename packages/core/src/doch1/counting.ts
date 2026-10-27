@@ -47,6 +47,8 @@ export interface StatusDef extends StatusFlags {
   active: boolean;
   /** available for standby (שבצ״ק readiness); only today counts, so not a versioned flag */
   standbyAvailable?: boolean;
+  /** the camp a soldier in this status is at (reports: camp rows count by status); not versioned, like standbyAvailable */
+  locationId?: string | null;
 }
 
 export interface ReportMember {
