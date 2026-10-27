@@ -32,9 +32,9 @@ Row 1 hidden (A1 = company name). Row 3 = headers. One soldier per row, no secti
 | F | תפקיד בפועל | free text |
 | G | תפקיד לדמ"ח | לוחם, קצין, מפקד זוטר, חובש, נהג, מט"ב, blank (= יתר) |
 | H | טלפון | |
-| I | סטטוס הגעה על פי צפי גיוס | cached IMPORTRANGE value (צפי הגעה) |
+| I | סטטוס הגעה על פי צפי גיוס | cached IMPORTRANGE value (צפי הגעה) → a value of the round's צפי הגעה list (`doch1_field_options`, field `arrival`) |
 | J | תאריך גיוס על פי צפי גיוס | פלנט header is just "תאריך גיוס" |
-| K | סטטוס גיוס | התייצב, תאריך גיוס נדחה, תאריך נדחה ביום גיוס, שוחרר, שוחרר ביום גיוס, טרם התייצב, פוטנציאל נפקד, בדרך |
+| K | סטטוס גיוס | התייצב, תאריך גיוס נדחה, תאריך נדחה ביום גיוס, שוחרר, שוחרר ביום גיוס, טרם התייצב, פוטנציאל נפקד, בדרך → a value of the round's סטטוס גיוס list (field `enlistment`); its meaning (התייצב / ממתין / נדחה / שוחרר) is set in the app |
 | L | דיסקית | יש / אין |
 | M…BS | one column per day | row-3 value is a datetime (`=תחילת_תאריך + n`); 23.08.2026 → export date |
 | BT | "אבוי למי שנוגע" | hidden sentinel after the last day; day columns are inserted left of it |
@@ -90,7 +90,7 @@ Day columns L…KJ (285 pre-allocated days through 06.05.2027 — future columns
 Its שבצ״ק uses מיקום values בחוץ / משימה / מגנן 76 / מגנן 88 / מטאור 3 and extra columns משימה/נסיעה, צ רכב.
 The company is inactive this round; one of its soldiers also appears in פלסר.
 
-## אלפון (roster) — also the layout of the per-round people file
+## אלפון (roster) — also the layout of the per-round people file (the battalion's list, `/doch1/planning/roster`)
 
 שם מלא, מספר אישי, שם פרטי, שם משפחה, פלוגה, מחלקה, מקצוע, לכמה סבבים הגיע, מספר טלפון, גיל, האם קצין (כן/לא), תפקיד בפועל.
 
@@ -115,7 +115,7 @@ All counts use today's column of גדודי.
 - **Section D — 10א מחנה מיוערת:** חפ"קים + תאג"ד, מכלול (מבצעים + מודיעין), פלס"ם, מסייעת, שריון, צמה, גששים; a free-text "מפקד" per row.
 - **Section E — מט"בים:** hand-typed list of doctors/paramedics with today's status and שבצ״ק location.
 - **Section F — סד"כ per מסגרת:** per company, a row per מסגרת: עזה split by שבצ״ק location, then one column per status, then חסר דיווח, total. `0` and "יום התארגנות אחרון" are counted in no column. מסגרת must equal גדודי column B exactly.
-- **דוחות יום גיוס:** per company count of סטטוס גיוס values; התייצב %; a WhatsApp block for the brigade.
+- **דוחות יום גיוס:** per company count of סטטוס גיוס values; התייצב %; a WhatsApp block for the brigade. The app's יום גיוס screen (`/doch1/call-up`) replaces it.
 
 ## What the importer must tolerate
 
