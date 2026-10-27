@@ -2,6 +2,7 @@
  * Snapshot of the app's logistics data that the diff compares the sheet against.
  * Read through the caller's transaction, so RLS decides what is visible.
  */
+import { isNotNull } from "drizzle-orm";
 import type { Condition, KitLine } from "@gdud/core";
 import type { Tx } from "../index";
 import * as schema from "../schema/index";
@@ -9,7 +10,7 @@ import { nameKey } from "./sheet";
 
 const { people } = schema;
 const { logisticsItems: items, logisticsKitItems: kitItems, logisticsSerials: serials } = schema;
-const { logisticsAssignments: assignments, logisticsStorage: storage } = schema;
+const { logisticsAssignments: assignments, logisticsStorage: storage, logisticsEvents: events } = schema;
 
 export interface PersonRef {
   id: string;
@@ -65,6 +66,8 @@ export interface State {
   storage: StorageRef[];
   /** serial ids with any assignment or storage row, open or closed (not deletable) */
   usedSerials: Set<string>;
+  /** sheet_key of every 'לוג' row already imported */
+  logKeys: Set<string>;
 }
 
 export async function loadState(tx: Tx): Promise<State> {
@@ -80,6 +83,7 @@ export async function loadState(tx: Tx): Promise<State> {
     openAssignments: new Map(),
     storage: [],
     usedSerials: new Set(),
+    logKeys: new Set(),
   };
 
   const ppl = await tx.select({ id: people.id, fullName: people.fullName, personalNumber: people.personalNumber }).from(people);
@@ -134,6 +138,9 @@ export async function loadState(tx: Tx): Promise<State> {
     })
     .from(storage);
   for (const s of state.storage) if (s.serialId) state.usedSerials.add(s.serialId);
+
+  const logged = await tx.select({ key: events.sheetKey }).from(events).where(isNotNull(events.sheetKey));
+  for (const e of logged) state.logKeys.add(e.key!);
 
   return state;
 }

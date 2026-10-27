@@ -14,7 +14,7 @@ import { parseCsv, parseSheetDate, statusToCondition, type Sheets } from "../src
 import * as schema from "../src/schema/index";
 import { createTestDb, type PgliteDb, type TestIds } from "./pglite";
 
-const { units, people, logisticsItems, logisticsKitItems, logisticsSerials, logisticsAssignments, logisticsStorage } = schema;
+const { units, people, logisticsItems, logisticsKitItems, logisticsSerials, logisticsAssignments, logisticsStorage, logisticsEvents } = schema;
 
 /** Fake exports, named the way Google Sheets names a CSV download. */
 const CSV: Record<string, string> = {
@@ -57,6 +57,11 @@ const CSV: Record<string, string> = {
     'פלס"ר,דני כהן,1234567,M4 קצר,404,02/09/2026,',
     'פלס"ר,דני כהן,1234567,M4 קצר,101,,',
   ].join("\n"),
+  "לוג": [
+    "תאריך,תפקיד,פעולה,שם מלא,פריט,צ,הערות,קישור",
+    "01/08/2026 09:15,מנהל,החתמה,דני כהן,M4 קצר,6620417,,",
+    '01/08/2026 09:20,מנהל,סנכרון סטטוסים,,,,"סומנו חתום: 1, הוחזרו לתקין: 0",',
+  ].join("\n"),
 };
 
 let db: PgliteDb;
@@ -74,6 +79,7 @@ const tableCounts = async () => ({
   serials: await total(logisticsSerials),
   assignments: await total(logisticsAssignments),
   storage: await total(logisticsStorage),
+  events: await total(logisticsEvents),
 });
 
 beforeAll(async () => {
@@ -151,6 +157,7 @@ describe("importLogistics (CLI)", () => {
       serials: 6,
       assignments: 2,
       storage: 3,
+      events: before.events + 2,
     });
     expect(result!.applied.change).toBe(0);
     expect(result!.applied.appOnly).toBe(0);

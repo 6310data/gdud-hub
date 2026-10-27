@@ -20,8 +20,9 @@ import {
   type SheetRow,
   type Sheets,
 } from "./sheet";
+import { isHttpsLink, LOG_COL, logKind, logRowKey, PERSON_KINDS } from "./log";
 import { loadState, type PersonRef, type State, type StorageRef } from "./state";
-import type { ChangeLine, ChangeOp, LineGroup, SheetDiff } from "./types";
+import type { ChangeLine, ChangeOp, LineGroup, LogEventRow, SheetDiff } from "./types";
 
 export const ITEM_NAME_MAX = 80;
 export const SERIAL_MAX = 40;
@@ -550,6 +551,66 @@ class Differ {
       f,
     };
   }
+
+  /**
+   * 'לוג': every row the app doesn't have yet becomes one event, all of them in a single line
+   * (a log runs to thousands of rows). A row whose date can't be read is an error line.
+   */
+  log(rows: readonly SheetRow[]) {
+    const seen = new Map<string, number>();
+    const events: LogEventRow[] = [];
+    const sheetRows: number[] = [];
+    for (const r of rows) {
+      const cells = Object.values(LOG_COL).map((c) => cell(r, c));
+      const contentKey = JSON.stringify(cells);
+      const occurrence = seen.get(contentKey) ?? 0;
+      seen.set(contentKey, occurrence + 1);
+      const sheetKey = logRowKey(cells, occurrence);
+      if (this.st.logKeys.has(sheetKey)) {
+        this.same("log");
+        continue;
+      }
+      const at = parseSheetDate(cell(r, LOG_COL.at));
+      const name = nameKey(cell(r, LOG_COL.name));
+      if (!at) {
+        const raw = cell(r, LOG_COL.at);
+        this.error("log", r.row, raw ? `תאריך לא תקין "${raw}"` : "חסר תאריך", { personName: name || null });
+        continue;
+      }
+      const action = nameKey(cell(r, LOG_COL.action));
+      const kind = logKind(action);
+      const isPerson = PERSON_KINDS.has(kind);
+      // soldier rows keep the personal number in the צ column; it isn't copied into the event
+      const found = name ? this.person(name, isPerson ? cell(r, LOG_COL.serial) : "") : null;
+      const link = cell(r, LOG_COL.link);
+      const notes = cell(r, LOG_COL.notes);
+      const details = [kind === "legacy" ? action : "", notes, link && !isHttpsLink(link) ? link : ""].filter(Boolean).join(" | ");
+      events.push({
+        at: at.toISOString(),
+        kind,
+        sheetActor: cell(r, LOG_COL.actor) || null,
+        personId: found && "person" in found ? found.person.id : null,
+        personName: name || null,
+        item: cell(r, LOG_COL.item) || null,
+        serial: isPerson ? null : normalizeSerial(cell(r, LOG_COL.serial)) || null,
+        details: details || null,
+        sheetLink: isHttpsLink(link) ? link : null,
+        sheetKey,
+      });
+      sheetRows.push(r.row);
+    }
+    if (!events.length) return;
+    const times = events.map((e) => e.at).sort();
+    const digest = createHash("sha256")
+      .update(events.map((e) => e.sheetKey).join(","))
+      .digest("hex")
+      .slice(0, 16);
+    this.push("log", sheetRows[0]!, "new", { t: "log.add", events }, {
+      key: digest,
+      after: `${events.length} פעולות · ${fmtDate(new Date(times[0]!))} – ${fmtDate(new Date(times.at(-1)!))}`,
+      message: `שורות ${sheetRows[0]}–${sheetRows.at(-1)} בגיליון. נשמרות בלוג הפעולות כפי שהן.`,
+    });
+  }
 }
 
 interface StorageRow {
@@ -599,5 +660,6 @@ export async function diffLogistics(tx: Tx, sheets: Sheets, tabs: readonly Sheet
   if (chosen("kit")) d.kit(sheets.kit!);
   if (chosen("assignments")) d.assignments(sheets.assignments!);
   if (chosen("storage")) d.storage(sheets.storage!);
+  if (chosen("log")) d.log(sheets.log!);
   return { lines: d.lines, identical: d.identical, fingerprint: fingerprint(d.lines) };
 }

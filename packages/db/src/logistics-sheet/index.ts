@@ -8,4 +8,5 @@ export * from "./xlsx";
 export * from "./types";
 export * from "./preview";
 export { diffLogistics } from "./diff";
+export { logKind, logRowKey } from "./log";
 export { applyLogistics, summarizeImport, type ApplyResult } from "./apply";

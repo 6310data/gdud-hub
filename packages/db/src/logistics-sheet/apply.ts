@@ -10,11 +10,13 @@ import { SHEET_NAMES, type SheetKey } from "./sheet";
 import { LINE_GROUPS, type ChangeLine, type ChangeOp, type LineGroup, type OpKind, type SheetDiff } from "./types";
 
 const { logisticsItems: items, logisticsKitItems: kitItems, logisticsSerials: serials } = schema;
-const { logisticsAssignments: assignments, logisticsStorage: storage } = schema;
+const { logisticsAssignments: assignments, logisticsStorage: storage, logisticsEvents: events } = schema;
 
 export interface ApplyResult {
   applied: Record<LineGroup, number>;
   blocked: { id: string; reason: string }[];
+  /** 'לוג' rows written as events */
+  logEvents: number;
 }
 
 /** Dependencies always point at an earlier kind in this order. */
@@ -32,6 +34,7 @@ const ORDER: readonly OpKind[] = [
   "storage.release",
   "storage.add",
   "serial.delete",
+  "log.add",
 ];
 const INSERT_CHUNK = 500;
 export const BLOCKED_REASON = "תלוי בשורה שלא סומנה";
@@ -58,7 +61,7 @@ export async function applyLogistics(tx: Tx, diff: SheetDiff, selected: Readonly
   const rank = (l: ChangeLine) => ORDER.indexOf(l.op!.t);
   const picked = diff.lines.filter((l) => selected.has(l.id) && l.selectable && l.op).sort((a, b) => rank(a) - rank(b));
 
-  const result: ApplyResult = { applied: Object.fromEntries(LINE_GROUPS.map((g) => [g, 0])) as Record<LineGroup, number>, blocked: [] };
+  const result: ApplyResult = { applied: Object.fromEntries(LINE_GROUPS.map((g) => [g, 0])) as Record<LineGroup, number>, blocked: [], logEvents: 0 };
   const toApply: ChangeLine[] = [];
   const willApply = new Set<string>();
   for (const line of picked) {
@@ -155,6 +158,13 @@ export async function applyLogistics(tx: Tx, diff: SheetDiff, selected: Readonly
     if (rows.length !== part.length) throw new Error("Sheet import: a serial was not deleted");
   }
 
+  // actor_name is set to the importer by the logistics_events_actor trigger; the sheet's actor is sheet_actor
+  const logRows = ops("log.add").flatMap((o) => o.events.map((e) => ({ ...e, at: new Date(e.at) })));
+  for (const part of chunks(logRows, INSERT_CHUNK)) {
+    const rows = await tx.insert(events).values(part).onConflictDoNothing().returning({ id: events.id });
+    result.logEvents += rows.length;
+  }
+
   return result;
 }
 
@@ -175,5 +185,6 @@ export function summarizeImport(fileName: string, tabs: readonly SheetKey[], res
     `שינויים ${a.change}`,
     `הוסרו ${a.appOnly}`,
     `לא סומנו ${unticked}`,
+    ...(result.logEvents ? [`פעולות מהלוג ${result.logEvents}`] : []),
   ].join(" · ");
 }
