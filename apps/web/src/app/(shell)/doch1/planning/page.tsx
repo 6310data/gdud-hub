@@ -10,6 +10,7 @@ import { loadPlanningMembers } from "@/lib/doch1/planning";
 import { requireModule } from "@/lib/session";
 import { copyLastRound } from "../_actions/planning";
 import { ReminderButton } from "../_components/reminder-button";
+import { ActivateRound } from "./_components/activate-round";
 import { ArrivalList, type ArrivalRow } from "./_components/arrival-list";
 
 export const metadata = { title: "דוח 1 · תכנון סבב" };
@@ -79,6 +80,7 @@ export default async function Doch1Planning({ searchParams }: { searchParams: Pr
       editable: can(s.user, "doch1", ["admin", "company_user"], m.unitId, s.parents),
     }));
   const total = progress.get("all")!;
+  const moves = data.members.filter((m) => m.pendingMove).length;
 
   return (
     <div className="mx-auto flex w-full max-w-[860px] flex-col gap-[22px]">
@@ -156,8 +158,16 @@ export default async function Doch1Planning({ searchParams }: { searchParams: Pr
           </div>
 
           <h2 className="tz-section-header pt-3">3 · הפעלת הסבב</h2>
-          <div className="tz-group px-4 py-3 text-[15px]">
-            {data.active ? `ההפעלה סוגרת את ${data.active.name} ופותחת את ${round.name}.` : `אין סבב פעיל. ההפעלה פותחת את ${round.name}.`}
+          <div className="tz-group flex flex-col gap-2 px-4 py-3 text-[15px]">
+            <span>{data.active ? `ההפעלה סוגרת את ${data.active.name} ופותחת את ${round.name}.` : `אין סבב פעיל. ההפעלה פותחת את ${round.name}.`}</span>
+            <ActivateRound
+              lines={[
+                data.active ? `${data.active.name} נסגר: מסך היום, הלוח והתזכורות עוברים ל${round.name}.` : `${round.name} נפתח.`,
+                `${round.name} נפתח עם ${data.members.length} חיילים; מי שמסומן ״לא מגיע״ לא יופיע באף יום.`,
+                ...(moves ? [`${moves} חיילים עוברים פלוגה.`] : []),
+              ]}
+              warning={total.blank ? `ל־${total.blank} חיילים עוד אין צפי הגעה. הם ייחשבו מגיעים.` : null}
+            />
           </div>
         </section>
       ) : null}

@@ -10,7 +10,7 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { beforeAll, describe, expect, it } from "vitest";
-import { createPlanningRound } from "../src/doch1-rounds/index";
+import { activateRound, createPlanningRound } from "../src/doch1-rounds/index";
 import { runAsUser, type JwtClaims } from "../src/index";
 import * as schema from "../src/schema/index";
 import { SUPABASE_SHIM_SQL } from "./supabase-shim";
@@ -138,5 +138,64 @@ describe("createPlanningRound", () => {
 
   it("a second planning round is refused", async () => {
     await expect(runAsUser(db as never, claims(admin), (tx) => createPlanningRound(tx, { ...NEW, name: "עוד" }))).rejects.toThrow();
+  });
+});
+
+describe("activateRound", () => {
+  const { people, doch1Members: members } = schema;
+  let planning = "";
+  let moving = "";
+  let staying = "";
+
+  beforeAll(async () => {
+    const [r] = await db.select().from(rounds).where(eq(rounds.state, "planning"));
+    planning = r!.id;
+    const ppl = await db
+      .insert(people)
+      .values([
+        { unitId: plsr, fullName: "עובר פלוגה" },
+        { unitId: plsr, fullName: "נשאר" },
+      ])
+      .returning();
+    [moving, staying] = ppl.map((p) => p.id) as [string, string];
+    await db.insert(members).values([
+      { roundId: current, personId: moving },
+      { roundId: current, personId: staying },
+      { roundId: planning, personId: moving, plannedUnitId: plnt },
+      { roundId: planning, personId: staying },
+    ]);
+  });
+
+  it("only the battalion admin activates", async () => {
+    await expect(runAsUser(db as never, claims(clerk), (tx) => activateRound(tx, planning))).rejects.toThrow();
+  });
+
+  it("is all or nothing: a failure after it leaves both rounds and the soldiers as they were", async () => {
+    await expect(
+      runAsUser(db as never, claims(admin), async (tx) => {
+        await activateRound(tx, planning);
+        throw new Error("boom");
+      }),
+    ).rejects.toThrow("boom");
+    const [p] = await db.select().from(rounds).where(eq(rounds.id, planning));
+    const [c] = await db.select().from(rounds).where(eq(rounds.id, current));
+    expect([p!.state, c!.state]).toEqual(["planning", "active"]);
+    expect((await db.select().from(people).where(eq(people.id, moving)))[0]!.unitId).toBe(plsr);
+  });
+
+  it("closes the active round, opens the planning one and applies the pending company moves", async () => {
+    const res = await runAsUser(db as never, claims(admin), (tx) => activateRound(tx, planning));
+    expect(res).toEqual({ closedRoundId: current, moved: 1 });
+    const [p] = await db.select().from(rounds).where(eq(rounds.id, planning));
+    const [c] = await db.select().from(rounds).where(eq(rounds.id, current));
+    expect([p!.state, p!.active, c!.state]).toEqual(["active", true, "closed"]);
+    expect((await db.select().from(people).where(eq(people.id, moving)))[0]!.unitId).toBe(plnt);
+    expect((await db.select().from(people).where(eq(people.id, staying)))[0]!.unitId).toBe(plsr);
+    const m = await db.select().from(members).where(eq(members.roundId, planning));
+    expect(m.every((x) => x.plannedUnitId === null)).toBe(true);
+  });
+
+  it("refuses a round that is not being planned", async () => {
+    await expect(runAsUser(db as never, claims(admin), (tx) => activateRound(tx, planning))).rejects.toThrow();
   });
 });

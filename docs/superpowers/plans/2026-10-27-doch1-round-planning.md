@@ -258,8 +258,8 @@ export async function correctionsWorkbook(rows: readonly CorrectionRow[]): Promi
 
 **Files:**
 - Modify: `apps/web/src/app/(shell)/doch1/_actions/planning.ts` (`activateRound`)
-- Create: `packages/db/src/doch1-roster-import/activate.ts` (pure DB work, testable on PGlite)
-- Modify: `packages/db/test/doch1-roster-import.test.ts`
+- Modify: `packages/db/src/doch1-rounds/index.ts` (`activateRound`, with the round lifecycle; settings' "הפעלת הסבב" without an active round uses it too)
+- Modify: `packages/db/test/doch1-rounds.test.ts`
 - Modify: `apps/web/src/app/(shell)/doch1/planning/_components/planning-steps.tsx` (confirm dialog with the summary)
 
 ```ts

@@ -21,6 +21,8 @@ export interface PlanningMemberVM {
   platoonName: string | null;
   /** company name the soldier leaves, when a move waits for the activation */
   movedFrom: string | null;
+  /** a company move waits for the activation */
+  pendingMove: boolean;
   arrivalOptionId: string | null;
   callUpOn: Day | null;
 }
@@ -55,6 +57,7 @@ export async function loadPlanningMembers(tx: Tx, roundId: string, units: readon
         platoonId: platoon?.id ?? null,
         platoonName: platoon?.name ?? null,
         movedFrom: from && from.id !== company?.id ? from.name : null,
+        pendingMove: !!r.plannedUnitId,
         arrivalOptionId: r.arrivalOptionId,
         callUpOn: r.callUpOn,
       };

@@ -7,8 +7,8 @@
  */
 import { z } from "zod";
 import { israelToday, LOCATION_KINDS, STANDBY_LEVELS, STATUS_FLAG_KEYS, statusFlagsChanged, VEHICLE_STATES } from "@gdud/core";
-import { and, eq, gte, isNotNull, lt, ne, schema, withUser, type Tx } from "@gdud/db";
-import { createPlanningRound } from "@gdud/db/doch1-rounds";
+import { and, eq, gte, lt, ne, schema, withUser, type Tx } from "@gdud/db";
+import { activateRound, createPlanningRound } from "@gdud/db/doch1-rounds";
 import { actionError, UserError, type ActionResult } from "@/lib/action-result";
 import { toStatusDef } from "@/lib/doch1/data";
 import { dayParam, doch1AdminSession, firstIssue, NO_PERMISSION, revalidateDoch1, uuid } from "./common";
@@ -79,8 +79,7 @@ const stateInput = z.object({ id: uuid, state: z.enum(["active", "closed"]) });
 
 /**
  * Close the active round, reopen a closed one, or open a planning round when no round is active.
- * With an active round, a planning round opens from "תכנון סבב" (it closes the active one and
- * applies the pending company moves).
+ * With an active round, a planning round opens from "תכנון סבב" (it also closes the active one).
  */
 export async function setRoundState(_: ActionResult, fd: FormData): Promise<ActionResult> {
   const s = await doch1AdminSession();
@@ -95,13 +94,10 @@ export async function setRoundState(_: ActionResult, fd: FormData): Promise<Acti
       if (state === "active") {
         const [other] = await tx.select({ name: rounds.name }).from(rounds).where(and(eq(rounds.active, true), ne(rounds.id, id)));
         if (other) throw new UserError(`${other.name} פעיל. סוגרים אותו קודם, או מפעילים את הסבב הבא ממסך תכנון סבב.`);
+        // a planning round opens the same way as from "תכנון סבב" (its pending company moves apply)
         if (r.state === "planning") {
-          const [pending] = await tx
-            .select({ personId: members.personId })
-            .from(members)
-            .where(and(eq(members.roundId, id), isNotNull(members.plannedUnitId)))
-            .limit(1);
-          if (pending) throw new UserError("יש בסבב העברות פלוגה ממתינות. מפעילים אותו ממסך תכנון סבב.");
+          await activateRound(tx, id);
+          return;
         }
       }
       await tx.update(rounds).set({ state }).where(eq(rounds.id, id));

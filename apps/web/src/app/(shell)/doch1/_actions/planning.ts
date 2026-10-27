@@ -1,13 +1,14 @@
 "use server";
 /**
  * תכנון סבב: צפי הגעה and call-up dates of the round being planned (company user covering the
- * soldier, or admin — doch1_members_update checks the same), the "fill צפי הגעה" reminder and
- * "copy last round" (battalion admin).
+ * soldier, or admin — doch1_members_update checks the same), the "fill צפי הגעה" reminder,
+ * "copy last round" and "הפעלת סבב" (battalion admin).
  */
 import { z } from "zod";
 import { can } from "@gdud/auth";
 import { and, eq, inArray, schema, withUser, type Tx } from "@gdud/db";
 import { copyFromRound, RosterImportError } from "@gdud/db/doch1-roster-import";
+import { activateRound, RoundError } from "@gdud/db/doch1-rounds";
 import { actionError, UserError, type ActionResult } from "@/lib/action-result";
 import { dayParam, doch1PlanningCtx, firstIssue, NO_PERMISSION, NO_PLANNING_ROUND, revalidateDoch1, uuid } from "./common";
 
@@ -102,6 +103,20 @@ export async function copyLastRound(): Promise<ActionResult> {
     await withUser(ctx.s.claims, (tx) => copyFromRound(tx, { planningRoundId: ctx.round.id }));
   } catch (err) {
     return { error: err instanceof RosterImportError ? err.message : actionError(err) };
+  }
+  revalidateDoch1();
+  return { ok: true };
+}
+
+/** "הפעלת סבב": close the active round, open the planning one, apply the pending company moves. */
+export async function activatePlanningRound(): Promise<ActionResult> {
+  const ctx = await doch1PlanningCtx();
+  if (!ctx) return NO_PLANNING_ROUND;
+  if (!ctx.access.isAdmin) return NO_PERMISSION;
+  try {
+    await withUser(ctx.s.claims, (tx) => activateRound(tx, ctx.round.id));
+  } catch (err) {
+    return { error: err instanceof RoundError ? err.message : actionError(err) };
   }
   revalidateDoch1();
   return { ok: true };
