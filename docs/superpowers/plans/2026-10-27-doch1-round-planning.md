@@ -212,14 +212,15 @@ export async function planRoster(tx: Tx, input: { planningRoundId: string; baseR
 **Interfaces produced:**
 
 ```ts
-export type RosterDecisions = {
-  add: Set<string>;                                   // personal numbers (added + returning) to add
-  take: Map<string, Set<RosterField>>;                // personal number → fields taken from the battalion
-  keepMissing: Set<string>;                           // personIds of "missing" kept in the round
-};
-export async function applyRoster(tx: Tx, plan: RosterPlan, decisions: RosterDecisions): Promise<{ created: number; updated: number; members: number; pendingMoves: number }>;
-export async function copyFromRound(tx: Tx, planningRoundId: string, baseRoundId: string): Promise<{ members: number }>;
-export function correctionsWorkbook(plan: RosterPlan, decisions: RosterDecisions): Promise<Buffer>;
+// as built (packages/db/src/doch1-roster-import/apply.ts, corrections.ts)
+export interface RosterDecisions { add: string[] /* personal numbers */; take: Record<string, RosterField[]>; keepMissing: string[] /* person ids */ }
+/** runs planRoster again in the same transaction, so the browser sends decisions only */
+export async function applyRoster(tx: Tx, input: { planningRoundId: string; baseRoundId?: string; file: RosterFile; answers: RosterAnswers; decisions: RosterDecisions }): Promise<RosterApplyCounts>;
+// RosterApplyCounts: created, updated, members, removed (a re-run that drops someone), pendingMoves, platoonsCreated, optionsCreated
+export async function copyFromRound(tx: Tx, input: { planningRoundId: string; baseRoundId?: string }): Promise<{ members: number }>;
+export function corrections(plan: RosterPlan, decisions: RosterDecisions, unitName: (id: string) => string): CorrectionRow[];
+export async function correctionsWorkbook(rows: readonly CorrectionRow[]): Promise<Uint8Array>;
+// carried over from the base round: dmh_category, has_disc, notes, and the location of the same name in the planning round
 ```
 
 - [ ] **Step 1: Failing tests:**

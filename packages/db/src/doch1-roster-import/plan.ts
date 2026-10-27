@@ -43,18 +43,19 @@ export interface RosterPlan {
   waiting: number;
   /** soldiers of the active round: a company move for them waits for the activation */
   inActiveRound: Set<string>;
-  /** personal number → צפי הגעה value id or `create:<effect>` (rows with a value in the file) */
+  /** personal number → צפי הגעה value id, or newArrivalId(key) for a value apply creates */
   arrival: Map<string, string>;
   /** personal number → תאריך גיוס from the file */
   callUpOn: Map<string, Day>;
   /** platoon key → the platoon text as written, for the platoons to create */
   newPlatoons: Map<string, { companyId: string; name: string }>;
-  /** `create:<effect>` answers: canonical text → the value as written */
-  newArrival: Map<string, string>;
+  /** values answered `create:<effect>`: canonical text → the name as written and the effect */
+  newArrival: Map<string, { name: string; effect: schema.FieldOptionEffect }>;
 }
 
-/** Stands in for the id of a platoon apply will create. */
+/** Stand in for the id of a platoon / a צפי הגעה value apply will create. */
 export const newPlatoonId = (key: string) => `new:${key}`;
+export const newArrivalId = (key: string) => `new:${key}`;
 
 type UnitRow = { id: string; parentId: string | null; kind: UnitKind; name: string; active: boolean };
 
@@ -208,7 +209,7 @@ export async function planRoster(
 
   /* צפי הגעה → the planning round's list */
   const arrival = new Map<string, string>();
-  const newArrival = new Map<string, string>();
+  const newArrival = new Map<string, { name: string; effect: schema.FieldOptionEffect }>();
   const list = (await tx.select().from(options).where(and(eq(options.roundId, planning.id), eq(options.field, "arrival")))).sort(
     (a, b) => a.sortOrder - b.sortOrder,
   );
@@ -227,8 +228,12 @@ export async function planRoster(
       ask({ kind: "arrival", key, label: row.arrival, suggestion: "create:arriving", options: list.map((o) => ({ id: o.id, label: o.name })) });
       continue;
     }
-    if (answer.startsWith("create:")) newArrival.set(key, row.arrival);
-    arrival.set(pn, answer);
+    if (answer.startsWith("create:")) {
+      newArrival.set(key, { name: row.arrival.slice(0, 30), effect: answer.slice(7) as schema.FieldOptionEffect });
+      arrival.set(pn, newArrivalId(key));
+    } else {
+      arrival.set(pn, answer);
+    }
   }
   const callUpOn = new Map<string, Day>();
   for (const row of ready) {
