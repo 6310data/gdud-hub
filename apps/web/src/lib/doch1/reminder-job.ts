@@ -7,8 +7,19 @@ import "server-only";
  *   daily    at the round's reminder time (until the lock), once per user per day: users with a
  *            doch1 company_user / platoon_commander membership get "<unit> · חסרים N דיווחים להיום"
  *   request  "תזכורת" from the overview: the same message to that company's users, right away
+ *   arrival  "תזכורת" on the planning screen: "<company> · חסר צפי הגעה ל־N חיילים" to that
+ *            company's users (runArrivalReminders; works with or without an active round)
  */
-import { inService, isDue, israelClock, israelToday, reminderMessages, type ReminderMessage, type ReminderRecipient } from "@gdud/core";
+import {
+  arrivalReminderMessages,
+  inService,
+  isDue,
+  israelClock,
+  israelToday,
+  reminderMessages,
+  type ReminderMessage,
+  type ReminderRecipient,
+} from "@gdud/core";
 import { and, eq, inArray, isNull, schema, systemDb } from "@gdud/db";
 import { memberArriving } from "./data";
 import { sendPush } from "./push";
@@ -120,7 +131,10 @@ export async function runReminderJob(now: Date): Promise<ReminderJobResult> {
   }
 
   /* requests from the overview */
-  const open = await db.select().from(requests).where(and(eq(requests.roundId, round.id), isNull(requests.processedAt)));
+  const open = await db
+    .select()
+    .from(requests)
+    .where(and(eq(requests.roundId, round.id), eq(requests.kind, "report"), isNull(requests.processedAt)));
   for (const req of open) {
     // mark first, so a parallel run doesn't send it twice
     const taken = await db
@@ -138,6 +152,65 @@ export async function runReminderJob(now: Date): Promise<ReminderJobResult> {
     }
   }
 
+  if (gone.size) await db.delete(subs).where(inArray(subs.id, [...gone]));
+  result.gone = gone.size;
+  return result;
+}
+
+/** "Fill צפי הגעה" requests of the round being planned: each request goes once, the same day. */
+export async function runArrivalReminders(now: Date): Promise<{ requests: number; gone: number }> {
+  const db = systemDb();
+  const result = { requests: 0, gone: 0 };
+  const [round] = await db.select().from(rounds).where(eq(rounds.state, "planning")).limit(1);
+  if (!round) return result;
+  const open = await db
+    .select()
+    .from(requests)
+    .where(and(eq(requests.roundId, round.id), eq(requests.kind, "arrival"), isNull(requests.processedAt)));
+  if (!open.length) return result;
+  const today = israelToday(now);
+
+  const unitRows = await db.select({ id: units.id, parentId: units.parentId, kind: units.kind, name: units.name }).from(units);
+  const { byId, lineage } = tree(unitRows);
+  // company users fill צפי הגעה for their own soldiers
+  const roleRows = await db
+    .select({ userId: memberships.userId, unitId: memberships.unitId })
+    .from(memberships)
+    .innerJoin(appUsers, eq(appUsers.id, memberships.userId))
+    .where(and(eq(memberships.module, "doch1"), eq(memberships.role, "company_user"), eq(appUsers.active, true)));
+  const scoped = roleRows.filter((r): r is { userId: string; unitId: string } => !!r.unitId);
+  const subRows = scoped.length ? await db.select().from(subs).where(inArray(subs.userId, [...new Set(scoped.map((r) => r.userId))])) : [];
+  const subsByUser = new Map<string, Sub[]>();
+  for (const s of subRows) subsByUser.set(s.userId, [...(subsByUser.get(s.userId) ?? []), s]);
+  const recipients: ReminderRecipient[] = scoped
+    .filter((r) => subsByUser.has(r.userId))
+    .map((r) => ({ userId: r.userId, scopeUnitId: r.unitId, scopeName: byId.get(r.unitId)?.name ?? "" }));
+
+  /* soldiers of the planning round without צפי הגעה, counted into every unit above them */
+  const blankByUnit = new Map<string, number>();
+  const blank = await db
+    .select({ unitId: people.unitId })
+    .from(members)
+    .innerJoin(people, eq(people.id, members.personId))
+    .where(and(eq(members.roundId, round.id), isNull(members.arrivalOptionId)));
+  for (const m of blank) for (const u of lineage(m.unitId)) blankByUnit.set(u, (blankByUnit.get(u) ?? 0) + 1);
+
+  const gone = new Set<string>();
+  for (const req of open) {
+    const taken = await db
+      .update(requests)
+      .set({ processedAt: now })
+      .where(and(eq(requests.id, req.id), isNull(requests.processedAt)))
+      .returning({ id: requests.id });
+    if (!taken.length) continue;
+    result.requests++;
+    if (israelToday(req.createdAt) !== today) continue;
+    const targets = recipients.filter((r) => lineage(r.scopeUnitId).includes(req.unitId));
+    for (const msg of arrivalReminderMessages(targets, blankByUnit)) {
+      const ok = await deliver(db, subsByUser.get(msg.userId)!, msg, gone);
+      await db.insert(log).values({ roundId: round.id, day: today, kind: "request", userId: msg.userId, unitId: msg.unitId, missing: msg.missing, ok });
+    }
+  }
   if (gone.size) await db.delete(subs).where(inArray(subs.id, [...gone]));
   result.gone = gone.size;
   return result;

@@ -4,7 +4,7 @@
  */
 import { createHash, timingSafeEqual } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
-import { runReminderJob } from "@/lib/doch1/reminder-job";
+import { runArrivalReminders, runReminderJob } from "@/lib/doch1/reminder-job";
 
 export const dynamic = "force-dynamic";
 
@@ -25,8 +25,10 @@ export async function GET(request: NextRequest) {
   if (!given || !sameSecret(given, secret)) return NextResponse.json({ error: "unauthorized" }, { status: 401, headers: NO_STORE });
 
   try {
-    const result = await runReminderJob(new Date());
-    return NextResponse.json(result, { headers: NO_STORE });
+    const now = new Date();
+    const result = await runReminderJob(now);
+    const arrival = await runArrivalReminders(now);
+    return NextResponse.json({ ...result, arrival }, { headers: NO_STORE });
   } catch (err) {
     console.error("doch1 reminder job failed", err);
     return NextResponse.json({ error: "job failed" }, { status: 500, headers: NO_STORE });

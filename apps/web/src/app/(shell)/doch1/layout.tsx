@@ -1,8 +1,9 @@
 import Link from "next/link";
+import { can } from "@gdud/auth";
 import { withUser } from "@gdud/db";
 import { AppShell, type AppNavItem } from "@/components/app-shell";
 import { doch1Access } from "@/lib/doch1/access";
-import { loadActiveRound } from "@/lib/doch1/data";
+import { loadActiveRound, loadPlanningRound } from "@/lib/doch1/data";
 import { moduleRoleLabel } from "@/lib/role-label";
 import { displayName, requireModule } from "@/lib/session";
 
@@ -11,7 +12,7 @@ const dm = (day: string) => `${day.slice(8, 10)}.${day.slice(5, 7)}`;
 /** דוח 1 as its own app (mockup: references/doch1, screens 01 / 03 / 06 / 07 / 11). */
 export default async function Doch1Layout({ children }: { children: React.ReactNode }) {
   const s = await requireModule("doch1");
-  const round = await withUser(s.claims, (tx) => loadActiveRound(tx));
+  const [round, planning] = await withUser(s.claims, (tx) => Promise.all([loadActiveRound(tx), loadPlanningRound(tx)]));
   const access = doch1Access(s);
   const role = moduleRoleLabel(s, "doch1");
 
@@ -23,6 +24,10 @@ export default async function Doch1Layout({ children }: { children: React.ReactN
     ...(access.canBoard ? [{ href: "/doch1/board", label: "לוח נוכחות", short: "לוח", icon: "calendar" } as const] : []),
     ...(access.canCopy ? [{ href: "/doch1/copy", label: "העתקה לגיליון", short: "העתקה", icon: "table" } as const] : []),
     ...(access.isAdmin ? [{ href: "/doch1/brigade", label: "דוח לחטיבה", short: "לחטיבה", icon: "send" } as const] : []),
+    // while the next round is being prepared: the admin and the companies fill it in
+    ...(planning && (access.isAdmin || can(s.user, "doch1", ["company_user"]))
+      ? [{ href: "/doch1/planning", label: `תכנון ${planning.name}`, short: "תכנון", icon: "list" } as const]
+      : []),
   ];
   const bottom: AppNavItem[] = access.isAdmin
     ? [
@@ -45,7 +50,11 @@ export default async function Doch1Layout({ children }: { children: React.ReactN
         <div className="tz-card flex flex-col items-start gap-2 p-5">
           <h2 className="tz-headline">אין סבב פעיל</h2>
           <p className="tz-footnote m-0">
-            {access.isAdmin ? "כדי להתחיל, צרו סבב והפעילו אותו בהגדרות." : "מנהל גדודי צריך להגדיר סבב פעיל."}
+            {planning
+              ? `${planning.name} בתכנון.${access.isAdmin ? " מפעילים אותו ממסך תכנון הסבב." : ""}`
+              : access.isAdmin
+                ? "כדי להתחיל, צרו סבב והפעילו אותו בהגדרות."
+                : "מנהל גדודי צריך להגדיר סבב פעיל."}
           </p>
           {access.isAdmin ? (
             <Link href="/doch1/settings" className="tz-btn tz-btn-tinted tz-btn-sm">

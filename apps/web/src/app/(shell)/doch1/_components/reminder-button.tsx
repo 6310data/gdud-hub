@@ -1,10 +1,14 @@
 "use client";
 import { useState, useTransition } from "react";
 import { Icon, Spinner } from "@gdud/ui";
+import { requestArrivalReminder } from "../_actions/planning";
 import { requestReminder } from "../_actions/reminders";
 
-/** Push a reminder to one company now (battalion admin, overview table). */
-export function ReminderButton({ unitId, name }: { unitId: string; name: string }) {
+/**
+ * Push a reminder to one company now (battalion admin): missing reports (overview table) or
+ * missing צפי הגעה (planning screen).
+ */
+export function ReminderButton({ unitId, name, kind = "report" }: { unitId: string; name: string; kind?: "report" | "arrival" }) {
   const [state, setState] = useState<{ ok?: boolean; error?: string }>({});
   const [pending, start] = useTransition();
   if (state.ok)
@@ -19,12 +23,12 @@ export function ReminderButton({ unitId, name }: { unitId: string; name: string 
         type="button"
         className="tz-icon-btn"
         aria-label={`שליחת תזכורת ל${name}`}
-        title="שליחת תזכורת לפלוגה"
+        title={kind === "arrival" ? "תזכורת למלא צפי הגעה" : "שליחת תזכורת לפלוגה"}
         disabled={pending}
         aria-busy={pending || undefined}
         onClick={() =>
           start(async () => {
-            const r = await requestReminder(unitId);
+            const r = await (kind === "arrival" ? requestArrivalReminder : requestReminder)(unitId);
             setState(r?.error ? { error: r.error } : { ok: true });
           })
         }
