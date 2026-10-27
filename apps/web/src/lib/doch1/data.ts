@@ -3,7 +3,7 @@ import "server-only";
  * דוח 1 read models. Every loader takes the caller's `withUser` transaction, so what comes
  * back is already filtered by RLS (a platoon commander sees their platoon).
  */
-import { byHe, inService, inServiceBetween, placement, type Day, type ReportMember, type ServiceDates, type StatusDef, type UnitNode } from "@gdud/core";
+import { byHe, inService, inServiceBetween, placement, type ArrivalEffect, type Day, type EnlistmentEffect, type ReportMember, type ServiceDates, type StatusDef, type UnitNode } from "@gdud/core";
 import { and, asc, eq, inArray, schema, sql, type Tx } from "@gdud/db";
 
 const { people, doch1Rounds: rounds, doch1RoundCompanies: roundCompanies, doch1Statuses: statuses } = schema;
@@ -15,9 +15,12 @@ const { doch1Members: members, doch1Days: days, doch1FieldOptions: fieldOptions 
  */
 export const memberArriving = sql<boolean>`not exists (select 1 from ${fieldOptions} where ${fieldOptions.id} = ${members.arrivalOptionId} and ${fieldOptions.effect} = 'not_arriving')`;
 
+export type RoundState = "planning" | "active" | "closed";
+
 export interface RoundVM {
   id: string;
   name: string;
+  state: RoundState;
   startsOn: Day;
   endsOn: Day;
   callUpOn: Day | null;
@@ -33,6 +36,7 @@ export function toRoundVM(r: typeof rounds.$inferSelect): RoundVM {
   return {
     id: r.id,
     name: r.name,
+    state: r.state,
     startsOn: r.startsOn,
     endsOn: r.endsOn,
     callUpOn: r.callUpOn,
@@ -45,6 +49,32 @@ export function toRoundVM(r: typeof rounds.$inferSelect): RoundVM {
 export async function loadActiveRound(tx: Tx): Promise<RoundVM | null> {
   const [r] = await tx.select().from(rounds).where(eq(rounds.active, true)).limit(1);
   return r ? toRoundVM(r) : null;
+}
+
+/** The round being prepared (בתכנון), if any. */
+export async function loadPlanningRound(tx: Tx): Promise<RoundVM | null> {
+  const [r] = await tx.select().from(rounds).where(eq(rounds.state, "planning")).limit(1);
+  return r ? toRoundVM(r) : null;
+}
+
+export type FieldOptionField = "arrival" | "enlistment";
+export type FieldOptionEffect = ArrivalEffect | EnlistmentEffect;
+
+export interface FieldOptionVM {
+  id: string;
+  field: FieldOptionField;
+  name: string;
+  effect: FieldOptionEffect;
+  sortOrder: number;
+}
+
+/** צפי הגעה and סטטוס גיוס values of a round, by list and order. */
+export async function loadFieldOptions(tx: Tx, roundId: string): Promise<FieldOptionVM[]> {
+  return tx
+    .select({ id: fieldOptions.id, field: fieldOptions.field, name: fieldOptions.name, effect: fieldOptions.effect, sortOrder: fieldOptions.sortOrder })
+    .from(fieldOptions)
+    .where(eq(fieldOptions.roundId, roundId))
+    .orderBy(asc(fieldOptions.field), asc(fieldOptions.sortOrder), asc(fieldOptions.name));
 }
 
 export function toStatusDef(s: typeof statuses.$inferSelect): StatusDef {

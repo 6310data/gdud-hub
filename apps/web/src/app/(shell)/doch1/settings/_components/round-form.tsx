@@ -12,17 +12,16 @@ export interface RoundFormValues {
   reminderAt: string;
   lockAt: string;
   sendAt: string;
-  active: boolean;
 }
 
 const field = "tz-input w-[180px] min-h-9";
 
-/** Round dates and the daily times (mockup screen 05: "גדוד וסבב", "דוח 1 היומי"). */
+/** Round dates and the daily times (mockup screen 05: "גדוד וסבב", "דוח 1 היומי"). A new round starts בתכנון. */
 export function RoundForm({ round }: { round: RoundFormValues | null }) {
   return (
     <ActionForm
       action={saveRound}
-      submitLabel={round ? "שמירת הסבב" : "יצירת סבב"}
+      submitLabel={round ? "שמירת הסבב" : "יצירת סבב בתכנון"}
       className="flex flex-col gap-1.5"
       submitClassName="self-start mt-2 min-h-11 text-[16px]"
     >
@@ -39,9 +38,6 @@ export function RoundForm({ round }: { round: RoundFormValues | null }) {
         </SettingRow>
         <SettingRow label="יום גיוס" sub="ממנו הגיליון סופר נוכחות">
           <input className={field} type="date" name="callUpOn" defaultValue={round?.callUpOn ?? ""} />
-        </SettingRow>
-        <SettingRow label="סבב פעיל" sub="רק סבב אחד פעיל בכל זמן">
-          <input type="checkbox" role="switch" name="active" defaultChecked={round?.active ?? true} />
         </SettingRow>
       </div>
       <h3 className="tz-section-header pt-3">דוח 1 היומי</h3>
