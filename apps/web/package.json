@@ -18,10 +18,10 @@
     "@gdud/db": "workspace:*",
     "@gdud/ui": "workspace:*",
     "@supabase/ssr": "^0.12.0",
-    "@supabase/supabase-js": "^2.100.0",
+    "@supabase/supabase-js": "^2.118.0",
     "next": "^16.4.2",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "server-only": "^0.0.1",
     "web-push": "3.6.7",
     "zod": "^4.1.0"
