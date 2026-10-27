@@ -193,11 +193,7 @@ export function SignOutForm({ data, initialPersonId, initialSerialId }: { data: 
               people={data.people}
               onPick={(id) => setPersonId(id)}
               autoFocus
-              empty={
-                <>
-                  לא נמצא באלפון. <Link href="/logistics/people/new">הוספת חייל חדש</Link>
-                </>
-              }
+              empty="לא נמצא באלפון"
             />
           )}
         </section>

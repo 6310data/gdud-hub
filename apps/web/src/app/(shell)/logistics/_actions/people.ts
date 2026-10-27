@@ -1,5 +1,5 @@
 "use server";
-/** אלפון: add / edit / remove soldiers, and the holdings form (טופס ציוד חתום). */
+/** אלפון: edit / remove soldiers, and the holdings form (טופס ציוד חתום). New soldiers are not added here. */
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { normalizeSerial } from "@gdud/core";
@@ -12,7 +12,7 @@ import { firstIssue, logEvents, logisticsCtx, NO_PERMISSION, optionalText, reval
 const { people, logisticsAssignments: assignments, logisticsStorage: storage, logisticsForms: forms } = schema;
 
 const personSchema = z.object({
-  id: z.union([uuid, z.literal("")]).transform((s) => s || null),
+  id: uuid,
   fullName: z
     .string()
     .trim()
@@ -49,37 +49,28 @@ export async function savePerson(_: ActionResult, fd: FormData): Promise<ActionR
   let savedId: string;
   try {
     savedId = await withUser(s.claims, async (tx) => {
-      const old = id ? await loadPerson(tx, s.units, id) : null;
-      if (id && !old) throw new UserError("החייל לא נמצא – רענן ונסה שוב");
-      if (old && !access.canEditPeople(old.unitId)) throw new UserError(NO_PERMISSION.error);
+      const old = await loadPerson(tx, s.units, id);
+      if (!old) throw new UserError("החייל לא נמצא – רענן ונסה שוב");
+      if (!access.canEditPeople(old.unitId)) throw new UserError(NO_PERMISSION.error);
       const [sameName] = await tx
         .select({ id: people.id })
         .from(people)
-        .where(and(eq(people.fullName, v.fullName), eq(people.active, true), id ? ne(people.id, id) : undefined));
+        .where(and(eq(people.fullName, v.fullName), eq(people.active, true), ne(people.id, id)));
       if (sameName) throw new UserError(`כבר קיים חייל בשם "${v.fullName}"`);
       if (v.personalNumber) {
         const [samePn] = await tx
           .select({ name: people.fullName })
           .from(people)
-          .where(and(eq(people.personalNumber, v.personalNumber), id ? ne(people.id, id) : undefined));
+          .where(and(eq(people.personalNumber, v.personalNumber), ne(people.id, id)));
         if (samePn) throw new UserError(`מספר אישי ${v.personalNumber} כבר שייך ל${samePn.name}`);
       }
 
-      let rowId: string;
-      if (old) {
-        const r = await tx.update(people).set(v).where(eq(people.id, old.id)).returning({ id: people.id });
-        if (!r.length) throw new UserError(NO_PERMISSION.error);
-        rowId = old.id;
-      } else {
-        const [r] = await tx.insert(people).values(v).returning({ id: people.id });
-        rowId = r!.id;
-      }
+      const r = await tx.update(people).set(v).where(eq(people.id, old.id)).returning({ id: people.id });
+      if (!r.length) throw new UserError(NO_PERMISSION.error);
       // no phone / personal number: the log is append-only and widely readable
-      const details = [unit.name, old && old.name !== v.fullName ? `שם קודם: ${old.name}` : null].filter(Boolean).join(" · ");
-      await logEvents(tx, actorName, [
-        { kind: old ? "person_update" : "person_add", personId: rowId, personName: v.fullName, details },
-      ]);
-      return rowId;
+      const details = [unit.name, old.name !== v.fullName ? `שם קודם: ${old.name}` : null].filter(Boolean).join(" · ");
+      await logEvents(tx, actorName, [{ kind: "person_update", personId: old.id, personName: v.fullName, details }]);
+      return old.id;
     });
   } catch (e) {
     return { error: actionError(e) };

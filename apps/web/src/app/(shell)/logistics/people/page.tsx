@@ -57,7 +57,7 @@ export default async function PeoplePage({ searchParams }: { searchParams: Promi
   const signedHref = withParams("/logistics/people", current, { signed: sp.signed ? null : "1", person: null });
   const unitName = unit === "all" ? "כל הגדוד" : unit === "none" ? "ללא פלוגה" : (companies.find((c) => c.id === unit)?.name ?? "פלוגה");
   const totalItems = list.reduce((n, p) => n + (holdingsBy.get(p.id)?.length ?? 0), 0);
-  const addUnit = unit !== "all" && unit !== "none" ? unit : undefined;
+  const summaryUnit = unit !== "all" && unit !== "none" ? unit : undefined;
 
   return (
     <>
@@ -77,15 +77,9 @@ export default async function PeoplePage({ searchParams }: { searchParams: Promi
               עם ציוד חתום
               <span className="tz-num">{fmtCount(signedCount)}</span>
             </Link>
-            <Link href={withParams("/logistics/summary", {}, { unit: addUnit })} className="tz-btn tz-btn-tinted tz-btn-sm">
+            <Link href={withParams("/logistics/summary", {}, { unit: summaryUnit })} className="tz-btn tz-btn-tinted tz-btn-sm">
               סיכום אמצעים
             </Link>
-            {access.isAdmin ? (
-              <Link href={withParams("/logistics/people/new", {}, { unit: addUnit })} className="tz-btn tz-btn-filled tz-btn-sm">
-                <Icon name="plus" size={16} />
-                חייל חדש
-              </Link>
-            ) : null}
           </>
         }
       />
