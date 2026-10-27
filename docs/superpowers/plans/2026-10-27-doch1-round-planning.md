@@ -176,14 +176,25 @@ export function callUpBrigadeText(input: { battalionName: string; day: Day; tota
 **Interfaces produced:**
 
 ```ts
+// as built (packages/db/src/doch1-roster-import/plan.ts)
+export interface RosterAnswers { companies?: Record<string, string /* id | "ignore" */>; platoons?: Record<string, string /* id | "create" | "company" */>; arrival?: Record<string, string /* id | `create:<effect>` */> }
 export interface RosterPlan {
   planningRoundId: string;
-  baseRoundId: string;
+  baseRoundId: string | null;
+  /** "planning" once the planning round has soldiers: a re-run compares with them */
+  comparedWith: "base" | "planning";
   diff: RosterDiff;
-  questions: Question[];          // same shape as doch1-import's
-  inActiveRound: Set<string>;     // personIds whose unit move must wait for activation
+  questions: RosterQuestion[];      // kinds company / platoon / arrival
+  warnings: string[];
+  waiting: number;                  // rows left out until their company / platoon question is answered
+  inActiveRound: Set<string>;       // personIds whose unit move must wait for activation
+  arrival: Map<string, string>;     // personal number → value id | `create:<effect>`
+  callUpOn: Map<string, Day>;
+  newPlatoons: Map<string, { companyId: string; name: string }>;
+  newArrival: Map<string, string>;
 }
-export async function planRoster(tx: Tx, input: { planningRoundId: string; baseRoundId?: string; workbook: Buffer; fileName: string; answers: Answers }): Promise<RosterPlan>;
+export async function planRoster(tx: Tx, input: { planningRoundId: string; baseRoundId?: string; file: RosterFile; answers: RosterAnswers }): Promise<RosterPlan>;
+// read.ts: readRosterFile(data, fileName) → SheetGrid[] (xlsx or csv); parse.ts: parseRoster(grids) → RosterFile
 ```
 
 - [ ] **Step 1: Failing tests:** headers in another order and with `\n` are found; one of each diff group from a small fixture; the base round defaults to the active one, else the latest closed one; a re-run after apply shows only remaining differences (members of the planning round count as "ours"); an unknown company → a question; nothing is written by `planRoster` (row counts unchanged).

@@ -8,6 +8,7 @@
     "./schema": "./src/schema/index.ts",
     "./doch1-import": "./src/doch1-import/index.ts",
     "./doch1-rounds": "./src/doch1-rounds/index.ts",
+    "./doch1-roster-import": "./src/doch1-roster-import/index.ts",
     "./logistics-sheet": "./src/logistics-sheet/index.ts",
     "./logistics-sheet/preview": "./src/logistics-sheet/preview.ts"
   },

@@ -129,7 +129,7 @@ function isValidDate(v: unknown): v is Date {
 }
 
 /** "06.09.2026" / "6/9/2026" / a Date → Day. */
-function toDay(v: Cell | undefined): Day | null {
+export function toDay(v: Cell | undefined): Day | null {
   if (v instanceof Date) return isValidDate(v) ? dateToDay(v) : null;
   const m = /^(\d{1,2})[./](\d{1,2})[./](\d{4})$/.exec(cellText(v));
   if (!m) return null;
