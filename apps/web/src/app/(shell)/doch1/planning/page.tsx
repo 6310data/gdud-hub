@@ -43,9 +43,9 @@ export default async function Doch1Planning({ searchParams }: { searchParams: Pr
       <div className="tz-card flex max-w-[640px] flex-col items-start gap-2 p-5">
         <h1 className="tz-headline">אין סבב בתכנון</h1>
         <p className="tz-footnote m-0">
-          {access.isAdmin ? "כדי להכין את הסבב הבא, יוצרים אותו בהגדרות › סבבים › סבב חדש." : "מנהל גדודי עוד לא פתח את הסבב הבא."}
+          {access.isMaster ? "כדי להכין את הסבב הבא, יוצרים אותו בהגדרות › סבבים › סבב חדש." : "מנהל ראשי עוד לא פתח את הסבב הבא."}
         </p>
-        {access.isAdmin ? (
+        {access.isMaster ? (
           <Link href="/doch1/settings#rounds" className="tz-btn tz-btn-tinted tz-btn-sm">
             להגדרות
           </Link>
@@ -160,14 +160,18 @@ export default async function Doch1Planning({ searchParams }: { searchParams: Pr
           <h2 className="tz-section-header pt-3">3 · הפעלת הסבב</h2>
           <div className="tz-group flex flex-col gap-2 px-4 py-3 text-[15px]">
             <span>{data.active ? `ההפעלה סוגרת את ${data.active.name} ופותחת את ${round.name}.` : `אין סבב פעיל. ההפעלה פותחת את ${round.name}.`}</span>
-            <ActivateRound
-              lines={[
-                data.active ? `${data.active.name} נסגר: מסך היום, הלוח והתזכורות עוברים ל${round.name}.` : `${round.name} נפתח.`,
-                `${round.name} נפתח עם ${data.members.length} חיילים; מי שמסומן ״לא מגיע״ לא יופיע באף יום.`,
-                ...(moves ? [`${moves} חיילים עוברים פלוגה.`] : []),
-              ]}
-              warning={total.blank ? `ל־${total.blank} חיילים עוד אין צפי הגעה. הם ייחשבו מגיעים.` : null}
-            />
+            {access.isMaster ? (
+              <ActivateRound
+                lines={[
+                  data.active ? `${data.active.name} נסגר: מסך היום, הלוח והתזכורות עוברים ל${round.name}.` : `${round.name} נפתח.`,
+                  `${round.name} נפתח עם ${data.members.length} חיילים; מי שמסומן ״לא מגיע״ לא יופיע באף יום.`,
+                  ...(moves ? [`${moves} חיילים עוברים פלוגה.`] : []),
+                ]}
+                warning={total.blank ? `ל־${total.blank} חיילים עוד אין צפי הגעה. הם ייחשבו מגיעים.` : null}
+              />
+            ) : (
+              <span className="tz-footnote">מנהל ראשי מפעיל את הסבב.</span>
+            )}
           </div>
         </section>
       ) : null}

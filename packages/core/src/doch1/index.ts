@@ -8,3 +8,4 @@ export * from "./planning";
 export * from "./reminders";
 export * from "./soldier";
 export * from "./standby";
+export * from "./reports";

@@ -32,7 +32,7 @@ const MEMBER_FIELDS: Record<string, { label: string; show: Show }> = {
   in_report: { label: "נספר בדוח", show: (v) => (v ? "כן" : "לא") },
   call_up_on: { label: "תאריך גיוס", show: date },
   released_on: { label: "תאריך שחרור", show: date },
-  // the free-text columns before the value lists (0017); kept for older log rows
+  // the free-text columns before the value lists (0021); kept for older log rows
   enlistment_status: { label: "סטטוס גיוס", show: text },
   arrival_forecast: { label: "צפי הגעה", show: text },
   arrival_option_id: { label: "צפי הגעה", show: (v, l) => (typeof v === "string" ? (l.option(v) ?? "ערך שנמחק") : "—") },

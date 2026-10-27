@@ -95,6 +95,7 @@ export function toStatusDef(s: typeof statuses.$inferSelect): StatusDef {
     acrossBorder: s.acrossBorder,
     needsOutpost: s.needsOutpost,
     standbyAvailable: s.standbyAvailable,
+    locationId: s.locationId,
   };
 }
 

@@ -24,6 +24,7 @@ export default async function LogisticsLayout({ children }: { children: React.Re
         ...(access.isStockAdmin ? [{ href: "/logistics/import", label: "ייבוא מהגיליון", short: "ייבוא", icon: "upload" } as const] : []),
       ]
     : [];
+  const bottom: AppNavItem[] = access.isMaster ? [{ href: "/logistics/settings", label: "הגדרות", icon: "gear" }] : [];
 
   return (
     <AppShell
@@ -32,8 +33,9 @@ export default async function LogisticsLayout({ children }: { children: React.Re
       mark={{ icon: "logo" }}
       search={{ action: "/logistics/search", placeholder: "חיפוש חייל, צ׳ או פריט" }}
       groups={[{ items: main }, ...(actions.length ? [{ title: "פעולות", items: actions }] : [])]}
+      bottom={bottom}
       user={{ name: displayName(s.user, s.claims), email: s.user.email, role: role?.role, roleTone: role?.tone }}
-      // phone tab bar: four tabs, the rest (פלוגות, לוג, החתמה, זיכוי, ייבוא) under "עוד"
+      // phone tab bar: four tabs, the rest (פלוגות, לוג, החתמה, זיכוי, ייבוא, הגדרות) under "עוד"
       phoneTabs={["/logistics", "/logistics/stock", "/logistics/storage", "/logistics/summary"]}
     >
       {children}

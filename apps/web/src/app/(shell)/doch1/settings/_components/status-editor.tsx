@@ -7,7 +7,12 @@ import { saveStatus } from "../../_actions/settings";
 
 const NEW_STATUS_COLOR = "#7a8699";
 
-function StatusFields({ status, roundId, nextSort }: { status: StatusDef | null; roundId: string; nextSort: number }) {
+export interface CampOption {
+  id: string;
+  name: string;
+}
+
+function StatusFields({ status, roundId, nextSort, camps }: { status: StatusDef | null; roundId: string; nextSort: number; camps: CampOption[] }) {
   return (
     <>
       {status ? <input type="hidden" name="id" value={status.id} /> : null}
@@ -38,6 +43,19 @@ function StatusFields({ status, roundId, nextSort }: { status: StatusDef | null;
           <span className="tz-label">סדר</span>
           <input className="tz-input min-h-9 w-[72px]" type="number" name="sortOrder" min={0} max={999} defaultValue={status?.sortOrder ?? nextSort} />
         </label>
+        {camps.length ? (
+          <label className="tz-field">
+            <span className="tz-label">מחנה בדוחות</span>
+            <select className="tz-input min-h-9 w-[150px]" name="locationId" defaultValue={status?.locationId ?? ""}>
+              <option value="">—</option>
+              {camps.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
       </span>
       <span className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[14px]">
         {STATUS_FLAG_KEYS.map((k) => (
@@ -60,12 +78,14 @@ function StatusFields({ status, roundId, nextSort }: { status: StatusDef | null;
 }
 
 /** Statuses of the round (mockup 05: "סטטוסים ומיקומים"): one row each, opened to edit name, color, group, sheet value, order and flags. */
-export function StatusEditor({ roundId, statuses }: { roundId: string; statuses: StatusDef[] }) {
+export function StatusEditor({ roundId, statuses, camps }: { roundId: string; statuses: StatusDef[]; camps: CampOption[] }) {
+  const campName = new Map(camps.map((c) => [c.id, c.name]));
   const nextSort = Math.max(0, ...statuses.map((s) => s.sortOrder)) + 1;
   return (
     <div className="tz-group">
       {statuses.map((s) => {
-        const flags = [...STATUS_FLAG_KEYS.filter((k) => s[k]).map((k) => FLAG_LABEL[k]), ...(s.standbyAvailable ? ["זמין לכוננות"] : [])];
+        const camp = s.locationId ? campName.get(s.locationId) : undefined;
+        const flags = [...STATUS_FLAG_KEYS.filter((k) => s[k]).map((k) => FLAG_LABEL[k]), ...(s.standbyAvailable ? ["זמין לכוננות"] : []), ...(camp ? [`ב${camp}`] : [])];
         return (
           <details key={s.id} className="group border-b border-separator">
             <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
@@ -82,7 +102,7 @@ export function StatusEditor({ roundId, statuses }: { roundId: string; statuses:
               <Icon name="chevron" size={17} className="tz-chevron transition-transform group-open:-rotate-90" />
             </summary>
             <ActionForm action={saveStatus} submitLabel="שמירה" variant="tinted" className="flex flex-col items-start gap-3 bg-ground/60 px-4 pb-4 pt-2">
-              <StatusFields status={s} roundId={roundId} nextSort={nextSort} />
+              <StatusFields status={s} roundId={roundId} nextSort={nextSort} camps={camps} />
             </ActionForm>
           </details>
         );
@@ -93,7 +113,7 @@ export function StatusEditor({ roundId, statuses }: { roundId: string; statuses:
           הוספת סטטוס
         </summary>
         <ActionForm action={saveStatus} submitLabel="הוספת סטטוס" variant="filled" className="flex flex-col items-start gap-3 px-4 pb-4 pt-2">
-          <StatusFields status={null} roundId={roundId} nextSort={nextSort} />
+          <StatusFields status={null} roundId={roundId} nextSort={nextSort} camps={camps} />
         </ActionForm>
       </details>
     </div>

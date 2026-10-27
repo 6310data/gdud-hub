@@ -10,6 +10,8 @@ export interface LogisticsAccess {
   isAdmin: boolean;
   /** battalion-wide admin: catalogue, kit standards, serials */
   isStockAdmin: boolean;
+  /** battalion-wide master admin: settings and the department's roles */
+  isMaster: boolean;
   /** may sign out / return / store for soldiers of this unit */
   canAdminUnit: (unitId: string | null | undefined) => boolean;
   /** may add or edit soldiers in this unit from logistics (core editors use the admin screens) */
@@ -22,6 +24,7 @@ export function logisticsAccess({ user, parents }: Pick<Session, "user" | "paren
   return {
     isAdmin: can(user, "logistics", ["admin"]),
     isStockAdmin: can(user, "logistics", ["admin"], null),
+    isMaster: can(user, "logistics", ["master_admin"], null),
     canAdminUnit,
     canEditPeople: canAdminUnit,
   };

@@ -14,6 +14,8 @@
  *   שבצ״ק מיקום (E)                          → doch1_locations + doch1_members.location_id
  *   שבצ״ק כוננות (G) + שיבוץ כלים (צ כלי, F) → doch1_standby_types / _teams / _holders / _members,
  *                                              doch1_vehicles (battalion-wide, not per round)
+ *   דוחות: the דמ״ח columns (section A)      → doch1_dmh_categories (matched to doch1_members.dmh_category)
+ *   דוחות: the 10א rows (section D)          → doch1_report_groups
  *
  * No status, location or group name lives in code: counts read the flags of doch1_statuses.
  * People and units are the shared core tables. Policies, grants, the lock guard and triggers:
@@ -131,6 +133,8 @@ export const doch1Statuses = pgTable(
     needsOutpost: boolean("needs_outpost").notNull().default(false),
     /** a soldier in this status counts as available for standby (שבצ״ק readiness); not versioned — only today matters */
     standbyAvailable: boolean("standby_available").notNull().default(false),
+    /** the camp a soldier in this status is at: the reports' camp rows (10א) count by it; not versioned */
+    locationId: uuid("location_id").references((): AnyPgColumn => doch1Locations.id, { onDelete: "set null" }),
     active: boolean("active").notNull().default(true),
     replacesId: uuid("replaces_id").references((): AnyPgColumn => doch1Statuses.id, { onDelete: "set null" }),
     ...timestamps,
@@ -147,7 +151,7 @@ export const doch1Statuses = pgTable(
 /**
  * The values of צפי הגעה (sheet column I) and סטטוס גיוס (column K) in a round. `effect` drives
  * behaviour, never the name. Members point at them with a composite FK (round_id, id), written
- * by hand in 0016 (ON DELETE SET NULL of the option column only, which Drizzle can't express).
+ * by hand in 0020 (ON DELETE SET NULL of the option column only, which Drizzle can't express).
  */
 export const doch1FieldOptions = pgTable(
   "doch1_field_options",
@@ -467,5 +471,52 @@ export const doch1StandbyMembers = pgTable(
     foreignKey({ name: "doch1_standby_members_team_fk", columns: [t.teamId, t.roundId], foreignColumns: [doch1StandbyTeams.id, doch1StandbyTeams.roundId] }).onDelete("cascade"),
     foreignKey({ name: "doch1_standby_members_member_fk", columns: [t.roundId, t.personId], foreignColumns: [doch1Members.roundId, doch1Members.personId] }).onDelete("cascade"),
     check("doch1_standby_members_role_len", sql`length(coalesce(${t.role}, '')) <= 30`),
+  ],
+).enableRLS();
+
+/**
+ * The דמ״ח columns of the reports (section A: קצין, מפקד זוטר, לוחם…). A soldier's `dmh_category`
+ * text is matched to one by canonical name; blank or unknown → יתר. `listed` = also listed by
+ * name in its own report (מט״בים).
+ */
+export const doch1DmhCategories = pgTable(
+  "doch1_dmh_categories",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    roundId: uuid("round_id")
+      .notNull()
+      .references(() => doch1Rounds.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    listed: boolean("listed").notNull().default(false),
+    sortOrder: integer("sort_order").notNull().default(0),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex("doch1_dmh_categories_round_name").on(t.roundId, t.name),
+    check("doch1_dmh_categories_name_len", sql`length(${t.name}) between 1 and 30`),
+  ],
+).enableRLS();
+
+/**
+ * The rows of the 10א camp report (section D: חפ״קים + תאג״ד, מכלול, פלס״ם…): a named group of
+ * units — companies or מסגרות — and the commander shown for it. A soldier falls in the first
+ * group that names their מסגרת, else the first that names their company.
+ */
+export const doch1ReportGroups = pgTable(
+  "doch1_report_groups",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    roundId: uuid("round_id")
+      .notNull()
+      .references(() => doch1Rounds.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    commander: text("commander"),
+    unitIds: uuid("unit_ids").array().notNull().default(sql`'{}'::uuid[]`),
+    sortOrder: integer("sort_order").notNull().default(0),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex("doch1_report_groups_round_name").on(t.roundId, t.name),
+    check("doch1_report_groups_text_len", sql`length(${t.name}) between 1 and 40 and length(coalesce(${t.commander}, '')) <= 60 and cardinality(${t.unitIds}) <= 30`),
   ],
 ).enableRLS();

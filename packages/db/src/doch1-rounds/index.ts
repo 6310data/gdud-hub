@@ -10,6 +10,7 @@ import * as schema from "../schema/index";
 
 const { doch1Rounds: rounds, doch1RoundCompanies: roundCompanies, doch1Statuses: statuses, doch1FieldOptions: options } = schema;
 const { doch1Locations: locations, doch1StandbyTypes: standbyTypes, doch1Members: members, people } = schema;
+const { doch1DmhCategories: dmhCategories, doch1ReportGroups: reportGroups } = schema;
 
 /** A refusal meant for the admin (Hebrew, safe to show as is). */
 export class RoundError extends Error {}
@@ -41,13 +42,24 @@ export async function baseRound(tx: Tx, except?: string): Promise<string | null>
 }
 
 /**
- * Copy a round's settings into another: companies taking part (not the pilot date), the current
- * status versions, both value lists, שבצ״ק locations and standby types. Teams, vehicles' teams and
- * members are not settings and are not copied.
+ * Copy a round's settings into another: companies taking part (not the pilot date), שבצ״ק
+ * locations, the current status versions (a status's camp → the new round's location of the
+ * same name), both value lists, standby types, and the reports' דמ״ח categories and 10א groups.
+ * Teams, vehicles' teams and members are not settings and are not copied.
  */
 export async function copyRoundSettings(tx: Tx, from: string, to: string): Promise<void> {
   const rc = await tx.select().from(roundCompanies).where(eq(roundCompanies.roundId, from));
   if (rc.length) await tx.insert(roundCompanies).values(rc.map((c) => ({ roundId: to, unitId: c.unitId, active: c.active })));
+
+  const ls = await tx.select().from(locations).where(eq(locations.roundId, from));
+  const locationIds = new Map<string, string>();
+  if (ls.length) {
+    const created = await tx
+      .insert(locations)
+      .values(ls.map((l) => ({ roundId: to, name: l.name, kind: l.kind, sortOrder: l.sortOrder, active: l.active })))
+      .returning({ id: locations.id, name: locations.name });
+    for (const l of ls) locationIds.set(l.id, created.find((c) => c.name === l.name)!.id);
+  }
 
   const st = await tx
     .select()
@@ -55,7 +67,11 @@ export async function copyRoundSettings(tx: Tx, from: string, to: string): Promi
     .where(and(eq(statuses.roundId, from), eq(statuses.active, true)));
   if (st.length) {
     await tx.insert(statuses).values(
-      st.map(({ id: _id, roundId: _r, replacesId: _p, createdAt: _c, updatedAt: _u, ...s }) => ({ ...s, roundId: to })),
+      st.map(({ id: _id, roundId: _r, replacesId: _p, createdAt: _c, updatedAt: _u, locationId, ...s }) => ({
+        ...s,
+        roundId: to,
+        locationId: locationId ? (locationIds.get(locationId) ?? null) : null,
+      })),
     );
   }
 
@@ -64,16 +80,19 @@ export async function copyRoundSettings(tx: Tx, from: string, to: string): Promi
     await tx.insert(options).values(os.map((o) => ({ roundId: to, field: o.field, name: o.name, effect: o.effect, sortOrder: o.sortOrder })));
   }
 
-  const ls = await tx.select().from(locations).where(eq(locations.roundId, from));
-  if (ls.length) {
-    await tx.insert(locations).values(ls.map((l) => ({ roundId: to, name: l.name, kind: l.kind, sortOrder: l.sortOrder, active: l.active })));
-  }
-
   const ts = await tx.select().from(standbyTypes).where(eq(standbyTypes.roundId, from));
   if (ts.length) {
     await tx.insert(standbyTypes).values(
       ts.map((t) => ({ roundId: to, name: t.name, level: t.level, size: t.size, requiredRoles: t.requiredRoles, sortOrder: t.sortOrder, active: t.active })),
     );
+  }
+
+  const cs = await tx.select().from(dmhCategories).where(eq(dmhCategories.roundId, from));
+  if (cs.length) await tx.insert(dmhCategories).values(cs.map((c) => ({ roundId: to, name: c.name, listed: c.listed, sortOrder: c.sortOrder })));
+
+  const gs = await tx.select().from(reportGroups).where(eq(reportGroups.roundId, from));
+  if (gs.length) {
+    await tx.insert(reportGroups).values(gs.map((g) => ({ roundId: to, name: g.name, commander: g.commander, unitIds: g.unitIds, sortOrder: g.sortOrder })));
   }
 }
 

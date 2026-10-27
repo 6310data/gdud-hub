@@ -55,6 +55,7 @@ export default async function Doch1Overview({ searchParams }: { searchParams: Pr
   const rows: CompanySummary[] = companies.map((c) => ({
     unitId: c.id,
     name: c.name,
+    color: c.color,
     summary: summarize(ofCompany(c.id), dayStatuses, data.statuses),
     notArriving: notArrivingOf(c.id),
   }));

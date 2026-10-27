@@ -6,6 +6,7 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import type { Tx } from "../index";
 import * as schema from "../schema/index";
+import { BLOCKED_REASON, chunks, expectRow } from "../sheet-import/index";
 import { SHEET_NAMES, type SheetKey } from "./sheet";
 import { LINE_GROUPS, type ChangeLine, type ChangeOp, type LineGroup, type OpKind, type SheetDiff } from "./types";
 
@@ -37,21 +38,9 @@ const ORDER: readonly OpKind[] = [
   "log.add",
 ];
 const INSERT_CHUNK = 500;
-export const BLOCKED_REASON = "תלוי בשורה שלא סומנה";
+export { BLOCKED_REASON };
 
 type Op<K extends OpKind> = Extract<ChangeOp, { t: K }>;
-
-function chunks<T>(list: readonly T[], size: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
-  return out;
-}
-
-/** An update that touches no row means RLS hid it or the app changed: abort the whole import. */
-function expectRow<T>(rows: T[], what: string): T {
-  if (!rows[0]) throw new Error(`Sheet import: ${what} was not updated`);
-  return rows[0];
-}
 
 /**
  * Applies the lines that are in `selected`, selectable and have an op. Ids not in the diff are

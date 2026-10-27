@@ -1,13 +1,16 @@
 import { notFound } from "next/navigation";
-import { byHe, dayRange, israelToday } from "@gdud/core";
+import { byHe, categoryIndex, dayRange, israelToday } from "@gdud/core";
 import { desc, eq, schema, withUser } from "@gdud/db";
 import { doch1Access } from "@/lib/doch1/access";
 import { countMembersByCompany, loadFieldOptions, loadMembers, loadRoundCompanies, loadStatuses, toRoundVM } from "@/lib/doch1/data";
+import { loadDmhCategories, loadReportGroups } from "@/lib/doch1/reports";
 import { loadLocations, loadStandbyTypes, loadTeams, loadVehicles } from "@/lib/doch1/standby";
 import { fmtDay, ROUND_STATE_CHIP, ROUND_STATE_LABEL } from "@/lib/doch1/format";
+import { DepartmentRoles } from "@/components/department-roles/department-roles";
 import { requireModule } from "@/lib/session";
 import { CompaniesTable, type CompanyRow } from "./_components/companies-table";
 import { FieldOptionsEditor, type FieldOptionRow } from "./_components/field-options-editor";
+import { DmhCategoriesEditor, ReportGroupsEditor, type DmhCategoryRow, type UnitOption } from "./_components/report-settings";
 import { RoundForm } from "./_components/round-form";
 import { RoundStateBar } from "./_components/round-state";
 import { LocationsEditor, StandbyTypesEditor, VehiclesEditor, type LocationRow, type StandbyTypeRow, type VehicleSettingsRow } from "./_components/standby-settings";
@@ -21,7 +24,9 @@ const SECTIONS = [
   { id: "statuses", label: "סטטוסים", color: "var(--bar-broken)" },
   { id: "values", label: "צפי הגעה וסטטוס גיוס", color: "var(--tile-ok)" },
   { id: "standby", label: "שבצ״ק, כוננות ורכבים", color: "var(--tile-broken)" },
+  { id: "reports", label: "דוחות", color: "var(--tile-ok)" },
   { id: "rounds", label: "סבבים", color: "var(--tile-neutral)" },
+  { id: "roles", label: "הרשאות", color: "var(--tile-ok)" },
 ] as const;
 
 const dm = (day: string) => `${day.slice(8, 10)}.${day.slice(5, 7)}`;
@@ -49,7 +54,7 @@ function RoundPreview({ battalion, round }: { battalion: string; round: { name: 
 
 export default async function Doch1Settings({ searchParams }: { searchParams: Promise<{ round?: string }> }) {
   const s = await requireModule("doch1");
-  if (!doch1Access(s).isAdmin) notFound();
+  if (!doch1Access(s).isMaster) notFound();
   const { round: wanted } = await searchParams;
 
   const data = await withUser(s.claims, async (tx) => {
@@ -57,8 +62,10 @@ export default async function Doch1Settings({ searchParams }: { searchParams: Pr
     // settings are edited for the active round or the one being planned (?round= picks between them)
     const open = rounds.filter((r) => r.state !== "closed");
     const selected = open.find((r) => r.id === wanted) ?? open.find((r) => r.state === "active") ?? open[0] ?? null;
-    if (!selected) return { rounds, selected, companies: [], statuses: [], replaced: 0, counts: new Map<string, number>(), standby: null, options: [] };
-    const [companies, all, counts, locations, types, vehicles, teams, members, options, used] = await Promise.all([
+    if (!selected) {
+      return { rounds, selected, companies: [], statuses: [], replaced: 0, counts: new Map<string, number>(), standby: null, options: [], reports: null };
+    }
+    const [companies, all, counts, locations, types, vehicles, teams, members, options, used, categories, groups] = await Promise.all([
       loadRoundCompanies(tx, selected.id),
       loadStatuses(tx, selected.id, { includeInactive: true }),
       countMembersByCompany(tx, selected.id, s.units),
@@ -69,9 +76,11 @@ export default async function Doch1Settings({ searchParams }: { searchParams: Pr
       loadMembers(tx, selected.id, s.units),
       loadFieldOptions(tx, selected.id),
       tx
-        .select({ a: schema.doch1Members.arrivalOptionId, e: schema.doch1Members.enlistmentOptionId })
+        .select({ a: schema.doch1Members.arrivalOptionId, e: schema.doch1Members.enlistmentOptionId, t: schema.doch1Members.dmhCategory })
         .from(schema.doch1Members)
         .where(eq(schema.doch1Members.roundId, selected.id)),
+      loadDmhCategories(tx, selected.id),
+      loadReportGroups(tx, selected.id),
     ]);
     const uses = new Map<string, number>();
     for (const u of used) for (const id of [u.a, u.e]) if (id) uses.set(id, (uses.get(id) ?? 0) + 1);
@@ -86,6 +95,7 @@ export default async function Doch1Settings({ searchParams }: { searchParams: Pr
       counts,
       standby: { locations, types, vehicles, teams, members },
       options: optionRows,
+      reports: { categories, groups, dmhTexts: used.map((r) => r.t) },
     };
   });
 
@@ -121,8 +131,26 @@ export default async function Doch1Settings({ searchParams }: { searchParams: Pr
       .map((t) => `${t.name}${t.holderIds.length ? ` · ${names(t.holderIds)}` : ""}`)
       .join(", "),
   }));
+  const camps = (sb?.locations ?? []).filter((l) => l.kind === "camp").map((l) => ({ id: l.id, name: l.name }));
+  const rep = data.reports;
+  const categoryCounts = new Map<number, number>();
+  for (const t of rep?.dmhTexts ?? []) {
+    const i = categoryIndex(rep!.categories, t);
+    categoryCounts.set(i, (categoryCounts.get(i) ?? 0) + 1);
+  }
+  const categoryRows: DmhCategoryRow[] = (rep?.categories ?? []).map((c, i) => ({ ...c, count: categoryCounts.get(i) ?? 0 }));
+  const unitOptions: UnitOption[] = companyRows
+    .filter((c) => c.inRound)
+    .map((c) => ({
+      id: c.unitId,
+      name: c.name,
+      platoons: s.units
+        .filter((u) => u.parentId === c.unitId && u.active)
+        .sort((a, b) => a.sortOrder - b.sortOrder || byHe(a.name, b.name))
+        .map((u) => ({ id: u.id, name: u.name })),
+    }));
   const battalion = s.units.find((u) => u.kind === "battalion")?.name ?? "גדוד";
-  const sections = SECTIONS.filter((x) => active || x.id === "round" || x.id === "rounds");
+  const sections = SECTIONS.filter((x) => active || x.id === "round" || x.id === "rounds" || x.id === "roles");
 
   return (
     <div className="flex flex-col gap-[22px] lg:flex-row lg:items-start lg:gap-8">
@@ -172,10 +200,10 @@ export default async function Doch1Settings({ searchParams }: { searchParams: Pr
 
             <section id="statuses" className="flex scroll-mt-6 flex-col gap-1.5">
               <h2 className="px-4 pb-1 text-[20px] font-bold leading-[26px]">סטטוסים</h2>
-              <StatusEditor roundId={active.id} statuses={data.statuses} />
+              <StatusEditor roundId={active.id} statuses={data.statuses} camps={camps} />
               <p className="tz-section-footer">
                 כל הספירות מחושבות לפי הדגלים, לא לפי השם. שינוי דגלים בסטטוס שכבר דווח יוצר גרסה חדשה מהיום והלאה
-                {data.replaced ? ` (${data.replaced} גרסאות קודמות שמורות)` : ""}. ״זמין לכוננות״ קובע מי נספר כזמין בצוותי הכוננות היום.
+                {data.replaced ? ` (${data.replaced} גרסאות קודמות שמורות)` : ""}. ״זמין לכוננות״ קובע מי נספר כזמין בצוותי הכוננות היום. ״מחנה בדוחות״: חייל בסטטוס הזה נספר במחנה בדוחות (מוצב נספר לפי השבצ״ק).
               </p>
             </section>
 
@@ -195,6 +223,20 @@ export default async function Doch1Settings({ searchParams }: { searchParams: Pr
               <h3 className="tz-section-header pt-3.5">מאגר רכבים</h3>
               <VehiclesEditor rows={vehicleRows} />
               <p className="tz-section-footer">המאגר משותף לכל הסבבים. רכב שאינו תקין מסמן את הצוות שלו כלא כשיר.</p>
+            </section>
+
+            <section id="reports" className="flex scroll-mt-6 flex-col gap-1.5">
+              <h2 className="px-4 pb-1 text-[20px] font-bold leading-[26px]">דוחות</h2>
+              <h3 className="tz-section-header">קטגוריות דמ״ח</h3>
+              <DmhCategoriesEditor roundId={active.id} rows={categoryRows} unmatched={categoryCounts.get(categoryRows.length) ?? 0} />
+              <p className="tz-section-footer">
+                העמודות של ״לפי מסגרת ומיקום״, לפי הסדר. תפקיד לדמ״ח של החייל מותאם לשם (בלי תלות בגרשיים וברווחים); ריק או לא מוכר נספר ב״יתר״. בלי קטגוריות, הדוח לוקח את הערכים מהנתונים.
+              </p>
+              <h3 className="tz-section-header pt-3.5">שורות 10א</h3>
+              <ReportGroupsEditor roundId={active.id} rows={rep?.groups.map((g) => ({ ...g, unitIds: [...g.unitIds] })) ?? []} units={unitOptions} />
+              <p className="tz-section-footer">
+                חייל במחנה נספר בשורה הראשונה שכוללת את המסגרת שלו, ואם אין — את הפלוגה שלו. בלי שורות, 10א מוצג לפי פלוגה. המחנה נקבע לפי ״מחנה בדוחות״ של הסטטוס.
+              </p>
             </section>
           </>
         ) : null}
@@ -220,7 +262,7 @@ export default async function Doch1Settings({ searchParams }: { searchParams: Pr
                   <summary className="cursor-pointer px-4 py-3 font-semibold text-primary">סבב חדש</summary>
                   <div className="flex flex-col gap-2 px-4 pb-4">
                     <p className="tz-footnote m-0">
-                      הסבב החדש נפתח בתכנון, עם הפלוגות, הסטטוסים, ערכי צפי הגעה וסטטוס גיוס, המיקומים וסוגי הכוננות של {activeRound?.name ?? "הסבב האחרון"}. הסבב הנוכחי לא משתנה.
+                      הסבב החדש נפתח בתכנון, עם הפלוגות, הסטטוסים, ערכי צפי הגעה וסטטוס גיוס, המיקומים, סוגי הכוננות, קטגוריות הדמ״ח וקבוצות 10א של {activeRound?.name ?? "הסבב האחרון"}. הסבב הנוכחי לא משתנה.
                     </p>
                     <RoundForm round={null} />
                   </div>
@@ -229,6 +271,11 @@ export default async function Doch1Settings({ searchParams }: { searchParams: Pr
             </div>
           </section>
         ) : null}
+
+        <section id="roles" className="flex scroll-mt-6 flex-col gap-1.5">
+          <h2 className="px-4 pb-1 text-[20px] font-bold leading-[26px]">הרשאות</h2>
+          <DepartmentRoles s={s} module="doch1" />
+        </section>
       </div>
     </div>
   );

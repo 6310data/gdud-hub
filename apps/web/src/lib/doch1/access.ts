@@ -7,8 +7,10 @@ import type { Session } from "@/lib/session";
  * (packages/db/migrations/0005_doch1_security.sql, 0008_doch1_standby_security.sql).
  */
 export interface Doch1Access {
-  /** battalion-wide doch1 admin (or super admin): every company, past days, settings, import */
+  /** battalion-wide doch1 admin or master admin (or super admin): every company, past days, import */
   isAdmin: boolean;
+  /** battalion-wide doch1 master admin (or super admin): settings and the department's roles */
+  isMaster: boolean;
   /** any doch1 role */
   canView: boolean;
   /** battalion overview: admin or viewer */
@@ -17,6 +19,8 @@ export interface Doch1Access {
   canCopy: boolean;
   /** attendance board (לוח נוכחות): admin or company user */
   canBoard: boolean;
+  /** reports (דוחות): admin and viewer battalion-wide; a company user (or company viewer) their own company, through RLS */
+  canReports: boolean;
   /** units the user reports for: companies (company_user) and platoons (platoon_commander); admin → all active round companies */
   reportScopes: string[];
   /** admin / company_user / platoon_commander covering unitId */
@@ -38,10 +42,12 @@ export function doch1Access({ user, parents }: Pick<Session, "user" | "parents">
   const battalionWide = isAdmin || scopes.includes(null);
   return {
     isAdmin,
+    isMaster: can(user, "doch1", ["master_admin"], null),
     canView: can(user, "doch1", "any"),
     canOverview: isAdmin || can(user, "doch1", ["viewer"]),
     canCopy: isAdmin || can(user, "doch1", ["company_user"]),
     canBoard: isAdmin || can(user, "doch1", ["company_user"]),
+    canReports: isAdmin || can(user, "doch1", ["viewer", "company_user"]),
     reportScopes: battalionWide ? [...roundCompanyIds] : scopes.filter((u): u is string => u !== null),
     canReport: (unitId) => can(user, "doch1", REPORT_ROLES, unitId, parents),
     canCreateTeam: isAdmin || can(user, "doch1", ["company_user"]),

@@ -1,6 +1,6 @@
 {
-  "id": "0a02243c-c26c-46ec-af67-71807168388f",
-  "prevId": "81be209d-1506-455c-a320-383bef021cb6",
+  "id": "a8f30cd6-8408-403b-b408-e0d792b855c0",
+  "prevId": "faf586f1-fe60-4c6b-b5bc-46195b56f32b",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1638,8 +1638,8 @@
       "checkConstraints": {},
       "isRLSEnabled": true
     },
-    "public.doch1_field_options": {
-      "name": "doch1_field_options",
+    "public.doch1_dmh_categories": {
+      "name": "doch1_dmh_categories",
       "schema": "",
       "columns": {
         "id": {
@@ -1655,23 +1655,18 @@
           "primaryKey": false,
           "notNull": true
         },
-        "field": {
-          "name": "field",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
         "name": {
           "name": "name",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "effect": {
-          "name": "effect",
-          "type": "text",
+        "listed": {
+          "name": "listed",
+          "type": "boolean",
           "primaryKey": false,
-          "notNull": true
+          "notNull": true,
+          "default": false
         },
         "sort_order": {
           "name": "sort_order",
@@ -1696,17 +1691,11 @@
         }
       },
       "indexes": {
-        "doch1_field_options_round_field_name": {
-          "name": "doch1_field_options_round_field_name",
+        "doch1_dmh_categories_round_name": {
+          "name": "doch1_dmh_categories_round_name",
           "columns": [
             {
               "expression": "round_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "field",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1725,9 +1714,9 @@
         }
       },
       "foreignKeys": {
-        "doch1_field_options_round_id_doch1_rounds_id_fk": {
-          "name": "doch1_field_options_round_id_doch1_rounds_id_fk",
-          "tableFrom": "doch1_field_options",
+        "doch1_dmh_categories_round_id_doch1_rounds_id_fk": {
+          "name": "doch1_dmh_categories_round_id_doch1_rounds_id_fk",
+          "tableFrom": "doch1_dmh_categories",
           "tableTo": "doch1_rounds",
           "columnsFrom": [
             "round_id"
@@ -1740,25 +1729,12 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "doch1_field_options_round_id_key": {
-          "name": "doch1_field_options_round_id_key",
-          "nullsNotDistinct": false,
-          "columns": [
-            "round_id",
-            "id"
-          ]
-        }
-      },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "doch1_field_options_name_len": {
-          "name": "doch1_field_options_name_len",
-          "value": "length(\"doch1_field_options\".\"name\") between 1 and 30"
-        },
-        "doch1_field_options_effect": {
-          "name": "doch1_field_options_effect",
-          "value": "(\"doch1_field_options\".\"field\" = 'arrival' and \"doch1_field_options\".\"effect\" in ('arriving', 'not_arriving')) or (\"doch1_field_options\".\"field\" = 'enlistment' and \"doch1_field_options\".\"effect\" in ('arrived', 'pending', 'postponed', 'released'))"
+        "doch1_dmh_categories_name_len": {
+          "name": "doch1_dmh_categories_name_len",
+          "value": "length(\"doch1_dmh_categories\".\"name\") between 1 and 30"
         }
       },
       "isRLSEnabled": true
@@ -1837,7 +1813,7 @@
       "checkConstraints": {
         "doch1_import_mappings_kind": {
           "name": "doch1_import_mappings_kind",
-          "value": "\"doch1_import_mappings\".\"kind\" in ('company', 'platoon', 'status', 'location', 'arrival', 'enlistment')"
+          "value": "\"doch1_import_mappings\".\"kind\" in ('company', 'platoon', 'status', 'location')"
         }
       },
       "isRLSEnabled": true
@@ -1982,6 +1958,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "arrival_forecast": {
+          "name": "arrival_forecast",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "call_up_on": {
           "name": "call_up_on",
           "type": "date",
@@ -1991,6 +1973,12 @@
         "released_on": {
           "name": "released_on",
           "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "enlistment_status": {
+          "name": "enlistment_status",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -2020,24 +2008,6 @@
         },
         "location_id": {
           "name": "location_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "arrival_option_id": {
-          "name": "arrival_option_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "enlistment_option_id": {
-          "name": "enlistment_option_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "planned_unit_id": {
-          "name": "planned_unit_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
@@ -2107,19 +2077,6 @@
           "tableTo": "doch1_locations",
           "columnsFrom": [
             "location_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
-        "doch1_members_planned_unit_id_units_id_fk": {
-          "name": "doch1_members_planned_unit_id_units_id_fk",
-          "tableFrom": "doch1_members",
-          "tableTo": "units",
-          "columnsFrom": [
-            "planned_unit_id"
           ],
           "columnsTo": [
             "id"
@@ -2419,13 +2376,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'report'"
-        },
         "requested_by": {
           "name": "requested_by",
           "type": "uuid",
@@ -2495,10 +2445,112 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.doch1_report_groups": {
+      "name": "doch1_report_groups",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "round_id": {
+          "name": "round_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "commander": {
+          "name": "commander",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "unit_ids": {
+          "name": "unit_ids",
+          "type": "uuid[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::uuid[]"
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "doch1_report_groups_round_name": {
+          "name": "doch1_report_groups_round_name",
+          "columns": [
+            {
+              "expression": "round_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "doch1_report_groups_round_id_doch1_rounds_id_fk": {
+          "name": "doch1_report_groups_round_id_doch1_rounds_id_fk",
+          "tableFrom": "doch1_report_groups",
+          "tableTo": "doch1_rounds",
+          "columnsFrom": [
+            "round_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
       "checkConstraints": {
-        "doch1_reminder_requests_kind": {
-          "name": "doch1_reminder_requests_kind",
-          "value": "\"doch1_reminder_requests\".\"kind\" in ('report', 'arrival')"
+        "doch1_report_groups_text_len": {
+          "name": "doch1_report_groups_text_len",
+          "value": "length(\"doch1_report_groups\".\"name\") between 1 and 40 and length(coalesce(\"doch1_report_groups\".\"commander\", '')) <= 60 and cardinality(\"doch1_report_groups\".\"unit_ids\") <= 30"
         }
       },
       "isRLSEnabled": true
@@ -2646,22 +2698,12 @@
           "notNull": true,
           "default": "'10:15'"
         },
-        "state": {
-          "name": "state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'closed'"
-        },
         "active": {
           "name": "active",
           "type": "boolean",
           "primaryKey": false,
-          "notNull": false,
-          "generated": {
-            "as": "state = 'active'",
-            "type": "stored"
-          }
+          "notNull": true,
+          "default": false
         },
         "created_at": {
           "name": "created_at",
@@ -2694,22 +2736,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "doch1_rounds_one_planning": {
-          "name": "doch1_rounds_one_planning",
-          "columns": [
-            {
-              "expression": "state",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"doch1_rounds\".\"state\" = 'planning'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {},
@@ -2724,10 +2750,6 @@
         "doch1_rounds_name_len": {
           "name": "doch1_rounds_name_len",
           "value": "length(\"doch1_rounds\".\"name\") between 1 and 40"
-        },
-        "doch1_rounds_state": {
-          "name": "doch1_rounds_state",
-          "value": "\"doch1_rounds\".\"state\" in ('planning', 'active', 'closed')"
         }
       },
       "isRLSEnabled": true
@@ -3340,6 +3362,12 @@
           "notNull": true,
           "default": false
         },
+        "location_id": {
+          "name": "location_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "active": {
           "name": "active",
           "type": "boolean",
@@ -3426,6 +3454,19 @@
             "id"
           ],
           "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "doch1_statuses_location_id_doch1_locations_id_fk": {
+          "name": "doch1_statuses_location_id_doch1_locations_id_fk",
+          "tableFrom": "doch1_statuses",
+          "tableTo": "doch1_locations",
+          "columnsFrom": [
+            "location_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
           "onUpdate": "no action"
         },
         "doch1_statuses_replaces_id_doch1_statuses_id_fk": {
@@ -3547,6 +3588,1149 @@
         }
       },
       "isRLSEnabled": true
+    },
+    "public.kesher_check_lines": {
+      "name": "kesher_check_lines",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "check_id": {
+          "name": "check_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "serial_id": {
+          "name": "serial_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "serial": {
+          "name": "serial",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "item": {
+          "name": "item",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "found": {
+          "name": "found",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "kesher_check_lines_serial_idx": {
+          "name": "kesher_check_lines_serial_idx",
+          "columns": [
+            {
+              "expression": "serial_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "check_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "kesher_check_lines_check_id_kesher_checks_id_fk": {
+          "name": "kesher_check_lines_check_id_kesher_checks_id_fk",
+          "tableFrom": "kesher_check_lines",
+          "tableTo": "kesher_checks",
+          "columnsFrom": [
+            "check_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "kesher_check_lines_serial_id_kesher_serials_id_fk": {
+          "name": "kesher_check_lines_serial_id_kesher_serials_id_fk",
+          "tableFrom": "kesher_check_lines",
+          "tableTo": "kesher_serials",
+          "columnsFrom": [
+            "serial_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "kesher_check_lines_check_serial": {
+          "name": "kesher_check_lines_check_serial",
+          "nullsNotDistinct": false,
+          "columns": [
+            "check_id",
+            "serial"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.kesher_checks": {
+      "name": "kesher_checks",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "unit_id": {
+          "name": "unit_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "at": {
+          "name": "at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "by_user": {
+          "name": "by_user",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "app.current_user_id()"
+        },
+        "reporter_name": {
+          "name": "reporter_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "total": {
+          "name": "total",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "found": {
+          "name": "found",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notified_at": {
+          "name": "notified_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sheet_key": {
+          "name": "sheet_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "kesher_checks_unit_at_idx": {
+          "name": "kesher_checks_unit_at_idx",
+          "columns": [
+            {
+              "expression": "unit_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "kesher_checks_sheet_key": {
+          "name": "kesher_checks_sheet_key",
+          "columns": [
+            {
+              "expression": "sheet_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"kesher_checks\".\"sheet_key\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "kesher_checks_unit_id_units_id_fk": {
+          "name": "kesher_checks_unit_id_units_id_fk",
+          "tableFrom": "kesher_checks",
+          "tableTo": "units",
+          "columnsFrom": [
+            "unit_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "kesher_checks_counts": {
+          "name": "kesher_checks_counts",
+          "value": "\"kesher_checks\".\"total\" >= 0 and \"kesher_checks\".\"found\" between 0 and \"kesher_checks\".\"total\""
+        },
+        "kesher_checks_text_len": {
+          "name": "kesher_checks_text_len",
+          "value": "coalesce(length(\"kesher_checks\".\"note\"), 0) <= 1000 and coalesce(length(\"kesher_checks\".\"reporter_name\"), 0) <= 120"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.kesher_events": {
+      "name": "kesher_events",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigserial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "at": {
+          "name": "at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "kind": {
+          "name": "kind",
+          "type": "kesher_event_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor_user_id": {
+          "name": "actor_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "app.current_user_id()"
+        },
+        "actor_name": {
+          "name": "actor_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "unit_id": {
+          "name": "unit_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "company": {
+          "name": "company",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "person_id": {
+          "name": "person_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "person_name": {
+          "name": "person_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "person_role": {
+          "name": "person_role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "item": {
+          "name": "item",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "serial": {
+          "name": "serial",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "qty": {
+          "name": "qty",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "details": {
+          "name": "details",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "backdated": {
+          "name": "backdated",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "sheet_actor": {
+          "name": "sheet_actor",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sheet_key": {
+          "name": "sheet_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "kesher_events_at_idx": {
+          "name": "kesher_events_at_idx",
+          "columns": [
+            {
+              "expression": "at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "kesher_events_unit_idx": {
+          "name": "kesher_events_unit_idx",
+          "columns": [
+            {
+              "expression": "unit_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "kesher_events_serial_idx": {
+          "name": "kesher_events_serial_idx",
+          "columns": [
+            {
+              "expression": "serial",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "kesher_events_sheet_key": {
+          "name": "kesher_events_sheet_key",
+          "columns": [
+            {
+              "expression": "sheet_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"kesher_events\".\"sheet_key\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "kesher_events_unit_id_units_id_fk": {
+          "name": "kesher_events_unit_id_units_id_fk",
+          "tableFrom": "kesher_events",
+          "tableTo": "units",
+          "columnsFrom": [
+            "unit_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "kesher_events_person_id_people_id_fk": {
+          "name": "kesher_events_person_id_people_id_fk",
+          "tableFrom": "kesher_events",
+          "tableTo": "people",
+          "columnsFrom": [
+            "person_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.kesher_holders": {
+      "name": "kesher_holders",
+      "schema": "",
+      "columns": {
+        "serial_id": {
+          "name": "serial_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "unit_id": {
+          "name": "unit_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "signer_person_id": {
+          "name": "signer_person_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "signer_role": {
+          "name": "signer_role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "signed_at": {
+          "name": "signed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "signed_by": {
+          "name": "signed_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "app.current_user_id()"
+        },
+        "holder_person_id": {
+          "name": "holder_person_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "holder_role": {
+          "name": "holder_role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "frame": {
+          "name": "frame",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "kesher_holders_unit_idx": {
+          "name": "kesher_holders_unit_idx",
+          "columns": [
+            {
+              "expression": "unit_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "kesher_holders_signer_idx": {
+          "name": "kesher_holders_signer_idx",
+          "columns": [
+            {
+              "expression": "signer_person_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "kesher_holders_holder_idx": {
+          "name": "kesher_holders_holder_idx",
+          "columns": [
+            {
+              "expression": "holder_person_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "kesher_holders_serial_id_kesher_serials_id_fk": {
+          "name": "kesher_holders_serial_id_kesher_serials_id_fk",
+          "tableFrom": "kesher_holders",
+          "tableTo": "kesher_serials",
+          "columnsFrom": [
+            "serial_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "kesher_holders_unit_id_units_id_fk": {
+          "name": "kesher_holders_unit_id_units_id_fk",
+          "tableFrom": "kesher_holders",
+          "tableTo": "units",
+          "columnsFrom": [
+            "unit_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "kesher_holders_signer_person_id_people_id_fk": {
+          "name": "kesher_holders_signer_person_id_people_id_fk",
+          "tableFrom": "kesher_holders",
+          "tableTo": "people",
+          "columnsFrom": [
+            "signer_person_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "kesher_holders_holder_person_id_people_id_fk": {
+          "name": "kesher_holders_holder_person_id_people_id_fk",
+          "tableFrom": "kesher_holders",
+          "tableTo": "people",
+          "columnsFrom": [
+            "holder_person_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "kesher_holders_text_len": {
+          "name": "kesher_holders_text_len",
+          "value": "coalesce(length(\"kesher_holders\".\"signer_role\"), 0) <= 40 and coalesce(length(\"kesher_holders\".\"holder_role\"), 0) <= 40 and coalesce(length(\"kesher_holders\".\"frame\"), 0) <= 40"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.kesher_items": {
+      "name": "kesher_items",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "kesher_item_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "category": {
+          "name": "category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "brigade_qty": {
+          "name": "brigade_qty",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "kesher_items_name_unique": {
+          "name": "kesher_items_name_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "name"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "kesher_items_name_len": {
+          "name": "kesher_items_name_len",
+          "value": "length(\"kesher_items\".\"name\") between 1 and 80"
+        },
+        "kesher_items_brigade_qty": {
+          "name": "kesher_items_brigade_qty",
+          "value": "\"kesher_items\".\"brigade_qty\" is null or (\"kesher_items\".\"kind\" = 'bulk' and \"kesher_items\".\"brigade_qty\" >= 0)"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.kesher_kit_items": {
+      "name": "kesher_kit_items",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "parent_item_id": {
+          "name": "parent_item_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "item_id": {
+          "name": "item_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "qty": {
+          "name": "qty",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "kesher_kit_items_parent_item_id_kesher_items_id_fk": {
+          "name": "kesher_kit_items_parent_item_id_kesher_items_id_fk",
+          "tableFrom": "kesher_kit_items",
+          "tableTo": "kesher_items",
+          "columnsFrom": [
+            "parent_item_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "kesher_kit_items_item_id_kesher_items_id_fk": {
+          "name": "kesher_kit_items_item_id_kesher_items_id_fk",
+          "tableFrom": "kesher_kit_items",
+          "tableTo": "kesher_items",
+          "columnsFrom": [
+            "item_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "kesher_kit_items_parent_item": {
+          "name": "kesher_kit_items_parent_item",
+          "nullsNotDistinct": false,
+          "columns": [
+            "parent_item_id",
+            "item_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "kesher_kit_items_qty": {
+          "name": "kesher_kit_items_qty",
+          "value": "\"kesher_kit_items\".\"qty\" between 1 and 99"
+        },
+        "kesher_kit_items_not_self": {
+          "name": "kesher_kit_items_not_self",
+          "value": "\"kesher_kit_items\".\"parent_item_id\" <> \"kesher_kit_items\".\"item_id\""
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.kesher_serials": {
+      "name": "kesher_serials",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "item_id": {
+          "name": "item_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "serial": {
+          "name": "serial",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "location": {
+          "name": "location",
+          "type": "kesher_location",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'warehouse'"
+        },
+        "unit_id": {
+          "name": "unit_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "vehicle": {
+          "name": "vehicle",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "kesher_serials_item_idx": {
+          "name": "kesher_serials_item_idx",
+          "columns": [
+            {
+              "expression": "item_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "kesher_serials_unit_idx": {
+          "name": "kesher_serials_unit_idx",
+          "columns": [
+            {
+              "expression": "unit_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "kesher_serials_item_id_kesher_items_id_fk": {
+          "name": "kesher_serials_item_id_kesher_items_id_fk",
+          "tableFrom": "kesher_serials",
+          "tableTo": "kesher_items",
+          "columnsFrom": [
+            "item_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "kesher_serials_unit_id_units_id_fk": {
+          "name": "kesher_serials_unit_id_units_id_fk",
+          "tableFrom": "kesher_serials",
+          "tableTo": "units",
+          "columnsFrom": [
+            "unit_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "kesher_serials_serial_unique": {
+          "name": "kesher_serials_serial_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "serial"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "kesher_serials_format": {
+          "name": "kesher_serials_format",
+          "value": "\"kesher_serials\".\"serial\" ~ '^[^[:space:]]{1,40}$'"
+        },
+        "kesher_serials_company": {
+          "name": "kesher_serials_company",
+          "value": "(\"kesher_serials\".\"unit_id\" is not null) = (\"kesher_serials\".\"location\" = 'company')"
+        },
+        "kesher_serials_text_len": {
+          "name": "kesher_serials_text_len",
+          "value": "coalesce(length(\"kesher_serials\".\"vehicle\"), 0) <= 40 and coalesce(length(\"kesher_serials\".\"notes\"), 0) <= 500"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.kesher_settings": {
+      "name": "kesher_settings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "default": 1
+        },
+        "warehouse_tracked": {
+          "name": "warehouse_tracked",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "check_stale_days": {
+          "name": "check_stale_days",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 7
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "kesher_settings_single": {
+          "name": "kesher_settings_single",
+          "value": "\"kesher_settings\".\"id\" = 1"
+        },
+        "kesher_settings_stale_days": {
+          "name": "kesher_settings_stale_days",
+          "value": "\"kesher_settings\".\"check_stale_days\" between 1 and 90"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.kesher_stock": {
+      "name": "kesher_stock",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "item_id": {
+          "name": "item_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "unit_id": {
+          "name": "unit_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "qty": {
+          "name": "qty",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "kesher_stock_item_id_kesher_items_id_fk": {
+          "name": "kesher_stock_item_id_kesher_items_id_fk",
+          "tableFrom": "kesher_stock",
+          "tableTo": "kesher_items",
+          "columnsFrom": [
+            "item_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "kesher_stock_unit_id_units_id_fk": {
+          "name": "kesher_stock_unit_id_units_id_fk",
+          "tableFrom": "kesher_stock",
+          "tableTo": "units",
+          "columnsFrom": [
+            "unit_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "kesher_stock_item_unit": {
+          "name": "kesher_stock_item_unit",
+          "nullsNotDistinct": true,
+          "columns": [
+            "item_id",
+            "unit_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "kesher_stock_company_qty": {
+          "name": "kesher_stock_company_qty",
+          "value": "\"kesher_stock\".\"unit_id\" is null or \"kesher_stock\".\"qty\" >= 0"
+        }
+      },
+      "isRLSEnabled": true
     }
   },
   "enums": {
@@ -3609,6 +4793,39 @@
       "values": [
         "signout",
         "holdings"
+      ]
+    },
+    "public.kesher_event_kind": {
+      "name": "kesher_event_kind",
+      "schema": "public",
+      "values": [
+        "sign",
+        "credit",
+        "intake",
+        "assign",
+        "stock_edit",
+        "serial_edit",
+        "kit_edit",
+        "check",
+        "import",
+        "legacy"
+      ]
+    },
+    "public.kesher_item_kind": {
+      "name": "kesher_item_kind",
+      "schema": "public",
+      "values": [
+        "serial",
+        "bulk"
+      ]
+    },
+    "public.kesher_location": {
+      "name": "kesher_location",
+      "schema": "public",
+      "values": [
+        "warehouse",
+        "company",
+        "none"
       ]
     }
   },

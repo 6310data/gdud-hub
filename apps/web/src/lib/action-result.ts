@@ -10,7 +10,7 @@ export function dbErrorMessage(err: unknown): string {
   // raised by the doch1_days_guard trigger (0005_doch1_security.sql)
   if (code === "GD001") return "היום כבר ננעל לעריכה. רק מנהל גדודי יכול לשנות אותו.";
   if (code === "GD002") return "התאריך מחוץ לסבב.";
-  // raised by the doch1_members guards (0016_doch1_round_planning_security.sql)
+  // raised by the doch1_members guards (0020_doch1_round_planning_security.sql)
   if (code === "GD003") return "הערך לא שייך לרשימה הזו.";
   if (code === "GD004") return "רק מנהל גדודי מעביר חייל בין פלוגות.";
   console.error(err);

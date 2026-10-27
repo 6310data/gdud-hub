@@ -9,7 +9,7 @@ import { displayName, requireModule } from "@/lib/session";
 
 const dm = (day: string) => `${day.slice(8, 10)}.${day.slice(5, 7)}`;
 
-/** דוח 1 as its own app (mockup: references/doch1, screens 01 / 03 / 06 / 07 / 11). */
+/** דוח 1 as its own app (mockup: references/doch1, screens 01 / 03 / 04 / 06 / 07 / 11). */
 export default async function Doch1Layout({ children }: { children: React.ReactNode }) {
   const s = await requireModule("doch1");
   const [round, planning] = await withUser(s.claims, (tx) => Promise.all([loadActiveRound(tx), loadPlanningRound(tx)]));
@@ -24,18 +24,17 @@ export default async function Doch1Layout({ children }: { children: React.ReactN
     { href: "/doch1/call-up", label: "יום גיוס", short: "גיוס", icon: "flag" },
     ...(access.canBoard ? [{ href: "/doch1/board", label: "לוח נוכחות", short: "לוח", icon: "calendar" } as const] : []),
     ...(access.canCopy ? [{ href: "/doch1/copy", label: "העתקה לגיליון", short: "העתקה", icon: "table" } as const] : []),
+    ...(access.canReports ? [{ href: "/doch1/reports", label: "דוחות", icon: "doc" } as const] : []),
     ...(access.isAdmin ? [{ href: "/doch1/brigade", label: "דוח לחטיבה", short: "לחטיבה", icon: "send" } as const] : []),
     // while the next round is being prepared: the admin and the companies fill it in
     ...(planning && (access.isAdmin || can(s.user, "doch1", ["company_user"]))
       ? [{ href: "/doch1/planning", label: `תכנון ${planning.name}`, short: "תכנון", icon: "list" } as const]
       : []),
   ];
-  const bottom: AppNavItem[] = access.isAdmin
-    ? [
-        { href: "/doch1/import", label: "ייבוא הגיליון", short: "ייבוא", icon: "upload" },
-        { href: "/doch1/settings", label: "הגדרות", icon: "gear" },
-      ]
-    : [];
+  const bottom: AppNavItem[] = [
+    ...(access.isAdmin ? [{ href: "/doch1/import", label: "ייבוא הגיליון", short: "ייבוא", icon: "upload" } as const] : []),
+    ...(access.isMaster ? [{ href: "/doch1/settings", label: "הגדרות", icon: "gear" } as const] : []),
+  ];
 
   return (
     <AppShell
@@ -52,12 +51,12 @@ export default async function Doch1Layout({ children }: { children: React.ReactN
           <h2 className="tz-headline">אין סבב פעיל</h2>
           <p className="tz-footnote m-0">
             {planning
-              ? `${planning.name} בתכנון.${access.isAdmin ? " מפעילים אותו ממסך תכנון הסבב." : ""}`
-              : access.isAdmin
+              ? `${planning.name} בתכנון.${access.isMaster ? " מפעילים אותו ממסך תכנון הסבב." : ""}`
+              : access.isMaster
                 ? "כדי להתחיל, צרו סבב והפעילו אותו בהגדרות."
-                : "מנהל גדודי צריך להגדיר סבב פעיל."}
+                : "מנהל ראשי צריך להגדיר סבב פעיל."}
           </p>
-          {access.isAdmin ? (
+          {access.isMaster ? (
             <Link href="/doch1/settings" className="tz-btn tz-btn-tinted tz-btn-sm">
               להגדרות
             </Link>

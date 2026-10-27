@@ -241,7 +241,7 @@ function LocationSheet({
             </button>
           ))}
         </div>
-        {!locations.length ? <p className="tz-footnote m-0 px-8">עוד לא הוגדרו מיקומים. מנהל גדודי מגדיר אותם בהגדרות.</p> : null}
+        {!locations.length ? <p className="tz-footnote m-0 px-8">עוד לא הוגדרו מיקומים. מנהל ראשי מגדיר אותם בהגדרות.</p> : null}
         {current !== null ? (
           <div className="px-4 pt-3">
             <button type="button" className="tz-btn tz-btn-plain" onClick={() => onPick(null)}>

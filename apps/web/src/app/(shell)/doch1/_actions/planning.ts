@@ -2,7 +2,7 @@
 /**
  * תכנון סבב: צפי הגעה and call-up dates of the round being planned (company user covering the
  * soldier, or admin — doch1_members_update checks the same), the "fill צפי הגעה" reminder,
- * "copy last round" and "הפעלת סבב" (battalion admin).
+ * "copy last round" (battalion admin) and "הפעלת סבב" (master admin).
  */
 import { z } from "zod";
 import { can } from "@gdud/auth";
@@ -108,11 +108,14 @@ export async function copyLastRound(): Promise<ActionResult> {
   return { ok: true };
 }
 
-/** "הפעלת סבב": close the active round, open the planning one, apply the pending company moves. */
+/**
+ * "הפעלת סבב": close the active round, open the planning one, apply the pending company moves.
+ * A change of round state, like the rest of the rounds' settings: master admin.
+ */
 export async function activatePlanningRound(): Promise<ActionResult> {
   const ctx = await doch1PlanningCtx();
   if (!ctx) return NO_PLANNING_ROUND;
-  if (!ctx.access.isAdmin) return NO_PERMISSION;
+  if (!ctx.access.isMaster) return NO_PERMISSION;
   try {
     await withUser(ctx.s.claims, (tx) => activateRound(tx, ctx.round.id));
   } catch (err) {

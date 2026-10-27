@@ -37,12 +37,13 @@ export const MODULES = [
     icon: "box",
     status: "live",
     roles: [
+      { id: "master_admin", label: "מנהל ראשי", description: "כל מה שמנהל עושה, וגם הגדרות המחלקה והרשאות המשתמשים בה" },
       {
         id: "admin",
         label: "מנהל",
         description: "החתמה, זיכוי, אפסון ואלפון (במסגרת שלו); מלאי וקטלוג — כשההרשאה על כל הגדוד",
       },
-      { id: "viewer", label: "צפייה", description: "חיפוש, צפייה והדפסת טפסים" },
+      { id: "company_user", label: "משתמש פלוגה", description: "צפייה בכל הפלוגה שלו והדפסת טפסים, בלי החתמה וזיכוי" },
     ],
   },
   {
@@ -53,7 +54,8 @@ export const MODULES = [
     icon: "list",
     status: "live",
     roles: [
-      { id: "admin", label: "מנהל גדודי", description: "כל הפלוגות, דוחות והגדרות" },
+      { id: "master_admin", label: "מנהל ראשי", description: "כל מה שמנהל גדודי עושה, וגם הגדרות המחלקה והרשאות המשתמשים בה" },
+      { id: "admin", label: "מנהל גדודי", description: "כל הפלוגות, דוחות וייבוא" },
       { id: "company_user", label: "משתמש פלוגה", description: "דוח 1, שבצ״ק וכוננות של הפלוגה שלו" },
       { id: "platoon_commander", label: "מפקד מחלקה", description: "דוח 1 של המחלקה שלו: היום והימים הבאים" },
       { id: "viewer", label: "צפייה", description: "סקירה ודוחות לקריאה בלבד" },
@@ -77,10 +79,10 @@ export const MODULES = [
     description: "מלאי ציוד קשר והחתמות",
     href: "/kesher",
     icon: "antenna",
-    status: "planned",
+    status: "live",
     roles: [
-      { id: "admin", label: "מנהל", description: "החתמות, קליטה וניהול מלאי" },
-      { id: "user", label: "משתמש", description: "חיפוש וצפייה" },
+      { id: "admin", label: "מנהל", description: "החתמות, קליטה, מלאי וייבוא — כשההרשאה על כל הגדוד" },
+      { id: "user", label: "משתמש", description: "צפייה, שיוך חותמים בפלוגה ודוח צ׳" },
     ],
   },
   {
@@ -96,6 +98,17 @@ export const MODULES = [
     ],
   },
 ] as const satisfies readonly ModuleDef[];
+
+/**
+ * The department's master admin: holds every right of its "admin" role (can() and the SQL
+ * has_role() treat it as admin), plus the department's settings and its own roles.
+ */
+export const MASTER_ROLE = "master_admin";
+
+/** Departments with a master admin — they get a settings page with role management. */
+export function hasMasterRole(module: string): boolean {
+  return byId.get(module)?.roles.some((r) => r.id === MASTER_ROLE) ?? false;
+}
 
 export type ModuleId = (typeof MODULES)[number]["id"];
 

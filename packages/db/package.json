@@ -10,7 +10,12 @@
     "./doch1-rounds": "./src/doch1-rounds/index.ts",
     "./doch1-roster-import": "./src/doch1-roster-import/index.ts",
     "./logistics-sheet": "./src/logistics-sheet/index.ts",
-    "./logistics-sheet/preview": "./src/logistics-sheet/preview.ts"
+    "./logistics-sheet/preview": "./src/logistics-sheet/preview.ts",
+    "./xlsx": "./src/xlsx.ts",
+    "./sheet-import": "./src/sheet-import/index.ts",
+    "./sheet-import/preview": "./src/sheet-import/preview.ts",
+    "./kesher-sheet": "./src/kesher-sheet/index.ts",
+    "./kesher-sheet/preview": "./src/kesher-sheet/preview.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

@@ -36,8 +36,8 @@
 
 **Files:**
 - Modify: `packages/db/src/schema/doch1.ts` (`doch1Rounds`, `doch1Members`, `doch1ImportMappings`, `doch1ReminderRequests`, new `doch1FieldOptions`)
-- Create: `packages/db/migrations/0015_doch1_round_planning.sql` (generated, then hand-edited for the generated column)
-- Create: `packages/db/migrations/0016_doch1_round_planning_security.sql` (hand: backfill, RLS, grants, triggers)
+- Create: `packages/db/migrations/0019_doch1_round_planning.sql` (generated, then hand-edited for the generated column)
+- Create: `packages/db/migrations/0020_doch1_round_planning_security.sql` (hand: backfill, RLS, grants, triggers)
 - Modify: `packages/db/test/rls.test.ts` (new `describe("doch1 round planning")` inside `describe("doch1")`)
 
 **Interfaces produced:**
@@ -56,8 +56,8 @@
   - two rounds with `state='active'` → unique violation; two `planning` → unique violation; `update doch1_rounds set active = true` → error;
   - an audit row is written for an option insert.
 - [ ] **Step 2:** Run `pnpm --filter @gdud/db test` → the new tests fail.
-- [ ] **Step 3: Schema + generated migration.** Edit `schema/doch1.ts`, then run `pnpm --filter @gdud/db generate`. Hand-edit `0015` for the rounds change, in this order: add `state` (default `'closed'`); `update doch1_rounds set state = case when active then 'active' else 'closed' end`; drop index `doch1_rounds_one_active`; drop column `active`; add `active boolean generated always as (state = 'active') stored`; recreate `doch1_rounds_one_active`; create `doch1_rounds_one_planning`. In Drizzle: `active: boolean("active").generatedAlwaysAs(sql\`state = 'active'\`)`.
-- [ ] **Step 4: `0016` security migration.**
+- [ ] **Step 3: Schema + generated migration.** Edit `schema/doch1.ts`, then run `pnpm --filter @gdud/db generate`. Hand-edit `0019` for the rounds change, in this order: add `state` (default `'closed'`); `update doch1_rounds set state = case when active then 'active' else 'closed' end`; drop index `doch1_rounds_one_active`; drop column `active`; add `active boolean generated always as (state = 'active') stored`; recreate `doch1_rounds_one_active`; create `doch1_rounds_one_planning`. In Drizzle: `active: boolean("active").generatedAlwaysAs(sql\`state = 'active'\`)`.
+- [ ] **Step 4: `0020` security migration.**
   - Backfill: for each round, insert distinct non-blank `arrival_forecast` values as `arrival`/`arriving` and `enlistment_status` values as `enlistment`/`pending` (sort by name), then set the two option ids on the members.
   - RLS on `doch1_field_options`: select = in doch1 (`app.has_module('doch1')`, as the statuses policies do); insert/update/delete = battalion doch1 admin (copy the `doch1_statuses_*` policy expressions). Grants, `touch_updated_at`, `audit` triggers.
   - `grant update (arrival_option_id, enlistment_option_id, planned_unit_id) on doch1_members to authenticated`.
@@ -156,11 +156,11 @@ export function callUpBrigadeText(input: { battalionName: string; day: Day; tota
 - Modify: `packages/db/src/doch1-import/apply.ts` (create answered options; write option ids; stop writing the text columns)
 - Modify: `apps/web/src/app/(shell)/doch1/import/_components/…` (the question UI: map to a value, or "ליצור" with an effect select)
 - Modify: `packages/db/test/doch1-import.test.ts`
-- Modify: `packages/db/src/schema/doch1.ts` + create `packages/db/migrations/0017_doch1_drop_member_text_fields.sql` (generated: drop `arrival_forecast`, `enlistment_status`; revoke is implicit)
+- Modify: `packages/db/src/schema/doch1.ts` + create `packages/db/migrations/0021_doch1_drop_member_text_fields.sql` (generated: drop `arrival_forecast`, `enlistment_status`; revoke is implicit)
 
 - [ ] **Step 1: Failing import tests:** an unknown column-I value is a question; answering "ליצור / לא מגיע" creates the option with that effect and sets it on the member; re-import with the remembered answer asks nothing; a blank cell clears the value (the sheet wins); a not-arriving soldier with day cells → a warning; the import doesn't touch a `planning` round's members.
 - [ ] **Step 2:** Implement; the mapping kinds are `arrival` and `enlistment`, keyed by the canonical text (`canonicalName`). A round with an empty list takes every value in the file (arriving / pending), like statuses on a first import. The soldier's change log (`changes.ts`) shows the new columns by the value's name.
-- [ ] **Step 3:** Drop the text columns (schema + generate `0017`); fix any remaining reader (typecheck).
+- [ ] **Step 3:** Drop the text columns (schema + generate `0021`); fix any remaining reader (typecheck).
 - [ ] **Step 4:** `pnpm test && pnpm typecheck && pnpm lint`.
 - [ ] **Step 5: Commit** `feat(doch1): the sheet import maps צפי הגעה and סטטוס גיוס to the value lists`.
 

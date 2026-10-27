@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -17,7 +17,7 @@ import { SUPABASE_SHIM_SQL } from "./supabase-shim";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const { units, appUsers, memberships, doch1Rounds: rounds, doch1RoundCompanies: roundCompanies, doch1Statuses: statuses } = schema;
-const { doch1FieldOptions: options, doch1Locations: locations, doch1StandbyTypes: standbyTypes } = schema;
+const { doch1FieldOptions: options, doch1Locations: locations, doch1StandbyTypes: standbyTypes, doch1DmhCategories: dmh, doch1ReportGroups: groups } = schema;
 
 let db: ReturnType<typeof drizzle<typeof schema>>;
 const admin = { sub: randomUUID(), email: "d1-admin@example.com" };
@@ -90,10 +90,16 @@ beforeAll(async () => {
     { roundId: current, field: "arrival", name: "לא מגיע", effect: "not_arriving", sortOrder: 1 },
     { roundId: current, field: "enlistment", name: "התייצב", effect: "arrived" },
   ]);
-  await db.insert(locations).values([
-    { roundId: current, name: "מוצב 131", kind: "outpost" },
-    { roundId: current, name: "מיוערת", kind: "camp", active: false },
-  ]);
+  const [, camp] = await db
+    .insert(locations)
+    .values([
+      { roundId: current, name: "מוצב 131", kind: "outpost" },
+      { roundId: current, name: "מיוערת", kind: "camp", active: false },
+    ])
+    .returning();
+  await db.update(statuses).set({ locationId: camp!.id }).where(and(eq(statuses.roundId, current), eq(statuses.name, "לא בשמ״פ")));
+  await db.insert(dmh).values({ roundId: current, name: "לוחם", listed: true, sortOrder: 2 });
+  await db.insert(groups).values({ roundId: current, name: "חפ״ק", commander: "מג״ד", unitIds: [plsr], sortOrder: 1 });
   await db.insert(standbyTypes).values({ roundId: current, name: "עתודת גדוד", level: "battalion", size: 8, requiredRoles: ["מ״פ / סמ״פ"] });
 });
 
@@ -128,6 +134,15 @@ describe("createPlanningRound", () => {
 
     const ls = await db.select().from(locations).where(eq(locations.roundId, res.id));
     expect(ls.map((l) => [l.name, l.kind, l.active]).sort()).toEqual([["מוצב 131", "outpost", true], ["מיוערת", "camp", false]].sort());
+    // a status's camp is the new round's location of the same name
+    const newCamp = ls.find((l) => l.name === "מיוערת")!;
+    expect(st.find((x) => x.name === "לא בשמ״פ")!.locationId).toBe(newCamp.id);
+    expect(await db.select({ name: dmh.name, listed: dmh.listed, sortOrder: dmh.sortOrder }).from(dmh).where(eq(dmh.roundId, res.id))).toEqual([
+      { name: "לוחם", listed: true, sortOrder: 2 },
+    ]);
+    expect(await db.select({ name: groups.name, commander: groups.commander, unitIds: groups.unitIds }).from(groups).where(eq(groups.roundId, res.id))).toEqual([
+      { name: "חפ״ק", commander: "מג״ד", unitIds: [plsr] },
+    ]);
     const ts = await db.select().from(standbyTypes).where(eq(standbyTypes.roundId, res.id));
     expect(ts).toHaveLength(1);
     expect(ts[0]).toMatchObject({ name: "עתודת גדוד", level: "battalion", size: 8, requiredRoles: ["מ״פ / סמ״פ"] });

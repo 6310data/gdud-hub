@@ -2,7 +2,7 @@ import Link from "next/link";
 import { z } from "zod";
 import { inArmory } from "@gdud/core";
 import { withUser } from "@gdud/db";
-import { Icon } from "@gdud/ui";
+import { Icon, tintStyle } from "@gdud/ui";
 import { companiesOf } from "@/lib/logistics/data";
 import { fmtCount, fmtWhen } from "@/lib/logistics/format";
 import { requireModule } from "@/lib/session";
@@ -61,7 +61,7 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
               <tr>
                 <th scope="col">פריט</th>
                 {m.columns.map((c) => (
-                  <th key={c.key} scope="col">
+                  <th key={c.key} scope="col" className={c.color ? "tz-tint" : undefined} style={tintStyle(c.color)}>
                     {c.unitId ? <Link href={`/logistics/people?unit=${c.unitId}`}>{c.label}</Link> : c.label}
                   </th>
                 ))}
@@ -81,7 +81,7 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
                     </Link>
                   </th>
                   {r.cells.map((n, i) => (
-                    <NumCell key={m.columns[i]!.key} n={n} />
+                    <NumCell key={m.columns[i]!.key} n={n} tint={m.columns[i]!.color} />
                   ))}
                   {company ? <NumCell n={r.inUnits} strong /> : null}
                   <NumCell n={r.stock.signed} />
@@ -95,7 +95,7 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
               <tr>
                 <th scope="row">סה״כ</th>
                 {m.totals.cells.map((n, i) => (
-                  <NumCell key={m.columns[i]!.key} n={n} />
+                  <NumCell key={m.columns[i]!.key} n={n} tint={m.columns[i]!.color} />
                 ))}
                 {company ? <NumCell n={m.totals.inUnits} /> : null}
                 <NumCell n={t.signed} />

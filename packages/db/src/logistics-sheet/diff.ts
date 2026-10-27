@@ -8,6 +8,7 @@
 import { createHash } from "node:crypto";
 import { cleanKit, CONDITION_LABEL, kitToString, normalizeSerial, parseKitText } from "@gdud/core";
 import type { Tx } from "../index";
+import { fingerprintLines } from "../sheet-import/index";
 import { MSG } from "./preview";
 import {
   cell,
@@ -632,13 +633,7 @@ function storageKey(personId: string, serial: string, itemName: string, storedAt
 
 const fmtDate = formatSheetDate;
 
-/** sha256 over what the preview showed: changes when the app (or the file) changes the lines. */
-function fingerprint(lines: readonly ChangeLine[]): string {
-  const shown = [...lines]
-    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
-    .map((l) => [l.id, l.before, l.after, l.message]);
-  return createHash("sha256").update(JSON.stringify(shown)).digest("hex");
-}
+const fingerprint = fingerprintLines;
 
 /**
  * Only the tabs in `tabs` (and present in `sheets`) produce lines. The אלפון tab never does; when

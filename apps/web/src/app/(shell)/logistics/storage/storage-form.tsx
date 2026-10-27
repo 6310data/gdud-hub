@@ -6,7 +6,7 @@ import { useState, useTransition } from "react";
 import { matches } from "@gdud/core";
 import { Button, Chip, Icon, Serial } from "@gdud/ui";
 import { releaseItems, storeItems } from "../_actions/storage";
-import { PersonPicker, PickedPerson, type PickPerson } from "../_components/person-picker";
+import { PersonPicker, PickedPerson, type PickPerson } from "@/components/person-picker";
 
 export interface StorageLine {
   /** serial id (store) or storage row id (release) */
