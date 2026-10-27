@@ -45,7 +45,8 @@ const soldier = (personId: string, companyId: string, platoonId: string | null, 
   releasedOn: null,
   locationId: null,
   dmhCategory: null,
-  arrivalForecast: "מגיע מלא",
+  arriving: true,
+  arrivalOptionId: "o-arriving",
   personalNumber: `81${personId.replace(/\D/g, "").padStart(5, "0")}`,
   ...extra,
 });
@@ -56,11 +57,11 @@ const soldiers: ReportSoldier[] = [
   soldier("a3", "c1", "p2", { dmhCategory: "מט״ב" }), // needs an outpost, has none
   soldier("a4", "c1", null, { locationId: "outside" }), // in the camp by status (old version)
   soldier("a5", "c1", null, { locationId: "o123" }), // at an outpost, not on duty today
-  soldier("a6", "c1", null, { arrivalForecast: null, personalNumber: null }), // no report
+  soldier("a6", "c1", null, { arrivalOptionId: null, personalNumber: null }), // no report
   soldier("a7", "c2", "p3", { locationId: "camp", dmhCategory: "נהג", personalNumber: "08123456" }),
-  soldier("a8", "c2", "p3", { locationId: "o123", callUpOn: null, arrivalForecast: " " }), // not called up
-  soldier("a9", "c2", "p3", { locationId: "o131", inReport: false, arrivalForecast: null }), // לא נספר בדוח
-  soldier("a10", "c2", "p3", { releasedOn: "2026-10-01", arrivalForecast: null }), // released
+  soldier("a8", "c2", "p3", { locationId: "o123", callUpOn: null, arrivalOptionId: null }), // not called up
+  soldier("a9", "c2", "p3", { locationId: "o131", inReport: false, arrivalOptionId: null }), // לא נספר בדוח
+  soldier("a10", "c2", "p3", { releasedOn: "2026-10-01", arrivalOptionId: null }), // released
 ];
 
 const dayStatuses = new Map([

@@ -16,7 +16,7 @@ export interface BrigadeInput {
 }
 
 /** Items two per line, joined with " · ". */
-function pairs(items: readonly string[]): string[] {
+export function pairs(items: readonly string[]): string[] {
   const lines: string[] = [];
   for (let i = 0; i < items.length; i += 2) lines.push(items.slice(i, i + 2).join(" · "));
   return lines;

@@ -142,7 +142,7 @@ Phone first for company and platoon users; desktop first for admin. Each mockup 
 
 ### Phase 5 — the per-round people import
 
-See Import. (Next round is a while away; the current-sheet import comes first.)
+Built as part of round planning: `docs/superpowers/specs/2026-10-27-doch1-round-planning-design.md` (the battalion's list compared with the last round, the planning state, צפי הגעה, activation, the call-up day).
 
 Mockup inconsistencies, builder's call: the two phone admin tab bars (06 vs 13) — pick one per role; mock numbers that don't add up across screens.
 
@@ -163,6 +163,8 @@ All tolerances in `sheet-structure.md` apply (number normalization, מסגרת s
 **Pilot rule:** for a company with "reported in the app from date" set, re-import **does not touch day entries on or after that date** (roster and enlistment fields still update). Everything else is overwritten from the sheet on each re-import.
 
 ### Mode B — the people list (every round)
+
+> Built differently: see `docs/superpowers/specs/2026-10-27-doch1-round-planning-design.md`, "The battalion list". It compares the list with the last round and the admin decides each difference; no published Google Sheet link.
 
 Input: xlsx / csv upload, or a published Google Sheet CSV link. Layout like the sheet's אלפון tab (שם מלא, מספר אישי, שם פרטי, שם משפחה, פלוגה, מחלקה, מקצוע, לכמה סבבים הגיע, מספר טלפון, גיל, האם קצין, תפקיד בפועל) — but columns are matched by header with a confirm/fix step, and the confirmed mapping is remembered. Optional columns: צפי הגעה, תאריך גיוס, סטטוס גיוס.
 - Match by מספר אישי. Existing → update name, company, platoon, מקצוע, תפקיד בפועל, phone, officer flag; add to the round. New → create.

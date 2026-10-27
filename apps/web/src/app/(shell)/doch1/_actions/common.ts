@@ -11,7 +11,7 @@ import { can } from "@gdud/auth";
 import { isDay, type Day } from "@gdud/core";
 import { withUser } from "@gdud/db";
 import { doch1Access, type Doch1Access } from "@/lib/doch1/access";
-import { loadActiveRound, loadRoundCompanies, type RoundVM } from "@/lib/doch1/data";
+import { loadActiveRound, loadPlanningRound, loadRoundCompanies, type RoundVM } from "@/lib/doch1/data";
 import { getSession, type Session } from "@/lib/session";
 
 export const NO_PERMISSION = { error: "אין לך הרשאה לפעולה הזו." } as const;
@@ -34,6 +34,16 @@ export async function doch1Ctx(): Promise<Doch1Ctx | null> {
   });
   if (!loaded.round) return null;
   return { s, access: doch1Access(s, loaded.companyIds), round: loaded.round };
+}
+
+export const NO_PLANNING_ROUND = { error: "אין סבב בתכנון. יוצרים אותו בהגדרות." } as const;
+
+/** Session of a doch1 member with the round being planned (בתכנון), active round or not. */
+export async function doch1PlanningCtx(): Promise<{ s: Session; access: Doch1Access; round: RoundVM } | null> {
+  const s = await getSession();
+  if (!s || !can(s.user, "doch1", "any")) return null;
+  const round = await withUser(s.claims, (tx) => loadPlanningRound(tx));
+  return round ? { s, access: doch1Access(s), round } : null;
 }
 
 /** Session of a battalion-wide doch1 master admin, active round or not (settings must work before the first round). */

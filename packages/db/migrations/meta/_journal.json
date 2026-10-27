@@ -134,6 +134,27 @@
       "when": 1793101439657,
       "tag": "0018_kesher_security",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1793108823881,
+      "tag": "0019_doch1_round_planning",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1793108834245,
+      "tag": "0020_doch1_round_planning_security",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1793108834907,
+      "tag": "0021_doch1_drop_member_text_fields",
+      "breakpoints": true
     }
   ]
 }

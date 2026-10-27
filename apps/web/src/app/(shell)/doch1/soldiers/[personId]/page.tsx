@@ -15,7 +15,7 @@ import {
 } from "@gdud/core";
 import { withUser } from "@gdud/db";
 import { doch1Access } from "@/lib/doch1/access";
-import { loadActiveRound, loadRoundCompanies, loadStatuses } from "@/lib/doch1/data";
+import { loadActiveRound, loadFieldOptions, loadRoundCompanies, loadStatuses } from "@/lib/doch1/data";
 import { loadFieldValues, loadSoldier, loadSoldierDays, loadSoldierLog } from "@/lib/doch1/soldier";
 import { loadLocations, loadTeams, loadVehicles } from "@/lib/doch1/standby";
 import { requireModule } from "@/lib/session";
@@ -53,7 +53,7 @@ export default async function Doch1Soldier({ params, searchParams }: { params: P
     const soldier = await loadSoldier(tx, round.id, personId);
     if (!soldier) return { round, soldier: null } as const;
     const editable = can(s.user, "doch1", ["admin", "company_user"], soldier.unitId, s.parents);
-    const [companies, statuses, days, teams, locations, vehicles, log, values] = await Promise.all([
+    const [companies, statuses, days, teams, locations, vehicles, log, values, options] = await Promise.all([
       loadRoundCompanies(tx, round.id),
       loadStatuses(tx, round.id, { includeInactive: true }),
       loadSoldierDays(tx, round.id, personId),
@@ -62,8 +62,9 @@ export default async function Doch1Soldier({ params, searchParams }: { params: P
       loadVehicles(tx),
       loadSoldierLog(tx, round.id, personId),
       editable ? loadFieldValues(tx, round.id) : Promise.resolve(null),
+      loadFieldOptions(tx, round.id),
     ]);
-    return { round, soldier, editable, companies, statuses, days, teams, locations, vehicles, log, values } as const;
+    return { round, soldier, editable, companies, statuses, days, teams, locations, vehicles, log, values, options } as const;
   });
   if (!data) return null; // the layout shows "אין סבב פעיל"
   if (!data.soldier) notFound();
@@ -73,6 +74,7 @@ export default async function Doch1Soldier({ params, searchParams }: { params: P
   const unitById = new Map(s.units.map((u) => [u.id, u]));
   const { company, platoon } = placement(soldier.unitId, unitById);
   const statusById = new Map(statuses.map((st) => [st.id, st]));
+  const optionName = new Map(data.options.map((o) => [o.id, o.name]));
 
   // "today" inside the round (a finished round shows its last day)
   const day = today < round.startsOn ? round.startsOn : today > round.endsOn ? round.endsOn : today;
@@ -85,7 +87,8 @@ export default async function Doch1Soldier({ params, searchParams }: { params: P
 
   // the sheet's status ↔ שבצ״ק data checks, for this soldier
   const notes: string[] = [];
-  if (!soldier.inReport) notes.push("לא נספר בדוח (שוחרר / נדחה).");
+  if (!soldier.arriving) notes.push("צפי ההגעה שלו ״לא מגיע״, לכן הוא לא מופיע באף יום של הסבב. משנים את זה בעריכה.");
+  else if (!soldier.inReport) notes.push("לא נספר בדוח (שוחרר / נדחה).");
   else if (!listed) notes.push(soldier.callUpOn ? "לא בשירות ביום הזה: לפני תאריך הגיוס או אחרי השחרור." : "אין תאריך גיוס, לכן החייל לא מופיע בדוח.");
   else {
     if (todayStatus?.needsOutpost && location?.kind !== "outpost") notes.push(`בסטטוס ${todayStatus.name} בלי מוצב בשבצ״ק.`);
@@ -101,6 +104,7 @@ export default async function Doch1Soldier({ params, searchParams }: { params: P
       status: (id) => statusById.get(id)?.name,
       location: (id) => data.locations.find((l) => l.id === id)?.name,
       unit: (id) => unitById.get(id)?.name,
+      option: (id) => optionName.get(id),
     });
     return lines.length ? [{ key: `${r.at.getTime()}-${i}`, when: when(r.at, today), actor: r.actor, lines }] : [];
   });
@@ -122,8 +126,11 @@ export default async function Doch1Soldier({ params, searchParams }: { params: P
         callUpOn: soldier.callUpOn,
         releasedOn: soldier.releasedOn,
         dmhCategory: soldier.dmhCategory,
-        arrivalForecast: soldier.arrivalForecast,
-        enlistmentStatus: soldier.enlistmentStatus,
+        arrivalOptionId: soldier.arrivalOptionId,
+        enlistmentOptionId: soldier.enlistmentOptionId,
+        arrivalName: soldier.arrivalOptionId ? (optionName.get(soldier.arrivalOptionId) ?? null) : null,
+        enlistmentName: soldier.enlistmentOptionId ? (optionName.get(soldier.enlistmentOptionId) ?? null) : null,
+        arriving: soldier.arriving,
         hasDisc: soldier.hasDisc,
         notes: soldier.notes,
       }}

@@ -19,6 +19,7 @@ export interface BoardMember {
   inReport: boolean;
   callUpOn: Day | null;
   releasedOn: Day | null;
+  arriving: boolean;
 }
 
 /** day → personId → statusId */

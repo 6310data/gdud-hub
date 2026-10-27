@@ -1,20 +1,22 @@
 "use server";
 /**
- * דוח 1 settings: the round (dates and daily times), companies in the round (+ the pilot
- * switch "reported in the app from"), statuses, and the שבצ״ק settings — locations,
- * standby types, the vehicle registry — and the reports' דמ״ח categories and 10א groups.
- * Battalion-wide doch1 master admins only.
+ * דוח 1 settings: rounds (dates and daily times, state: בתכנון / פעיל / סגור), companies in the
+ * round (+ the pilot switch "reported in the app from"), statuses, the צפי הגעה / סטטוס גיוס
+ * values, the שבצ״ק settings — locations, standby types, the vehicle registry — and the
+ * reports' דמ״ח categories and 10א groups. Battalion-wide doch1 master admins only.
  */
 import { z } from "zod";
 import { canonicalName, categoriesFromData, israelToday, LOCATION_KINDS, STANDBY_LEVELS, STATUS_FLAG_KEYS, statusFlagsChanged, VEHICLE_STATES } from "@gdud/core";
 import { and, eq, gte, lt, ne, schema, withUser, type Tx } from "@gdud/db";
+import { activateRound, createPlanningRound } from "@gdud/db/doch1-rounds";
 import { actionError, UserError, type ActionResult } from "@/lib/action-result";
 import { toStatusDef } from "@/lib/doch1/data";
 import { dayParam, doch1MasterSession, firstIssue, NO_PERMISSION, revalidateDoch1, uuid } from "./common";
 
 const { doch1Rounds: rounds, doch1RoundCompanies: roundCompanies, doch1Statuses: statuses, doch1Days: days } = schema;
+const { doch1Members: members, doch1FieldOptions: fieldOptions, FIELD_OPTION_EFFECTS } = schema;
 const { doch1Locations: locations, doch1StandbyTypes: standbyTypes, doch1Vehicles: vehicles } = schema;
-const { doch1Members: members, doch1DmhCategories: dmhCategories, doch1ReportGroups: reportGroups } = schema;
+const { doch1DmhCategories: dmhCategories, doch1ReportGroups: reportGroups } = schema;
 
 const clock = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "שעה בפורמט HH:MM");
 const optionalDay = z
@@ -42,10 +44,13 @@ const roundInput = z
     reminderAt: clock,
     lockAt: clock,
     sendAt: clock,
-    active: checkbox,
   })
   .refine((r) => r.endsOn >= r.startsOn, { message: "סיום הסבב לפני תחילתו" });
 
+/**
+ * Edit a round's dates and times, or create the next round: it starts בתכנון with the settings of
+ * the active (else the latest) round copied in. Its state changes with setRoundState / activation.
+ */
 export async function saveRound(_: ActionResult, fd: FormData): Promise<ActionResult> {
   const s = await doch1MasterSession();
   if (!s) return NO_PERMISSION;
@@ -54,25 +59,123 @@ export async function saveRound(_: ActionResult, fd: FormData): Promise<ActionRe
   const { id, ...values } = parsed.data;
   try {
     await withUser(s.claims, async (tx) => {
-      // one active round: deactivate the others first (partial unique index)
-      if (values.active) {
-        await tx
-          .update(rounds)
-          .set({ active: false })
-          .where(id ? and(eq(rounds.active, true), ne(rounds.id, id)) : eq(rounds.active, true));
-      }
       if (id) {
         const r = await tx.update(rounds).set(values).where(eq(rounds.id, id)).returning({ id: rounds.id });
         if (!r.length) throw new UserError("הסבב לא נמצא");
-      } else {
-        await tx.insert(rounds).values(values);
+        return;
       }
+      if ((await tx.select({ id: rounds.id }).from(rounds).where(eq(rounds.state, "planning")).limit(1)).length) {
+        throw new UserError("כבר יש סבב בתכנון. אפשר לערוך אותו או למחוק אותו.");
+      }
+      await createPlanningRound(tx, values);
     });
   } catch (err) {
     return { error: actionError(err) };
   }
   revalidateDoch1();
   return { ok: true };
+}
+
+const stateInput = z.object({ id: uuid, state: z.enum(["active", "closed"]) });
+
+/**
+ * Close the active round, reopen a closed one, or open a planning round when no round is active.
+ * With an active round, a planning round opens from "תכנון סבב" (it also closes the active one).
+ */
+export async function setRoundState(_: ActionResult, fd: FormData): Promise<ActionResult> {
+  const s = await doch1MasterSession();
+  if (!s) return NO_PERMISSION;
+  const parsed = stateInput.safeParse(Object.fromEntries(fd));
+  if (!parsed.success) return { error: firstIssue(parsed.error) };
+  const { id, state } = parsed.data;
+  try {
+    await withUser(s.claims, async (tx) => {
+      const [r] = await tx.select({ state: rounds.state }).from(rounds).where(eq(rounds.id, id));
+      if (!r) throw new UserError("הסבב לא נמצא");
+      if (state === "active") {
+        const [other] = await tx.select({ name: rounds.name }).from(rounds).where(and(eq(rounds.active, true), ne(rounds.id, id)));
+        if (other) throw new UserError(`${other.name} פעיל. סוגרים אותו קודם, או מפעילים את הסבב הבא ממסך תכנון סבב.`);
+        // a planning round opens the same way as from "תכנון סבב" (its pending company moves apply)
+        if (r.state === "planning") {
+          await activateRound(tx, id);
+          return;
+        }
+      }
+      await tx.update(rounds).set({ state }).where(eq(rounds.id, id));
+    });
+  } catch (err) {
+    return { error: actionError(err) };
+  }
+  revalidateDoch1();
+  return { ok: true };
+}
+
+/** Delete a round that is still being planned (its members and settings go with it; people stay). */
+export async function deletePlanningRound(_: ActionResult, fd: FormData): Promise<ActionResult> {
+  const s = await doch1MasterSession();
+  if (!s) return NO_PERMISSION;
+  const parsed = z.object({ id: uuid }).safeParse(Object.fromEntries(fd));
+  if (!parsed.success) return { error: firstIssue(parsed.error) };
+  try {
+    await withUser(s.claims, async (tx) => {
+      const r = await tx
+        .delete(rounds)
+        .where(and(eq(rounds.id, parsed.data.id), eq(rounds.state, "planning")))
+        .returning({ id: rounds.id });
+      if (!r.length) throw new UserError("אפשר למחוק רק סבב בתכנון.");
+    });
+  } catch (err) {
+    return { error: actionError(err) };
+  }
+  revalidateDoch1();
+  return { ok: true };
+}
+
+/* ── צפי הגעה / סטטוס גיוס values ── */
+
+const fieldOptionInput = z
+  .object({
+    id: optionalId,
+    roundId: uuid,
+    field: z.enum(["arrival", "enlistment"]),
+    name: z.string().trim().min(1, "שם הערך חסר").max(30, "עד 30 תווים"),
+    effect: z.enum(["arriving", "not_arriving", "arrived", "pending", "postponed", "released"]),
+    sortOrder: z.coerce.number().int().min(0).max(999),
+  })
+  .refine((v) => (FIELD_OPTION_EFFECTS[v.field] as readonly string[]).includes(v.effect), { message: "המשמעות לא מתאימה לרשימה" });
+
+export async function saveFieldOption(_: ActionResult, fd: FormData): Promise<ActionResult> {
+  return saveRow(fd, fieldOptionInput, async (tx, { id, ...v }) => {
+    if (!id) return (await tx.insert(fieldOptions).values(v).returning({ id: fieldOptions.id })).length;
+    // a value stays in its list; only its name, effect and order change
+    const { field, roundId, ...rest } = v;
+    return (
+      await tx
+        .update(fieldOptions)
+        .set(rest)
+        .where(and(eq(fieldOptions.id, id), eq(fieldOptions.roundId, roundId), eq(fieldOptions.field, field)))
+        .returning({ id: fieldOptions.id })
+    ).length;
+  });
+}
+
+const deleteOptionInput = z.object({
+  id: uuid,
+  /** the value soldiers who had this one get instead; blank = empty */
+  replacementId: optionalId,
+});
+
+/** Delete a value; soldiers who had it get the replacement value (same list), or a blank field. */
+export async function deleteFieldOption(_: ActionResult, fd: FormData): Promise<ActionResult> {
+  return saveRow(fd, deleteOptionInput, async (tx, { id, replacementId }) => {
+    const [o] = await tx.select().from(fieldOptions).where(eq(fieldOptions.id, id));
+    if (!o) return 0;
+    if (replacementId === id) throw new UserError("בחרו ערך אחר להחלפה");
+    const column = o.field === "arrival" ? members.arrivalOptionId : members.enlistmentOptionId;
+    const set = o.field === "arrival" ? { arrivalOptionId: replacementId ?? null } : { enlistmentOptionId: replacementId ?? null };
+    await tx.update(members).set(set).where(and(eq(members.roundId, o.roundId), eq(column, id)));
+    return (await tx.delete(fieldOptions).where(eq(fieldOptions.id, id)).returning({ id: fieldOptions.id })).length;
+  });
 }
 
 const roundCompanyInput = z.object({

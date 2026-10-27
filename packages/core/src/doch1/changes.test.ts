@@ -5,6 +5,7 @@ const l: ChangeLookups = {
   status: (id) => ({ g: "עזה", h: "רענון" })[id],
   location: (id) => ({ m131: "מוצב 131" })[id],
   unit: (id) => ({ p1: "מחלקה 1", p2: "מחלקה 2" })[id],
+  option: (id) => ({ o1: "מגיע", o2: "לא מגיע" })[id],
 };
 
 describe("describeChange", () => {
@@ -26,6 +27,16 @@ describe("describeChange", () => {
       "מיקום בשבצ״ק: — ← מוצב 131",
     ]);
     expect(describeChange({ table: "doch1_members", action: "update", before, after: { ...before, sheet_row: 5 } }, l)).toEqual([]);
+  });
+
+  it("צפי הגעה / סטטוס גיוס by the value's name; a pending company move by the unit's", () => {
+    const before = { arrival_option_id: "o1", enlistment_option_id: null, planned_unit_id: null };
+    const after = { arrival_option_id: "o2", enlistment_option_id: "gone", planned_unit_id: "p2" };
+    expect(describeChange({ table: "doch1_members", action: "update", before, after }, l)).toEqual([
+      "צפי הגעה: מגיע ← לא מגיע",
+      "סטטוס גיוס: — ← ערך שנמחק",
+      "עובר בסבב הבא ל: — ← מחלקה 2",
+    ]);
   });
 
   it("people: phone and platoon", () => {

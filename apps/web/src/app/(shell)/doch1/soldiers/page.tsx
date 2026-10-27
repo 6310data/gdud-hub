@@ -2,7 +2,7 @@ import Link from "next/link";
 import { can } from "@gdud/auth";
 import { israelToday } from "@gdud/core";
 import { withUser } from "@gdud/db";
-import { loadActiveRound, loadMembers, loadRoundCompanies } from "@/lib/doch1/data";
+import { loadActiveRound, loadFieldOptions, loadMembers, loadRoundCompanies } from "@/lib/doch1/data";
 import { requireModule } from "@/lib/session";
 import { SoldiersBoard, type SoldierVM } from "./_components/soldiers-board";
 
@@ -21,8 +21,8 @@ export default async function Doch1Soldiers({ searchParams }: { searchParams: Pr
   const data = await withUser(s.claims, async (tx) => {
     const round = await loadActiveRound(tx);
     if (!round) return null;
-    const [companies, members] = await Promise.all([loadRoundCompanies(tx, round.id), loadMembers(tx, round.id, s.units)]);
-    return { round, companies, members };
+    const [companies, members, options] = await Promise.all([loadRoundCompanies(tx, round.id), loadMembers(tx, round.id, s.units), loadFieldOptions(tx, round.id)]);
+    return { round, companies, members, options };
   });
   if (!data) return null; // the layout shows "אין סבב פעיל"
 
@@ -35,6 +35,7 @@ export default async function Doch1Soldiers({ searchParams }: { searchParams: Pr
   if (!companies.length) return <p className="tz-card m-0 p-5 text-ink-muted">אין לך חיילים בסבב הפעיל.</p>;
   const unit = companies.find((c) => c.id === sp.unit) ?? companies[0]!;
 
+  const optionName = new Map(data.options.map((o) => [o.id, o.name]));
   const platoonOrder = (id: string | null) => (id ? (unitById.get(id)?.sortOrder ?? 0) + 1 : 0);
   const rows: SoldierVM[] = data.members
     .filter((m) => m.companyId === unit.id)
@@ -46,6 +47,8 @@ export default async function Doch1Soldiers({ searchParams }: { searchParams: Pr
       inReport: m.inReport,
       callUpOn: m.callUpOn,
       releasedOn: m.releasedOn,
+      arriving: m.arriving,
+      arrivalName: m.arrivalOptionId ? (optionName.get(m.arrivalOptionId) ?? null) : null,
       editable: can(s.user, "doch1", ["admin", "company_user"], m.unitId, s.parents),
     }));
 
@@ -57,7 +60,7 @@ export default async function Doch1Soldiers({ searchParams }: { searchParams: Pr
         </span>
         <h1 className="tz-large-title">חיילים</h1>
         <p className="tz-footnote m-0">
-          חייל מופיע בדוח, בלוח, בסקירה ובשבצ״ק מתאריך הגיוס ועד תאריך השחרור (כולל). חייל בלי תאריך גיוס לא מופיע באף רשימה. לחיצה על חייל פותחת את הכרטיס שלו; תאריכים לכמה חיילים יחד: ״בחירה״.
+          חייל מופיע בדוח, בלוח, בסקירה ובשבצ״ק מתאריך הגיוס ועד תאריך השחרור (כולל). חייל בלי תאריך גיוס, או שצפי ההגעה שלו ״לא מגיע״, לא מופיע באף רשימה. לחיצה על חייל פותחת את הכרטיס שלו; תאריכים לכמה חיילים יחד: ״בחירה״.
         </p>
       </div>
       {companies.length > 1 ? (

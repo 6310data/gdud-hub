@@ -2,10 +2,11 @@
  * דוח 1 — the daily personnel report, ported from the Google Sheet "דוח 1 - סבב <n>"
  * (layout: references/doch1/sheet-structure.md):
  *
- *   one sheet per round (סבב)                → doch1_rounds           (one active at a time)
+ *   one sheet per round (סבב)                → doch1_rounds           (one active, one planning at a time)
  *   'Dropdowns' companies / company tabs     → doch1_round_companies  (+ the pilot switch app_from)
  *   status words + groups (Dropdowns G–K)    → doch1_statuses         (flags drive every count; versioned)
  *   a soldier's row in a company tab (A–L)   → doch1_members          (sheet_tab/sheet_row for copy-to-sheet)
+ *   צפי הגעה (I) / סטטוס גיוס (K) values      → doch1_field_options    (effects drive hiding and the call-up day)
  *   a day cell (M…BS)                        → doch1_days             (no row = missing report)
  *   import answers (tab/platoon/status)      → doch1_import_mappings
  *   push reminders                           → doch1_push_subscriptions, doch1_reminder_requests, doch1_reminder_log
@@ -49,6 +50,17 @@ const timestamps = {
 const actor = (name: string) => uuid(name).default(sql`app.current_user_id()`);
 const day = (name: string) => date(name, { mode: "string" });
 
+export const ROUND_STATES = ["planning", "active", "closed"] as const;
+/** The two value lists of a round member and what each value does. */
+export const FIELD_OPTION_EFFECTS = {
+  /** צפי הגעה: not_arriving = the soldier is listed on no day of the round */
+  arrival: ["arriving", "not_arriving"],
+  /** סטטוס גיוס: postponed moves the call-up date, released sets the release date */
+  enlistment: ["arrived", "pending", "postponed", "released"],
+} as const;
+export type FieldOptionField = keyof typeof FIELD_OPTION_EFFECTS;
+export type FieldOptionEffect = (typeof FIELD_OPTION_EFFECTS)[FieldOptionField][number];
+
 /** A round (סבב). Times are Israel wall-clock times. */
 export const doch1Rounds = pgTable(
   "doch1_rounds",
@@ -62,13 +74,18 @@ export const doch1Rounds = pgTable(
     reminderAt: time("reminder_at").notNull().default("09:00"),
     lockAt: time("lock_at").notNull().default("10:00"),
     sendAt: time("send_at").notNull().default("10:15"),
-    active: boolean("active").notNull().default(false),
+    /** בתכנון → פעיל → סגור. The settings screen creates a new round in `planning`. */
+    state: text("state", { enum: ROUND_STATES }).notNull().default("closed"),
+    /** state = 'active', kept so reads of the active round don't change */
+    active: boolean("active").generatedAlwaysAs(sql`state = 'active'`),
     ...timestamps,
   },
   (t) => [
     check("doch1_rounds_dates", sql`${t.endsOn} >= ${t.startsOn}`),
     check("doch1_rounds_name_len", sql`length(${t.name}) between 1 and 40`),
+    check("doch1_rounds_state", sql`${t.state} in ('planning', 'active', 'closed')`),
     uniqueIndex("doch1_rounds_one_active").on(t.active).where(sql`${t.active}`),
+    uniqueIndex("doch1_rounds_one_planning").on(t.state).where(sql`${t.state} = 'planning'`),
   ],
 ).enableRLS();
 
@@ -131,6 +148,35 @@ export const doch1Statuses = pgTable(
   ],
 ).enableRLS();
 
+/**
+ * The values of צפי הגעה (sheet column I) and סטטוס גיוס (column K) in a round. `effect` drives
+ * behaviour, never the name. Members point at them with a composite FK (round_id, id), written
+ * by hand in 0020 (ON DELETE SET NULL of the option column only, which Drizzle can't express).
+ */
+export const doch1FieldOptions = pgTable(
+  "doch1_field_options",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    roundId: uuid("round_id")
+      .notNull()
+      .references(() => doch1Rounds.id, { onDelete: "cascade" }),
+    field: text("field", { enum: ["arrival", "enlistment"] }).notNull(),
+    name: text("name").notNull(),
+    effect: text("effect", { enum: ["arriving", "not_arriving", "arrived", "pending", "postponed", "released"] }).notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    ...timestamps,
+  },
+  (t) => [
+    unique("doch1_field_options_round_id_key").on(t.roundId, t.id),
+    uniqueIndex("doch1_field_options_round_field_name").on(t.roundId, t.field, t.name),
+    check("doch1_field_options_name_len", sql`length(${t.name}) between 1 and 30`),
+    check(
+      "doch1_field_options_effect",
+      sql`(${t.field} = 'arrival' and ${t.effect} in ('arriving', 'not_arriving')) or (${t.field} = 'enlistment' and ${t.effect} in ('arrived', 'pending', 'postponed', 'released'))`,
+    ),
+  ],
+).enableRLS();
+
 /** A soldier in a round (the row of a company tab, columns A–L, minus the shared people fields). */
 export const doch1Members = pgTable(
   "doch1_members",
@@ -144,12 +190,10 @@ export const doch1Members = pgTable(
     /** counted in the daily report (false = released / deferred, not expected) */
     inReport: boolean("in_report").notNull().default(true),
     dmhCategory: text("dmh_category"),
-    arrivalForecast: text("arrival_forecast"),
     /** תאריך גיוס: the soldier is listed from this day on; null = not called up (listed nowhere) */
     callUpOn: day("call_up_on"),
     /** תאריך שחרור: the last day the soldier is listed; null = not released */
     releasedOn: day("released_on"),
-    enlistmentStatus: text("enlistment_status"),
     hasDisc: boolean("has_disc"),
     notes: text("notes"),
     /** the company tab and row this soldier sits on in the sheet (copy-to-sheet order) */
@@ -157,6 +201,15 @@ export const doch1Members = pgTable(
     sheetRow: integer("sheet_row"),
     /** מיקום בשבצ״ק (outpost / camp / outside); null = not in the שבצ״ק */
     locationId: uuid("location_id").references((): AnyPgColumn => doch1Locations.id, { onDelete: "set null" }),
+    /** צפי הגעה → doch1_field_options (field 'arrival'); null = not filled (counts as arriving) */
+    arrivalOptionId: uuid("arrival_option_id"),
+    /** סטטוס גיוס → doch1_field_options (field 'enlistment') */
+    enlistmentOptionId: uuid("enlistment_option_id"),
+    /**
+     * A company move accepted from the battalion list for a soldier who is in the active round:
+     * applied to people.unit_id when this (planning) round is activated. Battalion admin only.
+     */
+    plannedUnitId: uuid("planned_unit_id").references(() => units.id, { onDelete: "set null" }),
     ...timestamps,
   },
   (t) => [
@@ -219,11 +272,16 @@ export const doch1ReminderRequests = pgTable(
     unitId: uuid("unit_id")
       .notNull()
       .references(() => units.id, { onDelete: "cascade" }),
+    /** report = missing daily reports; arrival = missing צפי הגעה in the planning round */
+    kind: text("kind", { enum: ["report", "arrival"] }).notNull().default("report"),
     requestedBy: actor("requested_by"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     processedAt: timestamp("processed_at", { withTimezone: true }),
   },
-  (t) => [index("doch1_reminder_requests_open_idx").on(t.processedAt)],
+  (t) => [
+    index("doch1_reminder_requests_open_idx").on(t.processedAt),
+    check("doch1_reminder_requests_kind", sql`${t.kind} in ('report', 'arrival')`),
+  ],
 ).enableRLS();
 
 /** Every reminder sent. The partial unique index makes the daily reminder once per user per day. */
@@ -268,7 +326,10 @@ export const doch1BrigadeLog = pgTable(
   ],
 ).enableRLS();
 
-/** Remembered import answers: sheet tab → company, platoon text → unit, sheet value → status, שבצ״ק מיקום → location. */
+/**
+ * Remembered import answers: sheet tab → company, platoon text → unit, sheet value → status,
+ * שבצ״ק מיקום → location, צפי הגעה / סטטוס גיוס text → a doch1_field_options value.
+ */
 export const doch1ImportMappings = pgTable(
   "doch1_import_mappings",
   {
@@ -284,7 +345,7 @@ export const doch1ImportMappings = pgTable(
   },
   (t) => [
     primaryKey({ columns: [t.roundId, t.kind, t.sourceKey] }),
-    check("doch1_import_mappings_kind", sql`${t.kind} in ('company', 'platoon', 'status', 'location')`),
+    check("doch1_import_mappings_kind", sql`${t.kind} in ('company', 'platoon', 'status', 'location', 'arrival', 'enlistment')`),
   ],
 ).enableRLS();
 

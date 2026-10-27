@@ -2,15 +2,17 @@ import { notFound } from "next/navigation";
 import { byHe, categoryIndex, dayRange, israelToday } from "@gdud/core";
 import { desc, eq, schema, withUser } from "@gdud/db";
 import { doch1Access } from "@/lib/doch1/access";
-import { countMembersByCompany, loadMembers, loadRoundCompanies, loadStatuses, toRoundVM } from "@/lib/doch1/data";
+import { countMembersByCompany, loadFieldOptions, loadMembers, loadRoundCompanies, loadStatuses, toRoundVM } from "@/lib/doch1/data";
 import { loadDmhCategories, loadReportGroups } from "@/lib/doch1/reports";
 import { loadLocations, loadStandbyTypes, loadTeams, loadVehicles } from "@/lib/doch1/standby";
-import { fmtDay } from "@/lib/doch1/format";
+import { fmtDay, ROUND_STATE_CHIP, ROUND_STATE_LABEL } from "@/lib/doch1/format";
 import { DepartmentRoles } from "@/components/department-roles/department-roles";
 import { requireModule } from "@/lib/session";
 import { CompaniesTable, type CompanyRow } from "./_components/companies-table";
+import { FieldOptionsEditor, type FieldOptionRow } from "./_components/field-options-editor";
 import { DmhCategoriesEditor, ReportGroupsEditor, type DmhCategoryRow, type UnitOption } from "./_components/report-settings";
 import { RoundForm } from "./_components/round-form";
+import { RoundStateBar } from "./_components/round-state";
 import { LocationsEditor, StandbyTypesEditor, VehiclesEditor, type LocationRow, type StandbyTypeRow, type VehicleSettingsRow } from "./_components/standby-settings";
 import { StatusEditor } from "./_components/status-editor";
 
@@ -20,6 +22,7 @@ const SECTIONS = [
   { id: "round", label: "גדוד וסבב", color: "var(--primary)" },
   { id: "companies", label: "פלוגות ומסגרות", color: "var(--tile-brigade)" },
   { id: "statuses", label: "סטטוסים", color: "var(--bar-broken)" },
+  { id: "values", label: "צפי הגעה וסטטוס גיוס", color: "var(--tile-ok)" },
   { id: "standby", label: "שבצ״ק, כוננות ורכבים", color: "var(--tile-broken)" },
   { id: "reports", label: "דוחות", color: "var(--tile-ok)" },
   { id: "rounds", label: "סבבים", color: "var(--tile-neutral)" },
@@ -49,41 +52,57 @@ function RoundPreview({ battalion, round }: { battalion: string; round: { name: 
   );
 }
 
-export default async function Doch1Settings() {
+export default async function Doch1Settings({ searchParams }: { searchParams: Promise<{ round?: string }> }) {
   const s = await requireModule("doch1");
   if (!doch1Access(s).isMaster) notFound();
+  const { round: wanted } = await searchParams;
 
   const data = await withUser(s.claims, async (tx) => {
     const rounds = await tx.select().from(schema.doch1Rounds).orderBy(desc(schema.doch1Rounds.startsOn));
-    const active = rounds.find((r) => r.active) ?? null;
-    if (!active) return { rounds, active, companies: [], statuses: [], replaced: 0, counts: new Map<string, number>(), standby: null, reports: null };
-    const [companies, all, counts, locations, types, vehicles, teams, members, categories, groups, dmhTexts] = await Promise.all([
-      loadRoundCompanies(tx, active.id),
-      loadStatuses(tx, active.id, { includeInactive: true }),
-      countMembersByCompany(tx, active.id, s.units),
-      loadLocations(tx, active.id),
-      loadStandbyTypes(tx, active.id),
+    // settings are edited for the active round or the one being planned (?round= picks between them)
+    const open = rounds.filter((r) => r.state !== "closed");
+    const selected = open.find((r) => r.id === wanted) ?? open.find((r) => r.state === "active") ?? open[0] ?? null;
+    if (!selected) {
+      return { rounds, selected, companies: [], statuses: [], replaced: 0, counts: new Map<string, number>(), standby: null, options: [], reports: null };
+    }
+    const [companies, all, counts, locations, types, vehicles, teams, members, options, used, categories, groups] = await Promise.all([
+      loadRoundCompanies(tx, selected.id),
+      loadStatuses(tx, selected.id, { includeInactive: true }),
+      countMembersByCompany(tx, selected.id, s.units),
+      loadLocations(tx, selected.id),
+      loadStandbyTypes(tx, selected.id),
       loadVehicles(tx),
-      loadTeams(tx, active.id),
-      loadMembers(tx, active.id, s.units),
-      loadDmhCategories(tx, active.id),
-      loadReportGroups(tx, active.id),
-      tx.select({ t: schema.doch1Members.dmhCategory }).from(schema.doch1Members).where(eq(schema.doch1Members.roundId, active.id)),
+      loadTeams(tx, selected.id),
+      loadMembers(tx, selected.id, s.units),
+      loadFieldOptions(tx, selected.id),
+      tx
+        .select({ a: schema.doch1Members.arrivalOptionId, e: schema.doch1Members.enlistmentOptionId, t: schema.doch1Members.dmhCategory })
+        .from(schema.doch1Members)
+        .where(eq(schema.doch1Members.roundId, selected.id)),
+      loadDmhCategories(tx, selected.id),
+      loadReportGroups(tx, selected.id),
     ]);
+    const uses = new Map<string, number>();
+    for (const u of used) for (const id of [u.a, u.e]) if (id) uses.set(id, (uses.get(id) ?? 0) + 1);
+    const optionRows: FieldOptionRow[] = options.map((o) => ({ ...o, used: uses.get(o.id) ?? 0 }));
     const current = all.filter((x) => x.active);
     return {
       rounds,
-      active,
+      selected,
       companies,
       statuses: current,
       replaced: all.length - current.length,
       counts,
       standby: { locations, types, vehicles, teams, members },
-      reports: { categories, groups, dmhTexts: dmhTexts.map((r) => r.t) },
+      options: optionRows,
+      reports: { categories, groups, dmhTexts: used.map((r) => r.t) },
     };
   });
 
-  const active = data.active ? toRoundVM(data.active) : null;
+  const active = data.selected ? toRoundVM(data.selected) : null;
+  const activeRound = data.rounds.find((r) => r.state === "active") ?? null;
+  const openRounds = data.rounds.filter((r) => r.state !== "closed").map(toRoundVM);
+  const hasPlanning = openRounds.some((r) => r.state === "planning");
   const companyRows: CompanyRow[] = s.units
     .filter((u) => u.kind === "company" && u.active)
     .sort((a, b) => a.sortOrder - b.sortOrder || byHe(a.name, b.name))
@@ -99,7 +118,7 @@ export default async function Doch1Settings() {
         members: data.counts.get(u.id) ?? 0,
       };
     });
-  const others = data.rounds.filter((r) => !r.active).map(toRoundVM);
+  const others = data.rounds.filter((r) => r.state === "closed").map(toRoundVM);
   const unitName = new Map(s.units.map((u) => [u.id, u.name]));
   const names = (ids: Iterable<string>) => [...new Set(ids)].map((id) => unitName.get(id) ?? "").filter(Boolean).join(", ");
   const sb = data.standby;
@@ -151,9 +170,19 @@ export default async function Doch1Settings() {
       <div className="flex min-w-0 max-w-[1080px] flex-1 flex-col gap-[30px]">
         <section id="round" className="flex scroll-mt-6 flex-col gap-1.5">
           <h2 className="px-4 pb-1 text-[20px] font-bold leading-[26px]">{active ? `גדוד וסבב · ${active.name}` : "סבב חדש"}</h2>
+          {openRounds.length > 1 ? (
+            <nav aria-label="בחירת סבב" className="tz-pills px-4 pb-1">
+              {openRounds.map((r) => (
+                <a key={r.id} href={`?round=${r.id}`} aria-current={r.id === active?.id ? "page" : undefined} className="tz-pill aria-[current=page]:bg-primary aria-[current=page]:text-white">
+                  {r.name} · {ROUND_STATE_LABEL[r.state]}
+                </a>
+              ))}
+            </nav>
+          ) : null}
+          {active ? <RoundStateBar id={active.id} state={active.state} activeName={activeRound && activeRound.id !== active.id ? activeRound.name : null} /> : null}
           <div className="flex flex-wrap items-start gap-[18px]">
             <div className="min-w-0 flex-[2_1_420px]">
-              <RoundForm round={active ? { ...active, active: true } : null} />
+              <RoundForm round={active} />
             </div>
             {active ? <RoundPreview battalion={battalion} round={active} /> : null}
           </div>
@@ -176,6 +205,11 @@ export default async function Doch1Settings() {
                 כל הספירות מחושבות לפי הדגלים, לא לפי השם. שינוי דגלים בסטטוס שכבר דווח יוצר גרסה חדשה מהיום והלאה
                 {data.replaced ? ` (${data.replaced} גרסאות קודמות שמורות)` : ""}. ״זמין לכוננות״ קובע מי נספר כזמין בצוותי הכוננות היום. ״מחנה בדוחות״: חייל בסטטוס הזה נספר במחנה בדוחות (מוצב נספר לפי השבצ״ק).
               </p>
+            </section>
+
+            <section id="values" className="flex scroll-mt-6 flex-col gap-1.5">
+              <h2 className="px-4 pb-1 text-[20px] font-bold leading-[26px]">צפי הגעה וסטטוס גיוס</h2>
+              <FieldOptionsEditor roundId={active.id} options={data.options} />
             </section>
 
             <section id="standby" className="flex scroll-mt-6 flex-col gap-1.5">
@@ -213,18 +247,23 @@ export default async function Doch1Settings() {
             <div className="tz-group">
               {others.map((r) => (
                 <details key={r.id} className="border-b border-separator">
-                  <summary className="cursor-pointer px-4 py-3">
+                  <summary className="flex cursor-pointer items-center gap-2 px-4 py-3">
                     {r.name} · <span className="tz-num">{fmtDay(r.startsOn)}–{fmtDay(r.endsOn)}</span>
+                    <span className={`tz-chip ${ROUND_STATE_CHIP[r.state]}`}>{ROUND_STATE_LABEL[r.state]}</span>
                   </summary>
-                  <div className="px-4 pb-4">
-                    <RoundForm round={{ ...r, active: false }} />
+                  <div className="flex flex-col gap-3 px-4 pb-4">
+                    <RoundStateBar id={r.id} state={r.state} activeName={activeRound?.name ?? null} />
+                    <RoundForm round={r} />
                   </div>
                 </details>
               ))}
-              {active ? (
+              {active && !hasPlanning ? (
                 <details>
                   <summary className="cursor-pointer px-4 py-3 font-semibold text-primary">סבב חדש</summary>
-                  <div className="px-4 pb-4">
+                  <div className="flex flex-col gap-2 px-4 pb-4">
+                    <p className="tz-footnote m-0">
+                      הסבב החדש נפתח בתכנון, עם הפלוגות, הסטטוסים, ערכי צפי הגעה וסטטוס גיוס, המיקומים, סוגי הכוננות, קטגוריות הדמ״ח וקבוצות 10א של {activeRound?.name ?? "הסבב האחרון"}. הסבב הנוכחי לא משתנה.
+                    </p>
                     <RoundForm round={null} />
                   </div>
                 </details>

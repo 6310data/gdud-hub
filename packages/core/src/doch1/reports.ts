@@ -24,8 +24,8 @@ export interface ReportSoldier extends ServiceDates {
   locationId: string | null;
   /** תפקיד לדמ״ח as typed in the sheet / card */
   dmhCategory: string | null;
-  /** צפי הגעה */
-  arrivalForecast: string | null;
+  /** צפי הגעה value (doch1_field_options); null = not filled */
+  arrivalOptionId: string | null;
   personalNumber: string | null;
 }
 
@@ -360,7 +360,7 @@ export function dataChecks(input: ReportInput): Record<DataCheck, string[]> {
     atOutpostOtherStatus: loc.atOutpostOtherStatus,
     shabzakNotInRound: input.soldiers.filter((m) => m.locationId && !roster.has(m.personId)).map((m) => m.personId),
     noForecast: input.soldiers
-      .filter((m) => m.inReport && (m.releasedOn === null || m.releasedOn >= input.day) && !m.arrivalForecast?.trim())
+      .filter((m) => m.inReport && (m.releasedOn === null || m.releasedOn >= input.day) && !m.arrivalOptionId)
       .map((m) => m.personId),
     duplicateNumber: input.soldiers.filter((m) => dup.has(m.personId)).map((m) => m.personId),
     noNumber: input.soldiers.filter((m) => !personalNumberKey(m.personalNumber)).map((m) => m.personId),

@@ -41,6 +41,27 @@ export function reminderMessages(
   return out;
 }
 
+/** "Fill צפי הגעה" from the planning screen: one message per (user, scope) with soldiers not filled yet. */
+export function arrivalReminderMessages(
+  recipients: readonly ReminderRecipient[],
+  blankByUnit: ReadonlyMap<string, number>,
+): ReminderMessage[] {
+  const out: ReminderMessage[] = [];
+  for (const r of recipients) {
+    const missing = blankByUnit.get(r.scopeUnitId) ?? 0;
+    if (missing <= 0) continue;
+    out.push({
+      userId: r.userId,
+      unitId: r.scopeUnitId,
+      missing,
+      title: "דוח 1 · תכנון סבב",
+      body: `${r.scopeName} · חסר צפי הגעה ל־${missing} חיילים`,
+      url: `/doch1/planning?unit=${r.scopeUnitId}`,
+    });
+  }
+  return out;
+}
+
 /** The daily reminder is due once the Israel clock reaches the reminder time, once a day. */
 export function isDue(now: Date, reminderAt: string, alreadySentToday: boolean): boolean {
   return !alreadySentToday && israelClock(now) >= reminderAt.slice(0, 5);

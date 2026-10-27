@@ -5,6 +5,7 @@ import "server-only";
  */
 import type { AuditEntry, Day } from "@gdud/core";
 import { and, asc, eq, schema, sql, type Tx } from "@gdud/db";
+import { loadFieldOptions, memberArriving, type FieldOptionVM } from "./data";
 
 const { people, doch1Members: members, doch1Days: days } = schema;
 
@@ -18,9 +19,12 @@ export interface SoldierVM {
   inReport: boolean;
   callUpOn: Day | null;
   releasedOn: Day | null;
+  /** false = marked not arriving (listed on no day) */
+  arriving: boolean;
   dmhCategory: string | null;
-  arrivalForecast: string | null;
-  enlistmentStatus: string | null;
+  /** צפי הגעה / סטטוס גיוס values (doch1_field_options) */
+  arrivalOptionId: string | null;
+  enlistmentOptionId: string | null;
   hasDisc: boolean | null;
   notes: string | null;
   locationId: string | null;
@@ -38,9 +42,10 @@ export async function loadSoldier(tx: Tx, roundId: string, personId: string): Pr
       inReport: members.inReport,
       callUpOn: members.callUpOn,
       releasedOn: members.releasedOn,
+      arriving: memberArriving,
       dmhCategory: members.dmhCategory,
-      arrivalForecast: members.arrivalForecast,
-      enlistmentStatus: members.enlistmentStatus,
+      arrivalOptionId: members.arrivalOptionId,
+      enlistmentOptionId: members.enlistmentOptionId,
       hasDisc: members.hasDisc,
       notes: members.notes,
       locationId: members.locationId,
@@ -65,13 +70,28 @@ export async function loadSoldierDays(tx: Tx, roundId: string, personId: string)
  * The values already used in the round for a free-text member field — the edit sheet suggests
  * them (the sheet's lists: סטטוס גיוס, צפי הגעה, תפקיד לדמ״ח).
  */
-export async function loadFieldValues(tx: Tx, roundId: string): Promise<{ enlistment: string[]; arrival: string[]; dmh: string[] }> {
-  const distinct = async (col: typeof members.enlistmentStatus | typeof members.arrivalForecast | typeof members.dmhCategory) =>
-    (await tx.selectDistinct({ v: col }).from(members).where(and(eq(members.roundId, roundId), sql`${col} is not null`)))
-      .map((r) => r.v!)
-      .sort((a, b) => a.localeCompare(b, "he"));
-  const [enlistment, arrival, dmh] = await Promise.all([distinct(members.enlistmentStatus), distinct(members.arrivalForecast), distinct(members.dmhCategory)]);
-  return { enlistment, arrival, dmh };
+export interface FieldValues {
+  /** תפקיד לדמ״ח values used in the round (free text, suggested) */
+  dmh: string[];
+  /** the round's צפי הגעה / סטטוס גיוס lists (picked from) */
+  arrival: FieldOptionVM[];
+  enlistment: FieldOptionVM[];
+}
+
+/** What the edit sheet offers: the round's value lists and the דמ״ח values already used. */
+export async function loadFieldValues(tx: Tx, roundId: string): Promise<FieldValues> {
+  const [dmhRows, options] = await Promise.all([
+    tx
+      .selectDistinct({ v: members.dmhCategory })
+      .from(members)
+      .where(and(eq(members.roundId, roundId), sql`${members.dmhCategory} is not null`)),
+    loadFieldOptions(tx, roundId),
+  ]);
+  return {
+    dmh: dmhRows.map((r) => r.v!).sort((a, b) => a.localeCompare(b, "he")),
+    arrival: options.filter((o) => o.field === "arrival"),
+    enlistment: options.filter((o) => o.field === "enlistment"),
+  };
 }
 
 export interface LogRowVM extends AuditEntry {

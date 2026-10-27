@@ -70,6 +70,7 @@ export default async function Doch1Board({ searchParams }: { searchParams: Promi
       inReport: m.inReport,
       callUpOn: m.callUpOn,
       releasedOn: m.releasedOn,
+      arriving: m.arriving,
     }))
     .sort((a, b) => platoonOrder(a.platoonId) - platoonOrder(b.platoonId) || (a.platoonName ?? "").localeCompare(b.platoonName ?? "", "he"));
   const days: DaysByDay = Object.fromEntries([...data.loaded].map(([d, m]) => [d, Object.fromEntries(m)]));

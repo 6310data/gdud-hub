@@ -3,15 +3,24 @@ import "server-only";
  * דוח 1 read models. Every loader takes the caller's `withUser` transaction, so what comes
  * back is already filtered by RLS (a platoon commander sees their platoon).
  */
-import { byHe, inService, inServiceBetween, placement, type Day, type ReportMember, type ServiceDates, type StatusDef, type UnitNode } from "@gdud/core";
-import { and, asc, eq, inArray, schema, type Tx } from "@gdud/db";
+import { byHe, inService, inServiceBetween, placement, type ArrivalEffect, type Day, type EnlistmentEffect, type ReportMember, type ServiceDates, type StatusDef, type UnitNode } from "@gdud/core";
+import { and, asc, eq, inArray, schema, sql, type Tx } from "@gdud/db";
 
 const { people, doch1Rounds: rounds, doch1RoundCompanies: roundCompanies, doch1Statuses: statuses } = schema;
-const { doch1Members: members, doch1Days: days } = schema;
+const { doch1Members: members, doch1Days: days, doch1FieldOptions: fieldOptions } = schema;
+
+/**
+ * `ServiceDates.arriving` of a doch1_members row, for a select: false only when the soldier's
+ * צפי הגעה value is a "not arriving" one (blank counts as arriving).
+ */
+export const memberArriving = sql<boolean>`not exists (select 1 from ${fieldOptions} where ${fieldOptions.id} = ${members.arrivalOptionId} and ${fieldOptions.effect} = 'not_arriving')`;
+
+export type RoundState = "planning" | "active" | "closed";
 
 export interface RoundVM {
   id: string;
   name: string;
+  state: RoundState;
   startsOn: Day;
   endsOn: Day;
   callUpOn: Day | null;
@@ -27,6 +36,7 @@ export function toRoundVM(r: typeof rounds.$inferSelect): RoundVM {
   return {
     id: r.id,
     name: r.name,
+    state: r.state,
     startsOn: r.startsOn,
     endsOn: r.endsOn,
     callUpOn: r.callUpOn,
@@ -39,6 +49,32 @@ export function toRoundVM(r: typeof rounds.$inferSelect): RoundVM {
 export async function loadActiveRound(tx: Tx): Promise<RoundVM | null> {
   const [r] = await tx.select().from(rounds).where(eq(rounds.active, true)).limit(1);
   return r ? toRoundVM(r) : null;
+}
+
+/** The round being prepared (בתכנון), if any. */
+export async function loadPlanningRound(tx: Tx): Promise<RoundVM | null> {
+  const [r] = await tx.select().from(rounds).where(eq(rounds.state, "planning")).limit(1);
+  return r ? toRoundVM(r) : null;
+}
+
+export type FieldOptionField = "arrival" | "enlistment";
+export type FieldOptionEffect = ArrivalEffect | EnlistmentEffect;
+
+export interface FieldOptionVM {
+  id: string;
+  field: FieldOptionField;
+  name: string;
+  effect: FieldOptionEffect;
+  sortOrder: number;
+}
+
+/** צפי הגעה and סטטוס גיוס values of a round, by list and order. */
+export async function loadFieldOptions(tx: Tx, roundId: string): Promise<FieldOptionVM[]> {
+  return tx
+    .select({ id: fieldOptions.id, field: fieldOptions.field, name: fieldOptions.name, effect: fieldOptions.effect, sortOrder: fieldOptions.sortOrder })
+    .from(fieldOptions)
+    .where(eq(fieldOptions.roundId, roundId))
+    .orderBy(asc(fieldOptions.field), asc(fieldOptions.sortOrder), asc(fieldOptions.name));
 }
 
 export function toStatusDef(s: typeof statuses.$inferSelect): StatusDef {
@@ -86,6 +122,9 @@ export interface MemberVM extends ReportMember, ServiceDates {
   sheetRow: number | null;
   /** מיקום בשבצ״ק */
   locationId: string | null;
+  /** צפי הגעה / סטטוס גיוס values (doch1_field_options) */
+  arrivalOptionId: string | null;
+  enlistmentOptionId: string | null;
 }
 
 export interface RoundCompanyVM {
@@ -114,9 +153,12 @@ export async function loadMembers(tx: Tx, roundId: string, units: UnitNode[]): P
       inReport: members.inReport,
       callUpOn: members.callUpOn,
       releasedOn: members.releasedOn,
+      arriving: memberArriving,
       sheetTab: members.sheetTab,
       sheetRow: members.sheetRow,
       locationId: members.locationId,
+      arrivalOptionId: members.arrivalOptionId,
+      enlistmentOptionId: members.enlistmentOptionId,
       name: people.fullName,
       roleTitle: people.roleTitle,
       unitId: people.unitId,
@@ -136,12 +178,15 @@ export async function loadMembers(tx: Tx, roundId: string, units: UnitNode[]): P
       inReport: r.inReport,
       callUpOn: r.callUpOn,
       releasedOn: r.releasedOn,
+      arriving: r.arriving,
       name: r.name,
       roleTitle: r.roleTitle,
       unitId: r.unitId,
       sheetTab: r.sheetTab,
       sheetRow: r.sheetRow,
       locationId: r.locationId,
+      arrivalOptionId: r.arrivalOptionId,
+      enlistmentOptionId: r.enlistmentOptionId,
     });
   }
   return out.sort((a, b) => byHe(a.name, b.name));

@@ -58,23 +58,36 @@ export interface ReportMember {
   inReport: boolean;
 }
 
-/** A soldier's service in the round (תאריך גיוס / תאריך שחרור). */
+/** What a צפי הגעה value does (doch1_field_options.effect, field 'arrival'). */
+export type ArrivalEffect = "arriving" | "not_arriving";
+/** What a סטטוס גיוס value does (doch1_field_options.effect, field 'enlistment'). */
+export type EnlistmentEffect = "arrived" | "pending" | "postponed" | "released";
+
+/** A soldier's service in the round (תאריך גיוס / תאריך שחרור, צפי הגעה). */
 export interface ServiceDates {
   callUpOn: Day | null;
   releasedOn: Day | null;
+  /** false only for a "not arriving" צפי הגעה; a blank one counts as arriving */
+  arriving: boolean;
+}
+
+/** `arriving` of a member from their צפי הגעה value's effect (null = not filled). */
+export function isArriving(effect: ArrivalEffect | null | undefined): boolean {
+  return effect !== "not_arriving";
 }
 
 /**
- * Is the soldier listed on `day`? From the call-up date through the release date, inclusive.
- * No call-up date = listed on no day: every screen, count and reminder leaves the soldier out.
+ * Is the soldier listed on `day`? From the call-up date through the release date, inclusive,
+ * unless marked not arriving. No call-up date, or not arriving = listed on no day: every screen,
+ * count and reminder leaves the soldier out.
  */
 export function inService(m: ServiceDates, day: Day): boolean {
-  return m.callUpOn !== null && m.callUpOn <= day && (m.releasedOn === null || day <= m.releasedOn);
+  return m.arriving && m.callUpOn !== null && m.callUpOn <= day && (m.releasedOn === null || day <= m.releasedOn);
 }
 
 /** Is the soldier listed on any day from `from` to `to` (inclusive)? */
 export function inServiceBetween(m: ServiceDates, from: Day, to: Day): boolean {
-  return m.callUpOn !== null && m.callUpOn <= to && (m.releasedOn === null || from <= m.releasedOn);
+  return m.arriving && m.callUpOn !== null && m.callUpOn <= to && (m.releasedOn === null || from <= m.releasedOn);
 }
 
 /** personId → statusId for one day; a missing key = no entry (= missing report). */

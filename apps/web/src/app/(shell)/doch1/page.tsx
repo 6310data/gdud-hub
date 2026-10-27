@@ -50,7 +50,15 @@ export default async function Doch1Overview({ searchParams }: { searchParams: Pr
   const dayStatuses = data.days.get(day)!;
   const listed = listedOn(data.members, day);
   const ofCompany = (id: string) => listed.filter((m) => m.companyId === id);
-  const rows: CompanySummary[] = companies.map((c) => ({ unitId: c.id, name: c.name, color: c.color, summary: summarize(ofCompany(c.id), dayStatuses, data.statuses) }));
+  // "not arriving" soldiers are listed on no day; the overview shows how many, next to the counts
+  const notArrivingOf = (id: string) => data.members.filter((m) => m.companyId === id && !m.arriving).length;
+  const rows: CompanySummary[] = companies.map((c) => ({
+    unitId: c.id,
+    name: c.name,
+    color: c.color,
+    summary: summarize(ofCompany(c.id), dayStatuses, data.statuses),
+    notArriving: notArrivingOf(c.id),
+  }));
   const visible = data.members.filter((m) => companies.some((c) => c.id === m.companyId));
   const total = summarize(listedOn(visible, day), dayStatuses, data.statuses);
   const scope = sp.unit && rows.some((r) => r.unitId === sp.unit) ? sp.unit : null;
@@ -93,6 +101,7 @@ export default async function Doch1Overview({ searchParams }: { searchParams: Pr
       dayQuery={day === today ? "" : `&day=${day}`}
       rows={rows}
       total={total}
+      notArriving={rows.reduce((n, r) => n + r.notArriving, 0)}
       scope={scope}
       missing={missing}
       trend={trend}

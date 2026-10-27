@@ -44,7 +44,7 @@ export async function loadReportGroups(tx: Tx, roundId: string): Promise<ReportG
 /** The round fields the reports need beyond loadMembers: תפקיד לדמ״ח, צפי הגעה, מספר אישי. */
 async function loadReportFields(tx: Tx, roundId: string) {
   const rows = await tx
-    .select({ personId: members.personId, dmhCategory: members.dmhCategory, arrivalForecast: members.arrivalForecast, personalNumber: people.personalNumber })
+    .select({ personId: members.personId, dmhCategory: members.dmhCategory, personalNumber: people.personalNumber })
     .from(members)
     .innerJoin(people, eq(people.id, members.personId))
     .where(eq(members.roundId, roundId));
@@ -122,9 +122,10 @@ export async function loadReportsData(s: Session, dayParam: string | undefined):
         inReport: m.inReport,
         callUpOn: m.callUpOn,
         releasedOn: m.releasedOn,
+        arriving: m.arriving,
         locationId: m.locationId,
         dmhCategory: f?.dmhCategory ?? null,
-        arrivalForecast: f?.arrivalForecast ?? null,
+        arrivalOptionId: m.arrivalOptionId,
         personalNumber: f?.personalNumber ?? null,
       };
     }),

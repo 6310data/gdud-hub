@@ -1,7 +1,7 @@
 /**
  * Apply a round-sheet import: the same resolution as planSheetImport(), then the writes,
  * all inside the caller's single RLS transaction (withUser). Order: new companies (then the
- * resolution again, with their ids) → statuses → platoons → round companies → people →
+ * resolution again, with their ids) → statuses → צפי הגעה / סטטוס גיוס values → platoons → round companies → people →
  * members → days → שבצ״ק (locations, vehicles, teams, team members, soldiers' locations) →
  * remembered mappings. `onProgress` reports each phase as it starts and how far
  * the long ones got, so the import screen can show the steps of a long first import.
@@ -22,9 +22,10 @@ import {
   type ImportCounts,
   type ImportMappings,
   type NewStatus,
+  type OptionField,
 } from "./plan";
 
-const { units, people, doch1RoundCompanies, doch1Statuses, doch1Members, doch1Days, doch1ImportMappings } = schema;
+const { units, people, doch1RoundCompanies, doch1Statuses, doch1Members, doch1Days, doch1ImportMappings, doch1FieldOptions } = schema;
 const { doch1Locations, doch1Vehicles, doch1StandbyTeams, doch1StandbyHolders, doch1StandbyMembers } = schema;
 
 const WRITE_CHUNK = 500;
@@ -106,6 +107,19 @@ export async function applySheetImport(
     for (const s of created) statusIds.set(s.sheetValue, s.id);
   }
 
+  /* צפי הגעה / סטטוס גיוס values */
+  const optionIds: Record<OptionField, Map<string, string>> = { arrival: new Map(), enlistment: new Map() };
+  for (const field of ["arrival", "enlistment"] as const) {
+    for (const [key, target] of res.optionMap[field]) if (!target.startsWith("create:")) optionIds[field].set(key, target);
+  }
+  if (res.newOptions.length) {
+    const created = await tx
+      .insert(doch1FieldOptions)
+      .values(res.newOptions.map((o) => ({ roundId, field: o.field, name: o.name, effect: o.effect, sortOrder: o.sortOrder })))
+      .returning({ id: doch1FieldOptions.id, field: doch1FieldOptions.field, name: doch1FieldOptions.name });
+    for (const o of res.newOptions) optionIds[o.field].set(o.key, created.find((c) => c.field === o.field && c.name === o.name)!.id);
+  }
+
   /* platoons */
   const unitIds = new Map<string, string>();
   const toCreate: string[] = [];
@@ -163,6 +177,7 @@ export async function applySheetImport(
     res,
     (pn) => personIds.get(pn)!,
     (value) => statusIds.get(value),
+    (field, key) => optionIds[field].get(key),
   );
   let membersDone = 0;
   onProgress("members", 0, changes.members.length);
@@ -174,12 +189,12 @@ export async function applySheetImport(
         target: [doch1Members.roundId, doch1Members.personId],
         set: {
           dmhCategory: sql`excluded.dmh_category`,
-          arrivalForecast: sql`excluded.arrival_forecast`,
+          arrivalOptionId: sql`excluded.arrival_option_id`,
           // a blank call-up date in the sheet keeps the one entered in the app; a release date
           // before the new call-up date is dropped (it would break doch1_members_service_dates)
           callUpOn: sql`coalesce(excluded.call_up_on, ${doch1Members.callUpOn})`,
           releasedOn: sql`case when ${doch1Members.releasedOn} < coalesce(excluded.call_up_on, ${doch1Members.callUpOn}) then null else ${doch1Members.releasedOn} end`,
-          enlistmentStatus: sql`excluded.enlistment_status`,
+          enlistmentOptionId: sql`excluded.enlistment_option_id`,
           hasDisc: sql`excluded.has_disc`,
           notes: sql`excluded.notes`,
           sheetTab: sql`excluded.sheet_tab`,
@@ -294,6 +309,9 @@ export async function applySheetImport(
     ...[...res.platoonMap.keys()].map((sourceKey) => ({ kind: "platoon", sourceKey, targetId: unitIds.get(sourceKey) ?? null })),
     ...[...res.statusMap.keys()].map((sourceKey) => ({ kind: "status", sourceKey, targetId: statusIds.get(sourceKey) ?? null })),
     ...[...res.standby.locationMap.keys()].map((sourceKey) => ({ kind: "location", sourceKey, targetId: locationIds.get(sourceKey) ?? null })),
+    ...(["arrival", "enlistment"] as const).flatMap((kind) =>
+      [...res.optionMap[kind].keys()].map((sourceKey) => ({ kind, sourceKey, targetId: optionIds[kind].get(sourceKey) ?? null })),
+    ),
   ];
   for (const chunk of chunks(saved)) {
     await tx
@@ -320,5 +338,6 @@ export async function applySheetImport(
     teamsCreated: sb.newTeams.length,
     teamMembersChanged: sb.addMembers.length + sb.removeMembers.length + sb.roleUpdates.length,
     vehiclesCreated: sb.newVehicles.length,
+    optionsCreated: res.newOptions.length,
   };
 }
