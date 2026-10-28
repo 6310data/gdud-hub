@@ -11,7 +11,8 @@ import { loadPeople, personPlace } from "@/lib/logistics/data";
 import { fmtCount, fmtWhen } from "@/lib/logistics/format";
 import { requireModule } from "@/lib/session";
 import { CompanyDot, ReportChip, SearchBox, SeenChip, SegLinks, SoldierName, pillCount } from "../../_components/ui";
-import { AssignProvider, GroupCheck, RowCheck, RowEdit, type AssignPerson } from "./_components/assign";
+import type { SheetPerson } from "../../_components/serial-sheet";
+import { AssignProvider, GroupCheck, RowCheck, RowEdit } from "./_components/assign";
 
 export const metadata = { title: "פלוגה" };
 
@@ -57,10 +58,11 @@ export default async function KesherCompany({
   const assigned = mine.filter((x) => x.holder?.holder).length;
   const status = companyStatus(last, data.staleDays, now);
   const base = `/kesher/companies/${company.id}`;
-  // the picker: the company's active soldiers (RLS already limits people to what the user covers)
-  const people: AssignPerson[] = soldiers
-    .filter((p) => p.companyId === company.id)
-    .map((p) => ({ id: p.id, name: p.name, personalNumber: p.personalNumber, place: personPlace(p), platoonName: p.platoonName }));
+  // the picker: active soldiers (RLS already limits people to what the user covers); an admin may
+  // move a צ׳ to another company, so gets every company's
+  const people: SheetPerson[] = soldiers
+    .filter((p) => access.isAdmin || p.companyId === company.id)
+    .map((p) => ({ id: p.id, name: p.name, personalNumber: p.personalNumber, place: personPlace(p), platoonName: p.platoonName, companyId: p.companyId }));
 
   return (
     <>
@@ -136,13 +138,17 @@ export default async function KesherCompany({
         <CompTable data={data} unitId={company.id} serials={mine} />
       ) : (
         <AssignProvider
-          unitId={company.id}
-          canSign={access.isAdmin}
+          isAdmin={access.isAdmin}
           people={people}
+          companies={access.companies.map((c) => ({ id: c.id, name: c.name }))}
           rows={mine.map((x) => ({
             serialId: x.id,
             serial: x.serial,
             item: x.itemName,
+            location: x.location,
+            unitId: x.unitId,
+            vehicle: x.vehicle,
+            notes: x.notes,
             holderPersonId: x.holder?.holder?.id ?? null,
             holderRole: x.holder?.holderRole ?? null,
             frame: x.holder?.frame ?? null,
@@ -195,6 +201,7 @@ function SerialsTable({
                 <th>תפקיד</th>
                 <th>מסגרת</th>
                 <th className="max-md:hidden">חותם על הפלוגה</th>
+                <th className="max-md:hidden">האמר</th>
                 <th>נבדק</th>
                 <th className="w-0">
                   <span className="sr-only">עריכה</span>
@@ -211,7 +218,7 @@ function SerialsTable({
           <Empty>אין צ׳ תואם</Empty>
         )}
       </div>
-      <p className="tz-section-footer">השיוך בתוך הפלוגה (חותם · תפקיד · מסגרת) לא משנה את הפלוגה החתומה — הצ׳ נשאר על {companyName}.</p>
+      <p className="tz-section-footer">השיוך בתוך הפלוגה (חותם · תפקיד · מסגרת) לא משנה את הפלוגה החתומה — הצ׳ נשאר על {companyName}. רק מנהל קשר גדודי משנה מיקום, חותם על הפלוגה, האמר והערה.</p>
     </>
   );
 }
@@ -238,7 +245,7 @@ function GroupRows({
         <th>
           <GroupCheck ids={list.map((x) => x.id)} label={type} />
         </th>
-        <th colSpan={7}>
+        <th colSpan={8}>
           {type}{" "}
           <span className="tz-num font-normal">
             · {done}/{list.length} משויכים
@@ -267,9 +274,12 @@ function GroupRows({
                 {x.holder.signerRole ? <span className="tz-row-sub text-xs">{x.holder.signerRole}</span> : null}
               </>
             ) : (
-              <span className="text-xs text-ink-muted">ללא חותם</span>
+              <span className="text-xs text-ink-muted" data-sort="">
+                ללא חותם
+              </span>
             )}
           </td>
+          <td className="max-md:hidden">{x.vehicle ? <Serial>{x.vehicle}</Serial> : null}</td>
           <td>
             <SeenChip seen={lastSeen.get(x.id)} staleDays={staleDays} now={now} />
           </td>
