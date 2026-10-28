@@ -34,6 +34,8 @@ export interface LocationVM {
 export interface VehicleVM {
   id: string;
   number: string;
+  /** the company it belongs to; null = battalion */
+  unitId: string | null;
   kind: string | null;
   state: VehicleState;
   notes: string | null;
@@ -61,6 +63,8 @@ export interface TeamMemberVM {
 export interface TeamVM {
   id: string;
   name: string;
+  /** the company that owns it (its only holder); null = battalion */
+  unitId: string | null;
   typeId: string | null;
   locationId: string | null;
   vehicleId: string | null;
@@ -77,7 +81,7 @@ export async function loadLocations(tx: Tx, roundId: string): Promise<LocationVM
 
 export async function loadVehicles(tx: Tx): Promise<VehicleVM[]> {
   const rows = await tx.select().from(vehicles).orderBy(asc(vehicles.number));
-  return rows.map((r) => ({ id: r.id, number: r.number, kind: r.kind, state: r.state as VehicleState, notes: r.notes, active: r.active }));
+  return rows.map((r) => ({ id: r.id, number: r.number, unitId: r.unitId, kind: r.kind, state: r.state as VehicleState, notes: r.notes, active: r.active }));
 }
 
 export async function loadStandbyTypes(tx: Tx, roundId: string): Promise<StandbyTypeVM[]> {
@@ -111,6 +115,7 @@ export async function loadTeams(tx: Tx, roundId: string): Promise<TeamVM[]> {
     .map((r) => ({
       id: r.id,
       name: r.name,
+      unitId: r.unitId,
       typeId: r.typeId,
       locationId: r.locationId,
       vehicleId: r.vehicleId,

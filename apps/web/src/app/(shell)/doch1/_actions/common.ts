@@ -23,10 +23,13 @@ export interface Doch1Ctx {
   round: RoundVM;
 }
 
-/** Session of a doch1 member with the active round, or null (no session / membership / round). */
+/**
+ * Session of a doch1 member — or of a ניהול פלוגה company admin, who edits their company's own standby
+ * (0035) — with the active round, or null (no session / membership / round).
+ */
 export async function doch1Ctx(): Promise<Doch1Ctx | null> {
   const s = await getSession();
-  if (!s || !can(s.user, "doch1", "any")) return null;
+  if (!s || !(can(s.user, "doch1", "any") || can(s.user, "company", ["admin"]))) return null;
   const loaded = await withUser(s.claims, async (tx) => {
     const round = await loadActiveRound(tx);
     const companies = round ? await loadRoundCompanies(tx, round.id) : [];
@@ -54,6 +57,8 @@ export async function doch1MasterSession(): Promise<Session | null> {
 
 export function revalidateDoch1(): void {
   revalidatePath("/doch1", "layout");
+  // ניהול פלוגה fills דוח 1 and the שבצ״ק from its own screens too
+  revalidatePath("/company", "layout");
 }
 
 export function firstIssue(err: z.ZodError): string {

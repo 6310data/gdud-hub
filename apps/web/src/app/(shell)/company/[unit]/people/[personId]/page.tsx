@@ -1,13 +1,11 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { z } from "zod";
 import { israelToday, placement } from "@gdud/core";
 import { withUser } from "@gdud/db";
-import { Icon } from "@gdud/ui";
 import { ActionForm } from "@/components/action-form";
 import { PageHeader, Panel } from "@/components/page-parts";
 import { coversPerson, requireCompanyScope } from "@/lib/company/access";
-import { loadDays, loadDetails, loadGear, loadOpenChanges } from "@/lib/company/data";
+import { loadDays, loadDetails, loadGear, loadOpenChanges, loadPersonActivities } from "@/lib/company/data";
 import { linkAccount } from "../../../_actions/requests";
 import { PersonView } from "../../../_components/person-view";
 
@@ -23,9 +21,15 @@ export default async function SoldierPage({ params }: { params: Promise<{ unit: 
   const personId = p.data.personId;
   const today = israelToday(new Date());
 
-  const { details, gear, round, changes } = await withUser(s.claims, async (tx) => {
-    const [details, gear, round, changes] = await Promise.all([loadDetails(tx, personId), loadGear(tx, personId), loadDays(tx, personId), loadOpenChanges(tx, personId)]);
-    return { details, gear, round, changes };
+  const { details, gear, round, changes, activities } = await withUser(s.claims, async (tx) => {
+    const [details, gear, round, changes, activities] = await Promise.all([
+      loadDetails(tx, personId),
+      loadGear(tx, personId),
+      loadDays(tx, personId),
+      loadOpenChanges(tx, personId),
+      loadPersonActivities(tx, personId),
+    ]);
+    return { details, gear, round, changes, activities };
   });
   // person_details returns nothing for a soldier the user doesn't cover
   if (!details || !coversPerson(scope, details.unitId, s.parents)) notFound();
@@ -34,12 +38,8 @@ export default async function SoldierPage({ params }: { params: Promise<{ unit: 
 
   return (
     <>
-      <Link href={`/company/${scope.company.id}`} className="tz-btn tz-btn-plain tz-btn-sm self-start">
-        <Icon name="chevron" size={15} />
-        חזרה לפלוגה
-      </Link>
       <PageHeader title={details.fullName} sub={place} />
-      <PersonView details={details} gear={gear} round={round} changes={changes} today={today} editable={false} place={place} />
+      <PersonView details={details} gear={gear} round={round} changes={changes} today={today} editable={false} place={place} activities={activities} />
       {scope.isAdmin && !details.linked ? (
         <Panel title="קישור חשבון">
           <p className="tz-footnote m-0 px-4 pt-3">

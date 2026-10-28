@@ -50,7 +50,22 @@ function writeDraft(unitId: string, found: ReadonlySet<string> | null) {
   }
 }
 
-export function CheckForm({ unitId, companyName, reporter, groups }: { unitId: string; companyName: string; reporter: string; groups: CheckGroup[] }) {
+export function CheckForm({
+  unitId,
+  companyName,
+  reporter,
+  groups,
+  doneHref,
+  doneLabel = "לדף הפלוגה",
+}: {
+  unitId: string;
+  companyName: string;
+  reporter: string;
+  groups: CheckGroup[];
+  /** where "done" points (default: the kesher company page) */
+  doneHref?: string;
+  doneLabel?: string;
+}) {
   const all = groups.flatMap((g) => g.rows);
   const stored = useSyncExternalStore(noSubscribe, () => readDraft(unitId), () => "");
   /** null = nothing ticked here yet: the stored draft */
@@ -110,8 +125,8 @@ export function CheckForm({ unitId, companyName, reporter, groups }: { unitId: s
           נראו בעין{notFound ? ` · ${notFound} לא נמצאו — מחלקת הקשר תראה זאת בסקירה` : " · כל הצ׳ נמצאו"}.
         </span>
         {done.added ? <p className="tz-alert m-0">{done.added} צ׳ נוספו לפלוגה בזמן המילוי ולא הופיעו ברשימה — הם נרשמו כלא נמצאו.</p> : null}
-        <Link href={`/kesher/companies/${unitId}`} className="tz-btn tz-btn-tinted tz-btn-sm">
-          לדף הפלוגה
+        <Link href={doneHref ?? `/kesher/companies/${unitId}`} className="tz-btn tz-btn-tinted tz-btn-sm">
+          {doneLabel}
         </Link>
       </div>
     );

@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { z } from "zod";
-import { can } from "@gdud/auth";
 import { israelToday } from "@gdud/core";
 import { desc, eq, schema, withUser, type Tx } from "@gdud/db";
 import { Chip, Icon, type IconName } from "@gdud/ui";
@@ -39,9 +38,9 @@ async function doch1Today(tx: Tx, s: Session, unitId: string, today: string) {
 
 /**
  * דוחות: the reports each department expects from the company, one button each — shown only to a
- * user who may file it there (the department's own role), opening the department's flow for this
- * company. Each says whether today's is done, read from the department's data (under its RLS).
- * Nothing is sent from here.
+ * user who may file it (the department's own role; the company's כוננות also its admin here), filled
+ * inside the company app with the department's own screens. Each says whether today's is done, read
+ * from the department's data (under its RLS). Nothing is sent from here.
  */
 export default async function CompanyReports({ params }: { params: Promise<{ unit: string }> }) {
   const p = paramsSchema.safeParse(await params);
@@ -49,12 +48,14 @@ export default async function CompanyReports({ params }: { params: Promise<{ uni
   const company = scope.company;
   const now = new Date();
   const today = israelToday(now);
+  const base = `/company/${company.id}/reports`;
 
   const d1 = doch1Access(s);
   const platoons = s.units.filter((u) => u.parentId === company.id && u.active);
   // דוח 1 for the company, or for the platoon(s) of a platoon commander
   const d1Unit = d1.canReport(company.id) ? company.id : platoons.find((x) => d1.canReport(x.id))?.id;
-  const canStandby = can(s.user, "doch1", ["admin", "company_user"], company.id, s.parents);
+  // the company's own כוננות: its admin here, or a דוח 1 admin / company user of the company (item 4)
+  const canStandby = d1.canEditCompanyStandby(company.id);
   const canCheck = kesherAccess(s).covers(company.id);
 
   const status = await withUser(s.claims, async (tx) => {
@@ -74,7 +75,7 @@ export default async function CompanyReports({ params }: { params: Promise<{ uni
       key: "doch1",
       title: "דוח 1 של היום",
       sub: d1Unit === company.id ? company.name : (platoons.find((x) => x.id === d1Unit)?.name ?? ""),
-      href: `/doch1/today?unit=${d1Unit}`,
+      href: `${base}/today${d1Unit === company.id ? "" : `?unit=${d1Unit}`}`,
       icon: "list",
       color: "var(--primary)",
       status: d ? (d.missing ? { done: false, text: `חסרים ${d.missing} מתוך ${d.members.length}` } : { done: true, text: "הושלם" }) : null,
@@ -85,8 +86,8 @@ export default async function CompanyReports({ params }: { params: Promise<{ uni
     reports.push({
       key: "standby",
       title: "שבצ״ק וכוננות",
-      sub: company.name,
-      href: `/doch1/standby?co=${company.id}`,
+      sub: `${company.name} · הצוותים והרכבים של הפלוגה`,
+      href: `${base}/standby`,
       icon: "shield",
       color: "var(--tile-brigade)",
       status: status.daily ? (unplaced ? { done: false, text: `${unplaced} בלי מיקום בשבצ״ק` } : { done: true, text: "כולם משובצים" }) : null,
@@ -99,7 +100,7 @@ export default async function CompanyReports({ params }: { params: Promise<{ uni
       key: "check",
       title: "דוח צ׳",
       sub: c ? `אחרון: ${fmtWhen(c.at, now)} · ${c.found}/${c.total} נראו` : "עדיין לא הוגש",
-      href: `/kesher/check?unit=${company.id}`,
+      href: `${base}/check`,
       icon: "check",
       color: "var(--tile-broken)",
       status: todays ? { done: c.found === c.total, text: c.found === c.total ? "הוגש היום" : `הוגש היום · ${c.total - c.found} לא נמצאו` } : { done: false, text: "לא הוגש היום" },
@@ -109,7 +110,7 @@ export default async function CompanyReports({ params }: { params: Promise<{ uni
   return (
     <>
       <CompanyPills companies={access.companies} current={company.id} path="/reports" />
-      <PageHeader title="דוחות" sub={`${company.name} · הדוחות שהמחלקות מצפות להם מהפלוגה. כל כפתור פותח את הדוח במחלקה.`} />
+      <PageHeader title="דוחות" sub={`${company.name} · הדוחות שהמחלקות מצפות להם מהפלוגה, למילוי כאן.`} />
       <Panel>
         {reports.length === 0 ? (
           <Empty>אין לך הרשאה למלא דוחות של הפלוגה במחלקות. מנהל הפלוגה נותן הרשאות בהגדרות.</Empty>
@@ -117,12 +118,12 @@ export default async function CompanyReports({ params }: { params: Promise<{ uni
           reports.map((r) => (
             <Link key={r.key} href={r.href} className="tz-row">
               <SmallTile color={r.color} icon={r.icon} />
-              <span className="tz-row-body">
-                <span className="flex min-w-0 flex-1 flex-col">
+              <span className="tz-row-body py-2.5">
+                <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
                   <span className="tz-row-title">{r.title}</span>
                   <span className="tz-row-sub">{r.sub}</span>
+                  {r.status ? <Chip tone={r.status.done ? "ok" : "broken"}>{r.status.text}</Chip> : null}
                 </span>
-                {r.status ? <Chip tone={r.status.done ? "ok" : "broken"}>{r.status.text}</Chip> : null}
                 <Icon name="chevron" size={17} className="tz-chevron" />
               </span>
             </Link>

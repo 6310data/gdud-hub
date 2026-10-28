@@ -225,6 +225,55 @@
       "when": 1793200586746,
       "tag": "0031_company_roles_security",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1793203835102,
+      "tag": "0032_company_register_logistics",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1793203835681,
+      "tag": "0033_company_register_logistics_security",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1793205217468,
+      "tag": "0034_company_standby",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1793205218053,
+      "tag": "0035_company_standby_security",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1793205943743,
+      "tag": "0036_company_activities",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1793205944332,
+      "tag": "0037_company_activities_security",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1793206367307,
+      "tag": "0038_company_vehicles_security",
+      "breakpoints": true
     }
   ]
 }

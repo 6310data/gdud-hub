@@ -20,6 +20,8 @@ export default async function CompanyLayout({ children }: { children: React.Reac
     ...(home ? [{ ...section(""), label: "הפלוגה", icon: "people" } as const] : []),
     ...(home ? [{ ...section("/signings"), label: "החתמות", icon: "swap" } as const] : []),
     ...(home?.isAdmin ? [{ ...section("/items"), label: "פריטי פלוגה", short: "פריטים", icon: "box" } as const] : []),
+    ...(home ? [{ ...section("/activities"), label: "פעילויות", icon: "calendar" } as const] : []),
+    ...(home ? [{ ...section("/vehicles"), label: "רכבים", icon: "truck" } as const] : []),
     ...(home ? [{ ...section("/reports"), label: "דוחות", icon: "report" } as const] : []),
   ];
   const bottom: AppNavItem[] = home?.isAdmin ? [{ ...section("/settings"), label: "הגדרות", icon: "gear" }] : [];
@@ -33,6 +35,7 @@ export default async function CompanyLayout({ children }: { children: React.Reac
       bottom={bottom}
       user={{ name: displayName(s.user, s.claims), email: s.user.email, role: role?.role ?? (access.personId ? "חייל" : undefined), roleTone: role?.tone }}
       current="tinted"
+      phoneTabs={["/company/me", ...(home ? [`/company/${home.company.id}`, `/company/${home.company.id}/signings`, `/company/${home.company.id}/reports`] : [])]}
     >
       {children}
     </AppShell>

@@ -4,9 +4,10 @@
  * Other modules are reached through the hub ("כל המחלקות" → /), never from inside a module.
  */
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { Avatar, Icon, type IconName } from "@gdud/ui";
+import { useCanGoBack } from "./nav-history";
 
 export interface AppNavItem {
   href: string;
@@ -40,6 +41,8 @@ export interface AppShellProps {
   current?: "raised" | "tinted";
   /** hrefs shown in the phone tab bar, in order (default: the first sections); the rest go under "עוד" */
   phoneTabs?: readonly string[];
+  /** where "חזרה" goes when there is no in-app page to go back to (default: the first section) */
+  home?: string;
   children: ReactNode;
 }
 
@@ -68,6 +71,25 @@ function NavLink({ it, active }: { it: AppNavItem; active: boolean }) {
   );
 }
 
+/**
+ * "חזרה": back to the page the user came from inside the app, or to the module's home when the page
+ * was opened directly. Not shown on the module's home itself when there is nothing to go back to.
+ */
+function BackButton({ home, className, desktop }: { home: string; className?: string; desktop?: boolean }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const canGoBack = useCanGoBack();
+  if (!canGoBack && pathname === home) return null;
+  const button = (
+    <button type="button" className={`tz-app-back border-0 bg-transparent ${className ?? ""}`} onClick={() => (canGoBack ? router.back() : router.push(home))}>
+      <Icon name="chevron" size={16} />
+      חזרה
+    </button>
+  );
+  // on the desktop the phone header is hidden: the button sits above the page
+  return desktop ? <div className="hidden lg:block">{button}</div> : button;
+}
+
 function SignOut() {
   return (
     <form action="/auth/signout" method="post">
@@ -78,7 +100,7 @@ function SignOut() {
   );
 }
 
-export function AppShell({ name, sub, mark, groups, bottom = [], search, user, current = "tinted", phoneTabs, children }: AppShellProps) {
+export function AppShell({ name, sub, mark, groups, bottom = [], search, user, current = "tinted", phoneTabs, home, children }: AppShellProps) {
   const pathname = usePathname();
   // the "עוד" sheet belongs to the page it was opened on: navigating closes it
   const [moreOn, setMoreOn] = useState<string | null>(null);
@@ -94,6 +116,7 @@ export function AppShell({ name, sub, mark, groups, bottom = [], search, user, c
   const tabs = ordered.length <= MAX_TABS ? ordered : ordered.slice(0, MAX_TABS - 1);
   const rest = ordered.length <= MAX_TABS ? [] : ordered.slice(MAX_TABS - 1);
   const restActive = rest.some((it) => it.href === activeHref);
+  const homeHref = home ?? all[0]?.href ?? "/";
 
   return (
     <div className="tz-app">
@@ -151,6 +174,7 @@ export function AppShell({ name, sub, mark, groups, bottom = [], search, user, c
       </aside>
 
       <header className="tz-app-top">
+        <BackButton home={homeHref} className="-ms-1.5 flex-none" />
         <Mark mark={mark} />
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-[15px] font-bold leading-5">{name}</span>
@@ -166,7 +190,10 @@ export function AppShell({ name, sub, mark, groups, bottom = [], search, user, c
         </Link>
       </header>
 
-      <main className="tz-app-main">{children}</main>
+      <main className="tz-app-main">
+        <BackButton home={homeHref} desktop />
+        {children}
+      </main>
 
       <nav className="tz-tabs fixed inset-x-0 bottom-0 z-20 lg:hidden" aria-label={name}>
         {tabs.map((it) => (

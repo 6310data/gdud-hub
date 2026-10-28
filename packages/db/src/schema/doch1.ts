@@ -370,12 +370,14 @@ export const doch1Locations = pgTable(
   ],
 ).enableRLS();
 
-/** The vehicle registry (צ׳ רכב). Battalion-wide: a vehicle outlives a round. */
+/** The vehicle registry (צ׳ רכב). A vehicle outlives a round; `unit_id` = the company it belongs to (null = battalion). */
 export const doch1Vehicles = pgTable(
   "doch1_vehicles",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     number: text("number").notNull().unique(),
+    /** the company it belongs to (set by a דוח 1 admin, or by the company adding it); null = battalion */
+    unitId: uuid("unit_id").references(() => units.id, { onDelete: "set null" }),
     kind: text("kind"),
     state: text("state").notNull().default("ok"),
     notes: text("notes"),
@@ -383,6 +385,7 @@ export const doch1Vehicles = pgTable(
     ...timestamps,
   },
   (t) => [
+    index("doch1_vehicles_unit_idx").on(t.unitId),
     check("doch1_vehicles_state", sql`${t.state} in ('ok', 'service', 'broken')`),
     check("doch1_vehicles_number", sql`${t.number} ~ '^[0-9A-Za-z-]{1,20}$'`),
     check("doch1_vehicles_text_len", sql`length(coalesce(${t.kind}, '')) <= 30 and length(coalesce(${t.notes}, '')) <= 200`),
@@ -415,7 +418,12 @@ export const doch1StandbyTypes = pgTable(
   ],
 ).enableRLS();
 
-/** A standby team of a round. Who edits it: the battalion admin and the company users of its holding companies. */
+/**
+ * A standby team of a round. `unit_id` set = the company's own team (its only holder is that company,
+ * its members are that company's soldiers, its vehicle one of the company's); null = a battalion team.
+ * Who edits it: the battalion admin and the company users of its holding companies, and for a company
+ * team also that company's admin in ניהול פלוגה.
+ */
 export const doch1StandbyTeams = pgTable(
   "doch1_standby_teams",
   {
@@ -424,6 +432,8 @@ export const doch1StandbyTeams = pgTable(
       .notNull()
       .references(() => doch1Rounds.id, { onDelete: "cascade" }),
     typeId: uuid("type_id").references(() => doch1StandbyTypes.id, { onDelete: "set null" }),
+    /** the company that owns the team; null = battalion */
+    unitId: uuid("unit_id").references(() => units.id, { onDelete: "set null" }),
     name: text("name").notNull(),
     locationId: uuid("location_id").references(() => doch1Locations.id, { onDelete: "set null" }),
     vehicleId: uuid("vehicle_id").references(() => doch1Vehicles.id, { onDelete: "set null" }),
@@ -435,6 +445,7 @@ export const doch1StandbyTeams = pgTable(
   (t) => [
     unique("doch1_standby_teams_id_round").on(t.id, t.roundId),
     index("doch1_standby_teams_round_idx").on(t.roundId),
+    index("doch1_standby_teams_unit_idx").on(t.unitId),
     check("doch1_standby_teams_name_len", sql`length(${t.name}) between 1 and 40`),
   ],
 ).enableRLS();

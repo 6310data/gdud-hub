@@ -217,7 +217,7 @@ export function subtreeIds(rootId: string, units: readonly UnitNode[]): string[]
 /* ── החתמה פנימית ────────────────────────────────────────────────────────── */
 
 export interface RegisterItem {
-  kind: "kesher" | "company";
+  kind: "kesher" | "logistics" | "company";
   id: string;
   name: string;
   category: string | null;
@@ -233,7 +233,7 @@ export interface RegisterItem {
 /** What the company can sign internally, with where each piece is now (app.company_register_items). */
 export async function loadRegisterItems(tx: Tx, unitId: string): Promise<RegisterItem[]> {
   type Row = {
-    kind: "kesher" | "company";
+    kind: "kesher" | "logistics" | "company";
     id: string;
     name: string;
     category: string | null;
@@ -277,7 +277,7 @@ export async function loadSoldierNames(tx: Tx, unitId: string): Promise<SoldierN
 
 export interface SigningRow {
   id: string;
-  kind: "kesher" | "company";
+  kind: "kesher" | "logistics" | "company";
   item: string;
   serial: string | null;
   quantity: number;
@@ -297,7 +297,7 @@ export interface SigningRow {
 export async function loadRegister(tx: Tx, unitId: string, open: boolean): Promise<SigningRow[]> {
   type Row = {
     id: string;
-    kind: "kesher" | "company";
+    kind: "kesher" | "logistics" | "company";
     item: string;
     serial: string | null;
     quantity: number;
@@ -371,4 +371,171 @@ export async function loadAccessList(tx: Tx, companyId: string): Promise<AccessU
     byUser.set(r.user_id, u);
   }
   return [...byUser.values()].sort((a, b) => byHe(a.fullName, b.fullName));
+}
+
+/* ── פעילויות ────────────────────────────────────────────────────────────── */
+
+const { companyActivities: activities, companyActivityVehicles: activityVehicles, doch1Vehicles: vehicles } = schema;
+
+export interface ActivityRow {
+  id: string;
+  name: string;
+  day: string;
+  startsAt: string | null;
+  endsAt: string | null;
+  place: string | null;
+  commanderPersonId: string | null;
+  notes: string | null;
+}
+
+/** The company's activities (RLS: members of the company), from `from` on, by day. */
+export async function loadActivities(tx: Tx, companyId: string, opts: { from?: string; to?: string } = {}): Promise<ActivityRow[]> {
+  const rows = await tx
+    .select()
+    .from(activities)
+    .where(
+      and(
+        eq(activities.unitId, companyId),
+        opts.from ? sql`${activities.day} >= ${opts.from}::date` : undefined,
+        opts.to ? sql`${activities.day} < ${opts.to}::date` : undefined,
+      ),
+    )
+    .orderBy(opts.to ? desc(activities.day) : activities.day, activities.startsAt);
+  return rows.map((r) => ({ id: r.id, name: r.name, day: r.day, startsAt: r.startsAt, endsAt: r.endsAt, place: r.place, commanderPersonId: r.commanderPersonId, notes: r.notes }));
+}
+
+export interface ActivityPerson {
+  participantId: string;
+  personId: string;
+  name: string;
+  unitId: string;
+  role: string | null;
+  statusName: string | null;
+  /** still present and not home that day in דוח 1 */
+  qualifies: boolean;
+  canRemove: boolean;
+}
+
+export async function loadActivityPeople(tx: Tx, activityId: string): Promise<ActivityPerson[]> {
+  type Row = { participant_id: string; person_id: string; full_name: string; unit_id: string; role: string | null; status_name: string | null; qualifies: boolean; can_remove: boolean };
+  const rows = rowsOf<Row>(await tx.execute(sql`select * from app.company_activity_people(${activityId}::uuid)`));
+  return rows
+    .map((r) => ({ participantId: r.participant_id, personId: r.person_id, name: r.full_name, unitId: r.unit_id, role: r.role, statusName: r.status_name, qualifies: r.qualifies, canRemove: r.can_remove }))
+    .sort((a, b) => byHe(a.name, b.name));
+}
+
+export interface ActivityCandidate {
+  id: string;
+  name: string;
+  unitId: string;
+  statusName: string;
+}
+
+/** Who the user may add: the company's soldiers present and not home that day (app.company_activity_candidates). */
+export async function loadActivityCandidates(tx: Tx, activityId: string): Promise<ActivityCandidate[]> {
+  const rows = rowsOf<{ id: string; full_name: string; unit_id: string; status_name: string }>(await tx.execute(sql`select * from app.company_activity_candidates(${activityId}::uuid)`));
+  return rows.map((r) => ({ id: r.id, name: r.full_name, unitId: r.unit_id, statusName: r.status_name })).sort((a, b) => byHe(a.name, b.name));
+}
+
+export interface CompanyVehicle {
+  id: string;
+  number: string;
+  kind: string | null;
+  state: string;
+}
+
+/** The company's own vehicles (doch1_vehicles.unit_id). */
+export async function loadCompanyVehicles(tx: Tx, companyId: string): Promise<CompanyVehicle[]> {
+  return tx
+    .select({ id: vehicles.id, number: vehicles.number, kind: vehicles.kind, state: vehicles.state })
+    .from(vehicles)
+    .where(and(eq(vehicles.unitId, companyId), eq(vehicles.active, true)))
+    .orderBy(vehicles.number);
+}
+
+export async function loadActivityVehicles(tx: Tx, activityId: string): Promise<CompanyVehicle[]> {
+  return tx
+    .select({ id: vehicles.id, number: vehicles.number, kind: vehicles.kind, state: vehicles.state })
+    .from(activityVehicles)
+    .innerJoin(vehicles, eq(vehicles.id, activityVehicles.vehicleId))
+    .where(eq(activityVehicles.activityId, activityId))
+    .orderBy(vehicles.number);
+}
+
+export interface PersonActivity {
+  id: string;
+  name: string;
+  day: string;
+  startsAt: string | null;
+  endsAt: string | null;
+  place: string | null;
+  role: string | null;
+  commanderName: string | null;
+}
+
+/** A soldier's coming activities (app.person_activities). */
+export async function loadPersonActivities(tx: Tx, personId: string): Promise<PersonActivity[]> {
+  type Row = { id: string; name: string; day: string | Date; starts_at: string | null; ends_at: string | null; place: string | null; role: string | null; commander_name: string | null };
+  const rows = rowsOf<Row>(await tx.execute(sql`select * from app.person_activities(${personId}::uuid)`));
+  return rows.map((r) => ({ id: r.id, name: r.name, day: toDay(r.day), startsAt: r.starts_at, endsAt: r.ends_at, place: r.place, role: r.role, commanderName: r.commander_name }));
+}
+
+/** "08:00–12:00" */
+export const timeRange = (a: { startsAt: string | null; endsAt: string | null }) =>
+  [a.startsAt?.slice(0, 5), a.endsAt?.slice(0, 5)].filter(Boolean).join("–");
+
+/* ── רכבים ───────────────────────────────────────────────────────────────── */
+
+export interface VehicleCardVM {
+  id: string;
+  number: string;
+  kind: string | null;
+  state: string;
+  active: boolean;
+  teamName: string | null;
+  serials: { id: string; item: string; serial: string }[];
+  bulk: { itemId: string; item: string; qty: number }[];
+}
+
+/** The company's vehicles with the kesher gear on them (app.company_vehicles / company_vehicle_gear). */
+export async function loadVehicleCards(tx: Tx, companyId: string): Promise<VehicleCardVM[]> {
+  type V = { id: string; number: string; kind: string | null; state: string; active: boolean; team_name: string | null };
+  type G = { vehicle_id: string; kind: "serial" | "bulk"; item_id: string; item: string; serial_id: string | null; serial: string | null; qty: number };
+  const [vs, gear] = await Promise.all([
+    tx.execute(sql`select * from app.company_vehicles(${companyId}::uuid)`).then((r) => rowsOf<V>(r)),
+    tx.execute(sql`select * from app.company_vehicle_gear(${companyId}::uuid)`).then((r) => rowsOf<G>(r)),
+  ]);
+  return vs
+    .map((v) => ({
+      id: v.id,
+      number: v.number,
+      kind: v.kind,
+      state: v.state,
+      active: v.active,
+      teamName: v.team_name,
+      serials: gear
+        .filter((g) => g.vehicle_id === v.id && g.kind === "serial")
+        .map((g) => ({ id: g.serial_id!, item: g.item, serial: g.serial! }))
+        .sort((a, b) => byHe(a.item, b.item) || byHe(a.serial, b.serial)),
+      bulk: gear
+        .filter((g) => g.vehicle_id === v.id && g.kind === "bulk")
+        .map((g) => ({ itemId: g.item_id, item: g.item, qty: Number(g.qty) }))
+        .sort((a, b) => byHe(a.item, b.item)),
+    }))
+    .sort((a, b) => Number(b.active) - Number(a.active) || a.number.localeCompare(b.number, "en", { numeric: true }));
+}
+
+export interface VehicleOptions {
+  serials: { id: string; name: string; serial: string; vehicle: string | null }[];
+  bulk: { id: string; name: string; available: number }[];
+}
+
+/** For the company admin: the company's kesher צ׳ and the ציוד משלים items with the warehouse's תקינים. */
+export async function loadVehicleOptions(tx: Tx, companyId: string): Promise<VehicleOptions> {
+  type Row = { kind: "serial" | "bulk"; id: string; name: string; serial: string | null; vehicle: string | null; available: number | null };
+  const rows = rowsOf<Row>(await tx.execute(sql`select * from app.company_vehicle_options(${companyId}::uuid)`));
+  return {
+    serials: rows.filter((r) => r.kind === "serial").map((r) => ({ id: r.id, name: r.name, serial: r.serial!, vehicle: r.vehicle })).sort((a, b) => byHe(a.name, b.name) || byHe(a.serial, b.serial)),
+    bulk: rows.filter((r) => r.kind === "bulk").map((r) => ({ id: r.id, name: r.name, available: Number(r.available ?? 0) })).sort((a, b) => byHe(a.name, b.name)),
+  };
 }

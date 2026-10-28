@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState, useTransition } from "react"
 import { swapCandidates, teamReadiness, VEHICLE_STATE_LABEL, VEHICLE_STATES, type Day, type StatusDef, type VehicleState } from "@gdud/core";
 import { Avatar, Icon, Spinner } from "@gdud/ui";
 import { setDayStatus } from "../../_actions/days";
-import { addTeamMember, deleteTeam, removeTeamMember, setTeamHolder, setTeamVehicle, setVehicleState, swapTeamMember, updateTeam } from "../../_actions/standby";
+import { addTeamMember, deleteTeam, removeTeamMember, setTeamCompany, setTeamHolder, setTeamVehicle, setVehicleState, swapTeamMember, updateTeam } from "../../_actions/standby";
 import { StatusChip, StatusDot } from "../../_components/status-chip";
 import { UndoToast } from "../../today/_components/undo-toast";
 import type { StandbyTypeVM, VehicleVM } from "@/lib/doch1/standby";
@@ -51,13 +51,15 @@ export function TeamEditor({
   types,
   locations,
   companies,
+  basePath = "/doch1/standby",
 }: {
   dayLabel: string;
   today: Day;
   lockAt: string;
   writableToday: boolean;
   isAdmin: boolean;
-  team: { id: string; name: string; active: boolean; typeId: string | null; locationId: string | null; holderIds: string[]; holders: string };
+  /** unitId: the company that owns the team (null = battalion, shared by its holders) */
+  team: { id: string; name: string; active: boolean; typeId: string | null; locationId: string | null; holderIds: string[]; holders: string; unitId: string | null };
   vehicle: VehicleVM | null;
   members: EditorMember[];
   candidates: CandidateVM[];
@@ -67,6 +69,8 @@ export function TeamEditor({
   types: StandbyTypeVM[];
   locations: Option[];
   companies: Option[];
+  /** the standby screen this editor belongs to (דוח 1, or the company app's) */
+  basePath?: string;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -168,7 +172,7 @@ export function TeamEditor({
   return (
     <div className="mx-auto flex w-full max-w-[640px] flex-col gap-1.5 pb-20">
       <div className="flex items-center justify-between gap-2">
-        <Link href="/doch1/standby" className="tz-btn tz-btn-plain px-0">
+        <Link href={basePath} className="tz-btn tz-btn-plain px-0">
           <Icon name="chevron" size={17} className="rotate-180" />
           שבצ״ק וכוננות
         </Link>
@@ -367,6 +371,35 @@ export function TeamEditor({
 
       {isAdmin ? (
         <>
+          <h2 className="tz-section-header pt-5">שייכות</h2>
+          <div className="tz-group">
+            <label className="tz-row">
+              <span className="tz-row-body">
+                <span className="tz-row-title">
+                  של
+                  <span className="tz-row-sub">צוות של פלוגה: רק חיילים ורכבים שלה, ומנהל הפלוגה עורך אותו. גדודי: משותף לפלוגות המחזיקות.</span>
+                </span>
+                <select
+                  className="tz-input w-auto"
+                  value={team.unitId ?? ""}
+                  disabled={pending}
+                  onChange={(e) => act(() => setTeamCompany({ teamId: team.id, unitId: e.target.value || null }))}
+                >
+                  <option value="">גדודי</option>
+                  {companies.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </span>
+            </label>
+          </div>
+        </>
+      ) : null}
+
+      {isAdmin && !team.unitId ? (
+        <>
           <h2 className="tz-section-header pt-5">פלוגות מחזיקות</h2>
           <div className="tz-group">
             {companies.map((c) => (
@@ -396,7 +429,7 @@ export function TeamEditor({
             if (!window.confirm(`למחוק את הצוות ״${team.name}״? החיילים יוצאו מהכוננות.`)) return;
             act(
               () => deleteTeam({ teamId: team.id }),
-              () => router.push("/doch1/standby"),
+              () => router.push(basePath),
             );
           }}
         >

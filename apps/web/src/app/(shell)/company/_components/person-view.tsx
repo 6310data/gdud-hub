@@ -6,7 +6,7 @@ import { Chip, Serial } from "@gdud/ui";
 import { addDays, countDays, formatPhone, PROFILE_FIELD_LABEL, type ProfileField } from "@gdud/core";
 import { Empty, Panel } from "@/components/page-parts";
 import { StatusChip } from "@/app/(shell)/doch1/_components/status-chip";
-import type { GearRow, GearSource, OpenChange, PersonDetails, RoundDays } from "@/lib/company/data";
+import { timeRange, type GearRow, type GearSource, type OpenChange, type PersonActivity, type PersonDetails, type RoundDays } from "@/lib/company/data";
 import { fmtDay } from "@/lib/doch1/format";
 import { fmtDate } from "@/lib/logistics/format";
 import { ChangeForm, PhoneForm } from "./me-forms";
@@ -24,6 +24,7 @@ export function PersonView({
   today,
   editable,
   place,
+  activities = [],
 }: {
   details: PersonDetails;
   gear: GearRow[];
@@ -32,15 +33,38 @@ export function PersonView({
   today: string;
   editable: boolean;
   place: string;
+  /** coming activities the soldier takes part in */
+  activities?: PersonActivity[];
 }) {
   return (
     <div className="grid gap-5 lg:grid-cols-2">
-      <GearCard gear={gear} editable={editable} />
+      <div className="flex flex-col gap-5">
+        {activities.length ? <ActivitiesCard activities={activities} today={today} /> : null}
+        <GearCard gear={gear} editable={editable} />
+      </div>
       <div className="flex flex-col gap-5">
         <DaysCard round={round} today={today} />
         <DetailsCard details={details} changes={changes} editable={editable} place={place} />
       </div>
     </div>
+  );
+}
+
+function ActivitiesCard({ activities, today }: { activities: PersonActivity[]; today: string }) {
+  return (
+    <Panel title="פעילויות קרובות">
+      {activities.map((a) => (
+        <div key={a.id} className="flex flex-col border-b border-[var(--separator)] px-4 py-2.5 last:border-b-0">
+          <span className="font-semibold">
+            {a.name}
+            {a.role ? <span className="tz-footnote font-normal"> · {a.role}</span> : null}
+          </span>
+          <span className="tz-footnote">
+            {[a.day === today ? "היום" : fmtDay(a.day), timeRange(a), a.place, a.commanderName ? `מפקד: ${a.commanderName}` : null].filter(Boolean).join(" · ")}
+          </span>
+        </div>
+      ))}
+    </Panel>
   );
 }
 
