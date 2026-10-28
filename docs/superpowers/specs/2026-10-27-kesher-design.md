@@ -232,6 +232,19 @@ No developer CLI for kesher; tests drive `read → diff → apply` directly with
 6. **Notifications** — the app's push notifications, no email.
 7. **Drive** — not now; later when the platform supports it.
 
+## Changes requested 2026-10-28
+
+Answered with the department; these replace the matching parts above.
+
+- **החתמה / זיכוי מול חיילים** (`/kesher/sign`, `/kesher/credit`, `_actions/moves.ts`) — as in "Writes", plus: every צ׳ and every ציוד משלים line of a זיכוי comes back **תקין or תקול**. `kesher_serials.condition` (`ok` | `broken`); a תקול צ׳ in the warehouse isn't offered for החתמה. Bulk: `kesher_items.broken_qty` counts the warehouse's תקול units.
+- **ציוד תקול** (`/kesher/broken`) — the תקול צ׳ and ציוד משלים in the warehouse; "תוקן" moves them back to תקין (`repair` event), or they go back to the brigade.
+- **מול חטיבה** (`/kesher/brigade`) — קבלה מחטיבה: new צ׳ into the warehouse and ציוד משלים onto מלאי כללי (`brigade_in`). זיכוי לחטיבה: warehouse צ׳ (תקין or תקול) get the new location `brigade` ("הוחזר לחטיבה", kept for the יומן, left out of every count and of the import's "רק באפליקציה"), and ציוד משלים comes off מלאי כללי (`brigade_out`).
+- **The warehouse is computed**, not stored: מחסן = מלאי כללי (`brigade_qty`) − Σ companies − Σ vehicles, of which `broken_qty` is תקול; only the rest can be signed out. On ציוד משלים, the only editable number is מלאי כללי (not below what is signed + תקול); company quantities change only through החתמה / זיכוי. `warehouse_tracked` and the warehouse `kesher_stock` rows are no longer read.
+- **ציוד על רכבים** — the vehicle is picked from דוח 1's list (`doch1_vehicles`, read through `app.kesher_vehicles()` with the active round's standby team names, so a kesher-only member can see them). The page groups vehicles by כוננות. ציוד משלים is assigned per vehicle (`kesher_vehicle_stock`) and comes out of the warehouse. The צ׳'s `vehicle` keeps the number; a number the sheet's האמר column has but דוח 1 doesn't list shows under "לא ברשימת הרכבים של דוח 1".
+- **צהוב בעיניים** (`/kesher/eye`, `kesher_eye_checks`) — a battalion admin (מחלקת הקשר) ticks the צ׳ they saw; who/when are set by trigger. The צ׳ table has two "נבדק" columns: in the company's דוח צ׳, and צהוב בעיניים — each yellow after `eye_warn_days` (3) and red after `eye_alert_days` (7).
+- **דוח לחטיבה** — devices only (the צ׳ table, no ציוד משלים), by category then device type; categories of device types are set in settings.
+- **Settings** (`/kesher/settings`, battalion admin) — the thresholds, push notifications (`notify_missing` to the battalion admins when a דוח צ׳ misses something; `reminder_hour` daily reminder to companies with no fresh דוח צ׳, claimed once a day through `reminder_sent_on`), device categories, and הרשאות (`<DepartmentRoles>`) for the new kesher role **מנהל ראשי** (`master_admin`). Push subscriptions stay in `doch1_push_subscriptions`; a kesher member may subscribe too. The job runs from `/api/doch1/cron`.
+
 ## Left to the builder
 
 Exact column types and index choices within the table above, component breakdown, how the cart state is held, preview pagination, Excel layout details, the fingerprint function, the generalised cron route's shape, wording of individual error messages (Hebrew, specific, says what to fix), and whether the inspector on the phone is a sheet or its own route.

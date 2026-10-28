@@ -1427,4 +1427,81 @@ describe("kesher", () => {
     expect(seen.map((l) => l.found)).toEqual([false]);
     expect((await as(plsrUser, (tx) => tx.select().from(events))).some((e) => e.kind === "check")).toBe(false);
   });
+
+  it("תקין / תקול: only a battalion admin marks a צ׳ or the warehouse's ציוד משלים broken", async () => {
+    for (const u of [plsrUser, plsrAdmin, kViewer]) {
+      expect(await as(u, (tx) => tx.update(serials).set({ condition: "broken" }).where(eq(serials.id, k.sWh)).returning())).toHaveLength(0);
+      expect(await as(u, (tx) => tx.update(items).set({ brokenQty: 2 }).where(eq(items.id, k.battery)).returning())).toHaveLength(0);
+    }
+    expect(await as(kAdmin, (tx) => tx.update(serials).set({ condition: "broken" }).where(eq(serials.id, k.sWh)).returning())).toHaveLength(1);
+    expect(await as(kAdmin, (tx) => tx.update(items).set({ brokenQty: 2 }).where(eq(items.id, k.battery)).returning())).toHaveLength(1);
+    // a device type has no broken count of its own: its צ׳ carry the condition
+    await rejects(as(kAdmin, (tx) => tx.update(items).set({ brokenQty: 1 }).where(eq(items.id, k.radio))));
+    await rejects(as(kAdmin, (tx) => tx.update(items).set({ brokenQty: -1 }).where(eq(items.id, k.battery))));
+    await as(kAdmin, async (tx) => {
+      await tx.update(serials).set({ condition: "ok" }).where(eq(serials.id, k.sWh));
+      await tx.update(items).set({ brokenQty: 0 }).where(eq(items.id, k.battery));
+    });
+  });
+
+  it("זיכוי לחטיבה: a צ׳ returned to the brigade leaves its company and its holder row", async () => {
+    const [x] = await db.insert(serials).values({ itemId: k.radio, serial: "489099", location: "company", unitId: ids.plnt }).returning();
+    await as(kAdmin, (tx) => tx.insert(holders).values({ serialId: x!.id, unitId: ids.plnt, signerPersonId: k.plntSoldier }));
+    await as(kAdmin, (tx) => tx.update(serials).set({ location: "brigade", unitId: null }).where(eq(serials.id, x!.id)));
+    expect(await db.select().from(holders).where(eq(holders.serialId, x!.id))).toHaveLength(0);
+    await rejects(as(kAdmin, (tx) => tx.update(serials).set({ location: "brigade", unitId: ids.plnt }).where(eq(serials.id, x!.id))));
+  });
+
+  it("vehicles: every member reads דוח 1's vehicles with their standby team and their ציוד משלים; only a battalion admin writes it", async () => {
+    const { doch1Vehicles: vehicles, doch1Rounds: rounds, doch1StandbyTeams: teams, kesherVehicleStock: vstock } = schema;
+    const [v] = await db.insert(vehicles).values({ number: "812345", kind: "האמר" }).returning();
+    let [round] = await db.select().from(rounds).where(eq(rounds.state, "active"));
+    round ??= (await db.insert(rounds).values({ name: "סבב קשר", startsOn: "2026-10-01", endsOn: "2026-12-01", state: "active" }).returning())[0];
+    await db.insert(teams).values({ roundId: round!.id, name: "חפ״ק מג״ד", vehicleId: v!.id });
+
+    type V = { number: string; standby: string | null };
+    const vehiclesOf = (u: TestUser) =>
+      as(u, async (tx) => ((await tx.execute(sql`select number, standby from app.kesher_vehicles()`)) as unknown as { rows: V[] }).rows);
+    expect((await vehiclesOf(plntUser)).find((r) => r.number === "812345")?.standby).toBe("חפ״ק מג״ד");
+    // not a kesher member: nothing (the function checks it, not only the caller's doch1 rights)
+    expect(await vehiclesOf(stranger)).toHaveLength(0);
+
+    for (const u of [plsrUser, plsrAdmin, kViewer]) await rejects(as(u, (tx) => tx.insert(vstock).values({ vehicleId: v!.id, itemId: k.battery, qty: 2 })));
+    await as(kAdmin, (tx) => tx.insert(vstock).values({ vehicleId: v!.id, itemId: k.battery, qty: 2 }));
+    await rejects(as(kAdmin, (tx) => tx.insert(vstock).values({ vehicleId: v!.id, itemId: k.radio, qty: 1 })));
+    await rejects(as(kAdmin, (tx) => tx.insert(vstock).values({ vehicleId: v!.id, itemId: k.amp, qty: 0 })));
+    expect(await as(plntUser, (tx) => tx.select().from(vstock))).toHaveLength(1);
+    expect(await as(clerk, (tx) => tx.select().from(vstock))).toHaveLength(0);
+    expect(await as(plsrUser, (tx) => tx.update(vstock).set({ qty: 9 }).returning())).toHaveLength(0);
+  });
+
+  it("צהוב בעיניים: every member reads it; a battalion admin adds it, always in their own name and now", async () => {
+    const { kesherEyeChecks: eye } = schema;
+    for (const u of [plsrUser, plsrAdmin, kViewer]) await rejects(as(u, (tx) => tx.insert(eye).values({ serialId: k.sPlsr })));
+    const [row] = await as(kAdmin, (tx) =>
+      tx.insert(eye).values({ serialId: k.sPlsr, byUser: kViewer.appId!, byName: "מישהו אחר", at: new Date("2020-01-01") }).returning(),
+    );
+    expect(row!.byUser).toBe(kAdmin.appId);
+    expect(row!.byName).toBe(kAdmin.email);
+    expect(row!.at.getFullYear()).toBeGreaterThan(2020);
+    expect(await as(plntUser, (tx) => tx.select().from(eye))).toHaveLength(1);
+    expect(await as(clerk, (tx) => tx.select().from(eye))).toHaveLength(0);
+    await rejects(as(kAdmin, (tx) => tx.update(eye).set({ byName: "x" })));
+    await rejects(as(kAdmin, (tx) => tx.delete(eye)));
+  });
+
+  it("settings: an admin sets the thresholds and notifications; the reminder claim is the job's only", async () => {
+    expect(await as(kAdmin, (tx) => tx.update(settings).set({ eyeWarnDays: 3, eyeAlertDays: 7, notifyMissing: true, reminderHour: 9 }).returning())).toHaveLength(1);
+    await rejects(as(kAdmin, (tx) => tx.update(settings).set({ eyeWarnDays: 8, eyeAlertDays: 7 })));
+    await rejects(as(kAdmin, (tx) => tx.update(settings).set({ reminderHour: 24 })));
+    await rejects(as(kAdmin, (tx) => tx.update(settings).set({ reminderSentOn: "2026-10-28" })));
+    expect(await as(plsrUser, (tx) => tx.update(settings).set({ reminderHour: null }).returning())).toHaveLength(0);
+  });
+
+  it("a kesher member subscribes to push like a דוח 1 member; others can't", async () => {
+    const { doch1PushSubscriptions: subs } = schema;
+    await as(plntUser, (tx) => tx.insert(subs).values({ endpoint: "https://push.example/kesher", p256dh: "k", auth: "a" }));
+    expect(await as(plntUser, (tx) => tx.select().from(subs))).toHaveLength(1);
+    await rejects(as(stranger, (tx) => tx.insert(subs).values({ endpoint: "https://push.example/stranger", p256dh: "k", auth: "a" })));
+  });
 });

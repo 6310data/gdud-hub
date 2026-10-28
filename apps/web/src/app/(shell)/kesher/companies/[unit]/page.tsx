@@ -6,7 +6,7 @@ import { withUser } from "@gdud/db";
 import { Icon, Serial } from "@gdud/ui";
 import { Empty, PageHeader, SmallTile } from "@/components/page-parts";
 import { kesherAccess } from "@/lib/kesher/access";
-import { companyStatus, groupBy, loadKesher, loadLastChecks, loadLastSeen, loadMissing, placeTotal, stockKey } from "@/lib/kesher/data";
+import { companyStatus, groupBy, loadKesher, loadLastChecks, loadLastSeen, loadMissing, loadVehicles, placeTotal, stockKey, vehicleLabel } from "@/lib/kesher/data";
 import { loadPeople, personPlace } from "@/lib/logistics/data";
 import { fmtCount, fmtWhen } from "@/lib/logistics/format";
 import { requireModule } from "@/lib/session";
@@ -43,11 +43,17 @@ export default async function KesherCompany({
   const f = searchSchema.parse(await searchParams);
   const now = new Date();
 
-  const { data, last, lastSeen, missing, soldiers } = await withUser(s.claims, async (tx) => {
-    const [data, lastChecks, lastSeen, soldiers] = await Promise.all([loadKesher(tx, s.units), loadLastChecks(tx), loadLastSeen(tx), loadPeople(tx, s.units)]);
+  const { data, last, lastSeen, missing, soldiers, vehicles } = await withUser(s.claims, async (tx) => {
+    const [data, lastChecks, lastSeen, soldiers, vehicles] = await Promise.all([
+      loadKesher(tx, s.units),
+      loadLastChecks(tx),
+      loadLastSeen(tx),
+      loadPeople(tx, s.units),
+      access.isAdmin ? loadVehicles(tx) : Promise.resolve([]),
+    ]);
     const last = lastChecks.get(company.id);
     const missing = last && last.found < last.total ? await loadMissing(tx, last.id) : [];
-    return { data, last, lastSeen, missing, soldiers };
+    return { data, last, lastSeen, missing, soldiers, vehicles };
   });
 
   const counts = groupBy(
@@ -78,10 +84,24 @@ export default async function KesherCompany({
         title={company.name}
         sub={`${fmtCount(mine.length)} צ׳ · ${fmtCount(assigned)} משויכים לחותם בתוך הפלוגה · ${fmtCount(placeTotal(data, company.id))} פריטי ציוד משלים`}
         actions={
-          <Link href={`/kesher/reports/print?r=company&unit=${company.id}`} className="tz-btn tz-btn-tinted tz-btn-sm">
-            <Icon name="print" size={16} />
-            רשימת ציוד להדפסה
-          </Link>
+          <>
+            {access.isAdmin ? (
+              <>
+                <Link href={`/kesher/sign?unit=${company.id}`} className="tz-btn tz-btn-filled tz-btn-sm">
+                  <Icon name="pencil" size={16} />
+                  החתמה לפלוגה
+                </Link>
+                <Link href={`/kesher/credit?unit=${company.id}`} className="tz-btn tz-btn-tinted tz-btn-sm">
+                  <Icon name="undo" size={16} />
+                  זיכוי
+                </Link>
+              </>
+            ) : null}
+            <Link href={`/kesher/reports/print?r=company&unit=${company.id}`} className="tz-btn tz-btn-tinted tz-btn-sm">
+              <Icon name="print" size={16} />
+              רשימת ציוד להדפסה
+            </Link>
+          </>
         }
       />
 
@@ -139,6 +159,7 @@ export default async function KesherCompany({
       ) : (
         <AssignProvider
           isAdmin={access.isAdmin}
+          vehicles={vehicles.map((v) => ({ number: v.number, label: vehicleLabel(v) }))}
           people={people}
           companies={access.companies.map((c) => ({ id: c.id, name: c.name }))}
           rows={mine.map((x) => ({
@@ -161,7 +182,7 @@ export default async function KesherCompany({
             unitId={company.id}
             companyName={company.name}
             lastSeen={lastSeen}
-            staleDays={data.staleDays}
+            ages={{ warnDays: data.warnDays, alertDays: data.alertDays }}
             now={now}
           />
         </AssignProvider>
@@ -175,14 +196,14 @@ function SerialsTable({
   unitId,
   companyName,
   lastSeen,
-  staleDays,
+  ages,
   now,
 }: {
   rows: Awaited<ReturnType<typeof loadKesher>>["serials"];
   unitId: string;
   companyName: string;
   lastSeen: Awaited<ReturnType<typeof loadLastSeen>>;
-  staleDays: number;
+  ages: { warnDays: number; alertDays: number };
   now: Date;
 }) {
   const groups = [...groupBy(rows, (x) => x.itemName)].sort(([a], [b]) => byHe(a, b));
@@ -210,7 +231,7 @@ function SerialsTable({
             </thead>
             <tbody>
               {groups.map(([type, list]) => (
-                <GroupRows key={type} type={type} list={list} unitId={unitId} lastSeen={lastSeen} staleDays={staleDays} now={now} />
+                <GroupRows key={type} type={type} list={list} unitId={unitId} lastSeen={lastSeen} ages={ages} now={now} />
               ))}
             </tbody>
           </table>
@@ -228,14 +249,14 @@ function GroupRows({
   list,
   unitId,
   lastSeen,
-  staleDays,
+  ages,
   now,
 }: {
   type: string;
   list: Awaited<ReturnType<typeof loadKesher>>["serials"];
   unitId: string;
   lastSeen: Awaited<ReturnType<typeof loadLastSeen>>;
-  staleDays: number;
+  ages: { warnDays: number; alertDays: number };
   now: Date;
 }) {
   const done = list.filter((x) => x.holder?.holder).length;
@@ -281,7 +302,7 @@ function GroupRows({
           </td>
           <td className="max-md:hidden">{x.vehicle ? <Serial>{x.vehicle}</Serial> : null}</td>
           <td>
-            <SeenChip seen={lastSeen.get(x.id)} staleDays={staleDays} now={now} />
+            <SeenChip seen={lastSeen.get(x.id)} {...ages} now={now} />
           </td>
           <td className="py-0">
             <RowEdit id={x.id} label={`${type} ${x.serial}`} />

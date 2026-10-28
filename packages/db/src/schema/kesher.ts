@@ -16,6 +16,7 @@ import {
   bigserial,
   boolean,
   check,
+  date,
   index,
   integer,
   pgEnum,
@@ -26,12 +27,14 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { KESHER_EVENT_KINDS, KESHER_ITEM_KINDS, KESHER_LOCATIONS } from "@gdud/core";
+import { KESHER_CONDITIONS, KESHER_EVENT_KINDS, KESHER_ITEM_KINDS, KESHER_LOCATIONS } from "@gdud/core";
 import { people, units } from "./core";
+import { doch1Vehicles } from "./doch1";
 
 export const kesherItemKind = pgEnum("kesher_item_kind", KESHER_ITEM_KINDS);
 export const kesherLocation = pgEnum("kesher_location", KESHER_LOCATIONS);
 export const kesherEventKind = pgEnum("kesher_event_kind", KESHER_EVENT_KINDS);
+export const kesherCondition = pgEnum("kesher_condition", KESHER_CONDITIONS);
 
 const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -48,14 +51,17 @@ export const kesherItems = pgTable(
     name: text("name").notNull().unique(),
     kind: kesherItemKind("kind").notNull(),
     category: text("category"),
-    /** מלאי קבלות חטיבה — bulk items only */
+    /** מלאי כללי (what the battalion holds of it, from the brigade) — bulk items only. The warehouse is this minus companies and vehicles. */
     brigadeQty: integer("brigade_qty"),
+    /** bulk items: how many of the warehouse's are תקול (returned broken, not signed out until fixed) */
+    brokenQty: integer("broken_qty").notNull().default(0),
     sortOrder: integer("sort_order").notNull().default(0),
     ...timestamps,
   },
   (t) => [
     check("kesher_items_name_len", sql`length(${t.name}) between 1 and 80`),
     check("kesher_items_brigade_qty", sql`${t.brigadeQty} is null or (${t.kind} = 'bulk' and ${t.brigadeQty} >= 0)`),
+    check("kesher_items_broken_qty", sql`${t.brokenQty} >= 0 and (${t.kind} = 'bulk' or ${t.brokenQty} = 0)`),
   ],
 ).enableRLS();
 
@@ -93,6 +99,8 @@ export const kesherSerials = pgTable(
     serial: text("serial").notNull().unique(),
     location: kesherLocation("location").notNull().default("warehouse"),
     unitId: uuid("unit_id").references(() => units.id, { onDelete: "restrict" }),
+    /** set on a זיכוי (or by hand); a תקול צ׳ isn't signed out until it is fixed */
+    condition: kesherCondition("condition").notNull().default("ok"),
     /** the sheet's האמר column */
     vehicle: text("vehicle"),
     notes: text("notes"),
@@ -253,10 +261,55 @@ export const kesherSettings = pgTable(
     warehouseTracked: boolean("warehouse_tracked").notNull().default(true),
     /** a דוח צ׳ older than this is "ישן" */
     checkStaleDays: integer("check_stale_days").notNull().default(7),
+    /** צ׳ table: a check (company or צהוב בעיניים) older than this is yellow… */
+    eyeWarnDays: integer("eye_warn_days").notNull().default(3),
+    /** …and older than this, red */
+    eyeAlertDays: integer("eye_alert_days").notNull().default(7),
+    /** push the battalion admins when a דוח צ׳ didn't find something */
+    notifyMissing: boolean("notify_missing").notNull().default(true),
+    /** Israel hour of the daily "no fresh דוח צ׳" reminder to the companies; null = off */
+    reminderHour: integer("reminder_hour").default(9),
+    /** the notification job's claim on today's reminder (no grant to users) */
+    reminderSentOn: date("reminder_sent_on"),
     ...timestamps,
   },
   (t) => [
     check("kesher_settings_single", sql`${t.id} = 1`),
     check("kesher_settings_stale_days", sql`${t.checkStaleDays} between 1 and 90`),
+    check("kesher_settings_eye_days", sql`${t.eyeWarnDays} between 1 and 60 and ${t.eyeAlertDays} between ${t.eyeWarnDays} and 90`),
+    check("kesher_settings_reminder_hour", sql`${t.reminderHour} is null or ${t.reminderHour} between 0 and 23`),
   ],
+).enableRLS();
+
+/** ציוד משלים on a vehicle (from דוח 1's vehicle list). It comes out of the warehouse, like a company's. */
+export const kesherVehicleStock = pgTable(
+  "kesher_vehicle_stock",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    vehicleId: uuid("vehicle_id")
+      .notNull()
+      .references(() => doch1Vehicles.id, { onDelete: "cascade" }),
+    itemId: uuid("item_id")
+      .notNull()
+      .references(() => kesherItems.id, { onDelete: "cascade" }),
+    qty: integer("qty").notNull(),
+    ...timestamps,
+  },
+  (t) => [unique("kesher_vehicle_stock_vehicle_item").on(t.vehicleId, t.itemId), check("kesher_vehicle_stock_qty", sql`${t.qty} between 1 and 9999`)],
+).enableRLS();
+
+/** צהוב בעיניים: someone of מחלקת הקשר saw the צ׳. Append-only; the newest row per צ׳ counts. */
+export const kesherEyeChecks = pgTable(
+  "kesher_eye_checks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    serialId: uuid("serial_id")
+      .notNull()
+      .references(() => kesherSerials.id, { onDelete: "cascade" }),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+    byUser: actor("by_user"),
+    /** from app_users by trigger */
+    byName: text("by_name"),
+  },
+  (t) => [index("kesher_eye_checks_serial_idx").on(t.serialId, t.at)],
 ).enableRLS();

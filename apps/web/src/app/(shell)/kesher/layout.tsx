@@ -17,8 +17,16 @@ export default async function KesherLayout({ children }: { children: React.React
     { href: "/kesher/vehicles", label: "ציוד על רכבים", short: "רכבים", icon: "truck" },
     { href: "/kesher/log", label: "יומן", icon: "clock" },
   ];
-  // החתמה, זיכוי and קליטה come with Phase 2 (docs/superpowers/plans/2026-10-27-kesher-phase1.md)
   const actions: AppNavItem[] = [
+    ...(access.isAdmin
+      ? ([
+          { href: "/kesher/sign", label: "החתמה", icon: "pencil" },
+          { href: "/kesher/credit", label: "זיכוי", icon: "undo" },
+          { href: "/kesher/brigade", label: "מול חטיבה", short: "חטיבה", icon: "swap" },
+          { href: "/kesher/broken", label: "ציוד תקול", short: "תקול", icon: "alert" },
+          { href: "/kesher/eye", label: "צהוב בעיניים", short: "בעיניים", icon: "flag" },
+        ] as const)
+      : []),
     ...(access.companies.length ? [{ href: "/kesher/check", label: "דוח צ׳", icon: "check" } as const] : []),
     { href: "/kesher/reports", label: "הפקת דוחות", short: "דוחות", icon: "report" },
     ...(access.isAdmin ? [{ href: "/kesher/import", label: "ייבוא מהגיליון", short: "ייבוא", icon: "upload" } as const] : []),
@@ -31,6 +39,7 @@ export default async function KesherLayout({ children }: { children: React.React
       mark={{ icon: "antenna" }}
       search={{ action: "/kesher/serials", placeholder: "חיפוש צ׳, מכשיר או חותם" }}
       groups={[{ items: main }, { title: "פעולות", items: actions }]}
+      bottom={access.isAdmin ? [{ href: "/kesher/settings", label: "הגדרות", icon: "gear" }] : undefined}
       user={{ name: displayName(s.user, s.claims), email: s.user.email, role: role?.role, roleTone: role?.tone }}
       current="tinted"
       phoneTabs={["/kesher", "/kesher/companies", "/kesher/serials", "/kesher/stock"]}

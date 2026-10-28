@@ -28,6 +28,12 @@ export interface SheetPerson extends PickPerson {
   companyId: string | null;
   platoonName: string | null;
 }
+/** A vehicle of דוח 1's list, for the vehicle field. */
+export interface SheetVehicle {
+  number: string;
+  /** "האמר · חפ״ק מג״ד" */
+  label: string;
+}
 export interface SheetSuggestions {
   role: string[];
   frame: string[];
@@ -46,6 +52,7 @@ export function SerialSheet({
   people,
   companies,
   suggestions,
+  vehicles = [],
   isAdmin,
   onClose,
   onSaved,
@@ -56,6 +63,8 @@ export function SerialSheet({
   /** the places a צ׳ can move to (admin) */
   companies: Array<{ id: string; name: string }>;
   suggestions: SheetSuggestions;
+  /** דוח 1's vehicles: a צ׳ is mounted only on one of them */
+  vehicles?: SheetVehicle[];
   isAdmin: boolean;
   onClose(): void;
   onSaved(changed: number): void;
@@ -201,7 +210,7 @@ export function SerialSheet({
           ) : null}
           {isAdmin ? (
             <section className="tz-card flex flex-col gap-3 p-4" aria-label="פרטי הצ׳">
-              <TextField label="האמר (מספר רכב)" value={vehicle} onChange={setVehicle} suggestions={[]} keepable={!one} />
+              <VehicleField value={vehicle} onChange={setVehicle} vehicles={vehicles} keepable={!one} />
               <label className="tz-field">
                 <span className="tz-label">הערה</span>
                 <textarea
@@ -309,6 +318,27 @@ function TextField({
           ))}
         </datalist>
       ) : null}
+    </label>
+  );
+}
+
+/** The vehicle a צ׳ is mounted on: one of דוח 1's vehicles, or none. */
+function VehicleField({ value, onChange, vehicles, keepable }: { value: Value<string>; onChange(v: Value<string>): void; vehicles: SheetVehicle[]; keepable: boolean }) {
+  const KEEP = "\u0000keep";
+  const listed = !value || vehicles.some((v) => v.number === value);
+  return (
+    <label className="tz-field">
+      <span className="tz-label">רכב (מרשימת הרכבים של דוח 1)</span>
+      <select className="tz-input" value={value === undefined ? KEEP : (value ?? "")} onChange={(e) => onChange(e.target.value === KEEP ? undefined : e.target.value || null)}>
+        {keepable ? <option value={KEEP}>ללא שינוי</option> : null}
+        <option value="">ללא רכב</option>
+        {!listed ? <option value={value!}>{value} (לא ברשימת דוח 1)</option> : null}
+        {vehicles.map((v) => (
+          <option key={v.number} value={v.number}>
+            {v.label}
+          </option>
+        ))}
+      </select>
     </label>
   );
 }

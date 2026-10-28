@@ -169,6 +169,20 @@
       "when": 1793118364601,
       "tag": "0023_doch1_repair_filled_call_up",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1793192214100,
+      "tag": "0024_kesher_phase2",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1793192220678,
+      "tag": "0025_kesher_phase2_security",
+      "breakpoints": true
     }
   ]
 }

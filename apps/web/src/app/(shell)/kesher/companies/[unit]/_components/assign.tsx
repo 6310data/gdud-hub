@@ -3,12 +3,12 @@
  * Editing צ׳ on the company page: a pencil per row, checkboxes for a group edit, and one sheet for
  * both — the same sheet as צ׳ במערכת (SerialSheet). The table itself stays a server component; these
  * islands share the selection through context. A battalion admin (`isAdmin`) also edits מיקום,
- * חותם על הפלוגה, האמר and הערה.
+ * חותם על הפלוגה, רכב and הערה.
  */
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Icon } from "@gdud/ui";
 import { distinct } from "@/lib/kesher/suggestions";
-import { SerialSheet, type SheetPerson, type SheetRow } from "../../../_components/serial-sheet";
+import { SerialSheet, type SheetPerson, type SheetRow, type SheetVehicle } from "../../../_components/serial-sheet";
 
 interface Ctx {
   selected: ReadonlySet<string>;
@@ -24,12 +24,14 @@ export function AssignProvider({
   rows,
   people,
   companies,
+  vehicles,
   isAdmin,
   children,
 }: {
   rows: SheetRow[];
   people: SheetPerson[];
   companies: Array<{ id: string; name: string }>;
+  vehicles: SheetVehicle[];
   isAdmin: boolean;
   children: ReactNode;
 }) {
@@ -81,6 +83,7 @@ export function AssignProvider({
           people={people}
           companies={companies}
           suggestions={{ role: distinct(rows.map((r) => r.holderRole)), frame: distinct(rows.map((r) => r.frame)), signerRole: distinct(rows.map((r) => r.signerRole)) }}
+          vehicles={vehicles}
           isAdmin={isAdmin}
           onClose={() => setSheetFor(null)}
           onSaved={(n) => {

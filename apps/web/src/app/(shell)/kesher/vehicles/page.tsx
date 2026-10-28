@@ -2,87 +2,111 @@ import Link from "next/link";
 import { z } from "zod";
 import { byHe, matches } from "@gdud/core";
 import { withUser } from "@gdud/db";
-import { Serial } from "@gdud/ui";
+import { Chip, Serial } from "@gdud/ui";
 import { Empty, Kpi, PageHeader, SmallTile } from "@/components/page-parts";
 import { kesherAccess } from "@/lib/kesher/access";
-import { groupBy, loadKesher, type KSerial } from "@/lib/kesher/data";
+import { groupBy, loadKesher, loadVehicles, vehicleLabel, type KSerial, type KVehicle } from "@/lib/kesher/data";
 import { companiesOf } from "@/lib/logistics/data";
 import { fmtCount } from "@/lib/logistics/format";
 import { requireModule } from "@/lib/session";
-import { CompanyChip, CompanyDot, LocationChip, SearchBox, companyRefs, type CompanyRef } from "../_components/ui";
+import { CompanyChip, LocationChip, SearchBox, companyRefs, type CompanyRef } from "../_components/ui";
 import { EditVehicleButton, VehicleProvider } from "./_components/vehicle-editor";
 
 export const metadata = { title: "ציוד על רכבים" };
 
 const searchSchema = z.object({ q: z.string().trim().max(80).optional().catch(undefined) });
 
-const WAREHOUSE = "wh";
-const NONE = "none";
+/** A vehicle with what kesher put on it. `vehicle` is null for a number the צ׳ carry that דוח 1 doesn't list. */
+interface Card {
+  number: string;
+  vehicle: KVehicle | null;
+  gear: KSerial[];
+  bulk: { name: string; qty: number }[];
+}
+
+const NO_STANDBY = "";
 
 /**
- * ציוד על רכבים: every vehicle (the sheet's האמר column) with the צ׳ mounted on it, grouped under
- * the company whose gear it carries. Not personal (every member reads it); holders only for the
- * companies the user covers (RLS). A battalion admin puts צ׳ on a vehicle or takes them off.
+ * ציוד על רכבים: דוח 1's vehicles that carry kesher gear — the צ׳ mounted on them and their ציוד
+ * משלים — grouped by the standby team (כוננות) of the active round that has the vehicle. Not personal
+ * (every member reads it); holders only for the companies the user covers (RLS). A battalion admin
+ * picks a vehicle from דוח 1's list and puts צ׳ and ציוד משלים on it.
  */
 export default async function KesherVehicles({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const s = await requireModule("kesher");
   const access = kesherAccess(s);
   const f = searchSchema.parse(await searchParams);
-  const data = await withUser(s.claims, (tx) => loadKesher(tx, s.units));
-  const companies = companiesOf(s.units);
-  const refs = companyRefs(companies);
+  const { data, vehicles } = await withUser(s.claims, async (tx) => {
+    const [data, vehicles] = await Promise.all([loadKesher(tx, s.units), loadVehicles(tx)]);
+    return { data, vehicles };
+  });
+  const refs = companyRefs(companiesOf(s.units));
+  const byNumber = new Map(vehicles.map((v) => [v.number, v]));
+  const itemName = (id: string) => data.itemsById.get(id)?.name ?? "—";
 
-  const mounted = data.serials.filter((x) => x.vehicle);
-  const vehicles = [...groupBy(mounted, (x) => x.vehicle!)].map(([vehicle, gear]) => ({ vehicle, gear, owner: ownerOf(gear) }));
-  const shown = vehicles.filter((v) => !f.q || matches(f.q, v.vehicle, refs.get(v.owner)?.name, ...v.gear.flatMap((x) => [x.serial, x.itemName, x.holder?.holder?.name])));
-  const sections: { key: string; title: string; company: CompanyRef | null }[] = [
-    ...companies.map((c) => ({ key: c.id, title: c.name, company: refs.get(c.id)! })),
-    { key: WAREHOUSE, title: "במחסן", company: null },
-    { key: NONE, title: "ללא שיוך", company: null },
-  ];
-  const byOwner = groupBy(shown, (v) => v.owner);
+  const gearOf = groupBy(
+    data.serials.filter((x) => x.vehicle),
+    (x) => x.vehicle!,
+  );
+  const cards: Card[] = [];
+  for (const v of vehicles) {
+    const bulk = [...(data.vehicleStock.get(v.id) ?? new Map<string, number>())].map(([id, qty]) => ({ name: itemName(id), qty })).sort((a, b) => byHe(a.name, b.name));
+    const gear = gearOf.get(v.number) ?? [];
+    if (gear.length || bulk.length) cards.push({ number: v.number, vehicle: v, gear, bulk });
+  }
+  // numbers from the sheet's האמר column that דוח 1 doesn't list
+  for (const [number, gear] of gearOf) if (!byNumber.has(number)) cards.push({ number, vehicle: null, gear, bulk: [] });
+
+  const shown = cards.filter(
+    (c) => !f.q || matches(f.q, c.number, c.vehicle?.kind, c.vehicle?.standby, ...c.gear.flatMap((x) => [x.serial, x.itemName, x.holder?.holder?.name]), ...c.bulk.map((b) => b.name)),
+  );
+  const sections = [...groupBy(shown, (c) => (c.vehicle ? (c.vehicle.standby ?? NO_STANDBY) : null))].sort(([a], [b]) =>
+    a === null ? 1 : b === null ? -1 : a === NO_STANDBY ? 1 : b === NO_STANDBY ? -1 : byHe(a, b),
+  );
+  const mounted = cards.reduce((n, c) => n + c.gear.length, 0);
+  const bulkTotal = cards.reduce((n, c) => n + c.bulk.reduce((m, b) => m + b.qty, 0), 0);
+  const bare = vehicles.filter((v) => v.active && !cards.some((c) => c.vehicle?.id === v.id)).length;
 
   const page = (
     <>
       <PageHeader
         title="ציוד על רכבים"
-        sub={`${fmtCount(vehicles.length)} רכבים · ${fmtCount(mounted.length)} צ׳ מותקנים`}
-        actions={access.isAdmin ? <EditVehicleButton vehicle={null} /> : null}
+        sub={`${fmtCount(cards.length)} רכבים עם ציוד קשר · ${fmtCount(mounted)} צ׳ · ${fmtCount(bulkTotal)} ציוד משלים`}
+        actions={access.isAdmin ? <EditVehicleButton vehicleId={null} /> : null}
       />
       <div className="tz-card grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))]">
-        <Kpi value={fmtCount(vehicles.length)} label="רכבים" tile={<SmallTile color="var(--primary)" icon="truck" />} />
-        <Kpi value={fmtCount(mounted.length)} label="צ׳ על רכבים" tile={<SmallTile color="var(--tile-brigade)" icon="antenna" />} />
-        <Kpi
-          value={fmtCount(data.serials.filter((x) => x.location === "company" && !x.vehicle).length)}
-          label="צ׳ בפלוגות בלי רכב"
-          tile={<SmallTile color="var(--tile-neutral)" icon="list" />}
-        />
+        <Kpi value={fmtCount(cards.length)} label="רכבים עם ציוד" tile={<SmallTile color="var(--primary)" icon="truck" />} />
+        <Kpi value={fmtCount(mounted)} label="צ׳ על רכבים" tile={<SmallTile color="var(--tile-brigade)" icon="antenna" />} />
+        <Kpi value={fmtCount(bulkTotal)} label="ציוד משלים על רכבים" tile={<SmallTile color="var(--tile-ok)" icon="box" />} />
+        <Kpi value={fmtCount(bare)} label="רכבים בדוח 1 בלי ציוד" tile={<SmallTile color="var(--tile-neutral)" icon="list" />} />
       </div>
-      <SearchBox action="/kesher/vehicles" q={f.q} placeholder="מספר רכב, צ׳, מכשיר או פלוגה" />
+      <SearchBox action="/kesher/vehicles" q={f.q} placeholder="מספר רכב, כוננות, צ׳ או פריט" />
 
       {shown.length ? (
-        sections
-          .filter((sec) => byOwner.get(sec.key)?.length)
-          .map((sec) => {
-            const list = byOwner.get(sec.key)!.sort((a, b) => a.vehicle.localeCompare(b.vehicle, "en", { numeric: true }));
-            return (
-              <section key={sec.key} className="flex flex-col gap-2.5" aria-label={sec.title}>
-                <h2 className="flex items-center gap-2 px-1 text-[15px] font-semibold">
-                  {sec.company ? <CompanyDot color={sec.company.color} /> : null}
-                  {sec.title}
-                  <span className="text-[13px] font-normal text-ink-muted">· {fmtCount(list.length)} רכבים</span>
-                </h2>
-                <div className="grid items-start gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {list.map((v) => (
-                    <VehicleCard key={v.vehicle} vehicle={v.vehicle} gear={v.gear} owner={v.owner} refs={refs} admin={access.isAdmin} />
+        sections.map(([standby, list]) => {
+          const title = standby === null ? "לא ברשימת הרכבים של דוח 1" : standby === NO_STANDBY ? "ללא כוננות" : standby;
+          return (
+            <section key={standby ?? "\u0000"} className="flex flex-col gap-2.5" aria-label={title}>
+              <h2 className="flex items-center gap-2 px-1 text-[15px] font-semibold">
+                {title}
+                <span className="text-[13px] font-normal text-ink-muted">· {fmtCount(list.length)} רכבים</span>
+              </h2>
+              {standby === null ? (
+                <p className="tz-footnote m-0 px-1">המספרים האלה הגיעו מעמודת &quot;האמר&quot; בגיליון ואינם ברשימת הרכבים של דוח 1. יש להוסיף את הרכב בדוח 1 או לשייך את הצ׳ לרכב מהרשימה.</p>
+              ) : null}
+              <div className="grid items-start gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {list
+                  .sort((a, b) => a.number.localeCompare(b.number, "en", { numeric: true }))
+                  .map((c) => (
+                    <VehicleCard key={c.number} card={c} refs={refs} admin={access.isAdmin} />
                   ))}
-                </div>
-              </section>
-            );
-          })
+              </div>
+            </section>
+          );
+        })
       ) : (
         <div className="tz-card">
-          <Empty>{vehicles.length ? "לא נמצא רכב תואם" : "עדיין אין צ׳ משויכים לרכבים. השיוך מגיע מעמודת \"האמר\" בגיליון או מכאן."}</Empty>
+          <Empty>{cards.length ? "לא נמצא רכב תואם" : "עדיין אין ציוד קשר על רכבים. בוחרים רכב מרשימת דוח 1 ומשייכים אליו צ׳ וציוד משלים."}</Empty>
         </div>
       )}
     </>
@@ -91,6 +115,12 @@ export default async function KesherVehicles({ searchParams }: { searchParams: P
   if (!access.isAdmin) return page;
   return (
     <VehicleProvider
+      vehicles={vehicles.map((v) => ({
+        id: v.id,
+        number: v.number,
+        label: vehicleLabel(v),
+        stock: Object.fromEntries(data.vehicleStock.get(v.id) ?? []),
+      }))}
       serials={data.serials.map((x) => ({
         id: x.id,
         serial: x.serial,
@@ -98,54 +128,65 @@ export default async function KesherVehicles({ searchParams }: { searchParams: P
         place: x.location === "company" ? (refs.get(x.unitId ?? "")?.name ?? "פלוגה") : x.location === "warehouse" ? "במחסן" : "ללא שיוך",
         vehicle: x.vehicle,
       }))}
+      items={data.items.filter((i) => i.kind === "bulk").map((i) => ({ id: i.id, name: i.name, available: data.available(i.id) }))}
     >
       {page}
     </VehicleProvider>
   );
 }
 
-/** The company whose gear a vehicle carries most of; the warehouse or "none" when no company's. */
-function ownerOf(gear: readonly KSerial[]): string {
-  const counts = new Map<string, number>();
-  for (const x of gear) {
-    const k = x.location === "company" ? x.unitId! : x.location === "warehouse" ? WAREHOUSE : NONE;
-    counts.set(k, (counts.get(k) ?? 0) + 1);
-  }
-  // a company beats the warehouse on a tie
-  return [...counts].sort(([a, n], [b, m]) => m - n || Number(a === WAREHOUSE || a === NONE) - Number(b === WAREHOUSE || b === NONE))[0]![0];
-}
-
-function VehicleCard({ vehicle, gear, owner, refs, admin }: { vehicle: string; gear: KSerial[]; owner: string; refs: ReadonlyMap<string, CompanyRef>; admin: boolean }) {
+function VehicleCard({ card, refs, admin }: { card: Card; refs: ReadonlyMap<string, CompanyRef>; admin: boolean }) {
+  const { number, vehicle, gear, bulk } = card;
   const sorted = [...gear].sort((a, b) => byHe(a.itemName, b.itemName) || a.serial.localeCompare(b.serial, "en", { numeric: true }));
-  // gear of another place than the vehicle's company gets its own chip
-  const mixed = gear.some((x) => (x.location === "company" ? x.unitId : x.location === "warehouse" ? WAREHOUSE : NONE) !== owner);
+  const companies = [...new Set(gear.filter((x) => x.location === "company").map((x) => x.unitId!))];
   return (
-    <article className="tz-card flex flex-col" aria-label={`רכב ${vehicle}`}>
+    <article className="tz-card flex flex-col" aria-label={`רכב ${number}`}>
       <header className="flex items-center gap-3 border-b border-separator px-4 py-3">
-        <SmallTile color={refs.get(owner)?.color ?? "var(--tile-neutral)"} icon="truck" />
+        <SmallTile color={companies.length === 1 ? (refs.get(companies[0]!)?.color ?? "var(--tile-neutral)") : "var(--tile-neutral)"} icon="truck" />
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="text-[16px] font-semibold">
-            <Serial>{vehicle}</Serial>
+            <Serial>{number}</Serial>
+            {vehicle?.kind ? <span className="ms-2 text-[13px] font-normal text-ink-muted">{vehicle.kind}</span> : null}
           </span>
-          <span className="text-xs text-ink-muted">{fmtCount(gear.length)} צ׳</span>
+          <span className="text-xs text-ink-muted">
+            {vehicle ? (vehicle.standby ? `כוננות: ${vehicle.standby}` : "לא משויך לכוננות") : "לא ברשימת דוח 1"}
+          </span>
         </span>
-        {refs.get(owner) ? <CompanyChip company={refs.get(owner)!} /> : null}
-        {admin ? <EditVehicleButton vehicle={vehicle} /> : null}
+        {vehicle && vehicle.state !== "ok" ? <Chip tone="broken">{vehicle.state === "broken" ? "תקול" : "בטיפול"}</Chip> : null}
+        {admin && vehicle ? <EditVehicleButton vehicleId={vehicle.id} label={number} /> : null}
       </header>
-      <ul className="m-0 list-none p-0">
-        {sorted.map((x) => (
-          <li key={x.id} className="flex items-center gap-2 border-b border-separator px-4 py-2 text-[14px] last:border-0">
-            <span className="min-w-0 flex-1">
-              {x.itemName}
-              {x.holder?.holder ? <span className="block text-xs text-ink-muted">{[x.holder.holder.name, x.holder.holderRole].filter(Boolean).join(" · ")}</span> : null}
-            </span>
-            {mixed ? <LocationChip serial={x} company={refs.get(x.unitId ?? "")} /> : null}
-            <Link href={`/kesher/serials?sel=${x.id}`} className="no-underline">
-              <Serial>{x.serial}</Serial>
-            </Link>
-          </li>
-        ))}
-      </ul>
+      {sorted.length ? (
+        <ul className="m-0 list-none p-0">
+          {sorted.map((x) => (
+            <li key={x.id} className="flex items-center gap-2 border-b border-separator px-4 py-2 text-[14px] last:border-0">
+              <span className="min-w-0 flex-1">
+                {x.itemName}
+                {x.holder?.holder ? <span className="block text-xs text-ink-muted">{[x.holder.holder.name, x.holder.holderRole].filter(Boolean).join(" · ")}</span> : null}
+              </span>
+              {x.location === "company" ? (
+                refs.get(x.unitId ?? "") ? <CompanyChip company={refs.get(x.unitId ?? "")!} /> : null
+              ) : (
+                <LocationChip serial={x} />
+              )}
+              <Link href={`/kesher/serials?sel=${x.id}`} className="no-underline">
+                <Serial>{x.serial}</Serial>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {bulk.length ? (
+        <div className="flex flex-col gap-1 border-t border-separator px-4 py-2.5">
+          <span className="tz-footnote">ציוד משלים</span>
+          <ul className="m-0 flex list-none flex-wrap gap-x-4 gap-y-1 p-0 text-[14px]">
+            {bulk.map((b) => (
+              <li key={b.name}>
+                {b.name} <span className="tz-num font-semibold">×{fmtCount(b.qty)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </article>
   );
 }

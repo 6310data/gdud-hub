@@ -28,7 +28,7 @@ export default async function KesherStock({ searchParams }: { searchParams: Prom
     return { data, kitLines };
   });
   const bulk = data.items.filter((i) => i.kind === "bulk");
-  const inWarehouse = bulk.reduce((n, i) => n + (data.stock.get(stockKey(i.id, null)) ?? 0), 0);
+  const inWarehouse = bulk.reduce((n, i) => n + Math.max(0, data.stock.get(stockKey(i.id, null)) ?? 0), 0);
 
   return (
     <>
@@ -57,7 +57,8 @@ type Data = Awaited<ReturnType<typeof loadKesher>>;
 function StockTable({ data, companies, canEdit }: { data: Data; companies: ReturnType<typeof companiesOf>; canEdit: boolean }) {
   const bulk = data.items.filter((i) => i.kind === "bulk");
   if (!bulk.length) return <div className="tz-card"><Empty>עדיין אין ציוד משלים. מייבאים אותו מלשונית &quot;כללי&quot; של הגיליון.</Empty></div>;
-  const cols: StockCol[] = [{ id: null, name: "במחסן", color: null }, ...companies.map((c) => ({ id: c.id, name: c.name, color: c.color }))];
+  const cols: StockCol[] = companies.map((c) => ({ id: c.id, name: c.name, color: c.color }));
+  const onVehicles = (itemId: string) => [...data.vehicleStock.values()].reduce((n, m) => n + (m.get(itemId) ?? 0), 0);
   const cats = [...groupBy(bulk, (i) => i.category ?? "")].sort(([a], [b]) => (a ? (b ? byHe(a, b) : -1) : 1));
   const rows: [string, StockRow[]][] = cats.map(([cat, list]) => [
     cat,
@@ -65,15 +66,17 @@ function StockTable({ data, companies, canEdit }: { data: Data; companies: Retur
       id: i.id,
       name: i.name,
       brigadeQty: i.brigadeQty,
-      qty: Object.fromEntries(cols.map((c) => [c.id ?? "", data.stock.get(stockKey(i.id, c.id)) ?? 0])),
+      brokenQty: i.brokenQty,
+      qty: Object.fromEntries(cols.map((c) => [c.id, data.stock.get(stockKey(i.id, c.id)) ?? 0])),
+      vehicles: onVehicles(i.id),
     })),
   ]);
   return (
     <>
-      <StockEditor cats={rows} cols={cols} canEdit={canEdit} warehouseTracked={data.warehouseTracked} />
+      <StockEditor cats={rows} cols={cols} canEdit={canEdit} />
       <p className="tz-section-footer">
-        {data.warehouseTracked ? "" : "המחסן לא מנוהל (מלאי חלקי): הכמויות בעמודת המחסן לא מעודכנות בהחתמה ובזיכוי. "}
-        מלאי כללי = הכמות הכוללת של הפריט בגדוד (מעמודת &quot;מלאי כללי&quot; בגיליון, או מקבלות החטיבה). &quot;מעל&quot; מסמן פריט שרשום אצלנו יותר מהמלאי הכללי.
+        מלאי כללי = כל מה שיש לגדוד מהפריט (קבלות חטיבה). במחסן = מלאי כללי פחות החתום בפלוגות ועל רכבים; &quot;תקול&quot; מתוכו לא זמין להחתמה. כמויות הפלוגות משתנות
+        רק בהחתמה ובזיכוי, ומלאי כללי גם בקבלה מחטיבה ובזיכוי לחטיבה.
       </p>
     </>
   );

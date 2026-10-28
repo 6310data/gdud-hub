@@ -1,10 +1,12 @@
 /**
- * GET /api/doch1/cron — called every 5 minutes by Supabase pg_cron (docs/DOCH1.md).
+ * GET /api/doch1/cron — called every 5 minutes by Supabase pg_cron (docs/DOCH1.md). Runs דוח 1's
+ * reminder jobs and מחלקת קשר's notification job, each on its own (one failing doesn't skip the other).
  * Requires `Authorization: Bearer <CRON_SECRET>`; public in proxy.ts because the caller has no session.
  */
 import { createHash, timingSafeEqual } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { runArrivalReminders, runReminderJob } from "@/lib/doch1/reminder-job";
+import { runKesherNotifyJob, type KesherNotifyResult } from "@/lib/kesher/notify-job";
 
 export const dynamic = "force-dynamic";
 
@@ -24,13 +26,23 @@ export async function GET(request: NextRequest) {
   const given = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
   if (!given || !sameSecret(given, secret)) return NextResponse.json({ error: "unauthorized" }, { status: 401, headers: NO_STORE });
 
+  // each department's job on its own: a failure in one doesn't skip the other
+  const now = new Date();
+  let doch1: (Awaited<ReturnType<typeof runReminderJob>> & { arrival: Awaited<ReturnType<typeof runArrivalReminders>> }) | null = null;
   try {
-    const now = new Date();
-    const result = await runReminderJob(now);
-    const arrival = await runArrivalReminders(now);
-    return NextResponse.json({ ...result, arrival }, { headers: NO_STORE });
+    doch1 = { ...(await runReminderJob(now)), arrival: await runArrivalReminders(now) };
   } catch (err) {
     console.error("doch1 reminder job failed", err);
-    return NextResponse.json({ error: "job failed" }, { status: 500, headers: NO_STORE });
   }
+  let kesher: KesherNotifyResult | null = null;
+  try {
+    kesher = await runKesherNotifyJob(now);
+  } catch (err) {
+    console.error("kesher notify job failed", err);
+  }
+  const failed = !doch1 || !kesher;
+  return NextResponse.json(
+    { ...(doch1 ?? { error: "doch1 job failed" }), kesher: kesher ?? { error: "job failed" } },
+    { status: failed ? 500 : 200, headers: NO_STORE },
+  );
 }

@@ -8,6 +8,7 @@ import { companyStatus, groupBy, loadKesher, loadLastChecks, loadLastSeen } from
 import { fmtCount, fmtWhen } from "@/lib/logistics/format";
 import { displayName, requireModule } from "@/lib/session";
 import { CompanyDot, ReportChip, pillCount } from "../_components/ui";
+import { PushToggle } from "../../doch1/_components/push-toggle";
 import { CheckForm, type CheckGroup } from "./_components/check-form";
 
 export const metadata = { title: "דוח צ׳" };
@@ -69,6 +70,7 @@ export default async function KesherCheck({ searchParams }: { searchParams: Prom
             );
           })}
         </div>
+        <Reminders />
       </>
     );
   }
@@ -110,6 +112,17 @@ export default async function KesherCheck({ searchParams }: { searchParams: Prom
           <Empty>אין צ׳ על הפלוגה — אין מה לדווח.</Empty>
         </div>
       )}
+      <Reminders />
     </>
+  );
+}
+
+/** "קבלת תזכורות לדוח צ׳" on this device (hidden when the browser can't get push: the toggle renders nothing). */
+function Reminders() {
+  return (
+    <div className="hidden flex-wrap items-center gap-x-3 gap-y-1 px-4 has-[button]:flex has-[p]:flex">
+      <span className="tz-footnote">קבלת תזכורות לדוח צ׳</span>
+      <PushToggle />
+    </div>
   );
 }
