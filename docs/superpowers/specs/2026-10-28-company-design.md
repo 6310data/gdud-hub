@@ -243,6 +243,29 @@ Push (shared subscriptions): a company admin gets "בקשת הצטרפות חד�
 10. **Logistics gear** — shown, not moved.
 11. **Name changes** — update the app, flag to the departments, imports also try the previous name.
 
+## Changes requested 2026-10-28 (after phase 3)
+
+Answered with the user after using the first version; these replace the matching parts above (in particular the non-goals "Moving logistics gear" and "Sending reports … opens the department's existing flow", decision 10, and call 28's links).
+
+1. **Searching gear in החתמות → חדש.** First pick the department — **לוגיסטיקה / קשר / פריטי פלוגה** — then one search box: free text on צ׳ or item name, with autocomplete as you type. Each suggestion shows the item, its צ׳ and where it is now. No long select lists.
+2. **Logistics gear joins the register** (register only, like kesher): any open `logistics_assignments` row of a soldier of the company can be signed internally. "From" is that soldier (or the receiver of the open entry). Logistics' own records are never written; אפסון items are not offered (they aren't in hand). `company_register_items` and `company_signings` get the logistics source alongside kesher and company items.
+3. **Reports are filled inside the company app** — no navigation to דוח 1 or קשר. `/company/[unit]/reports/…` pages for **דוח 1 של היום** (the company's soldiers, or the platoon's for a platoon commander), **שבצ״ק וכוננות** (only the company's own teams and vehicles, see 4) and **דוח צ׳** (the company's kesher צ׳). They write the same tables through the same rules as the department pages; build them from the department's components, extracted to be shared, not copied. Who may fill each is as in call 28, except שבצ״ק (4).
+4. **Each company owns its כוננות / שבצ״ק — same data, no sync.** `doch1_vehicles` and `doch1_standby_teams` get a nullable `unit_id` (null = battalion). A company builds its teams (company-level type, location, a vehicle of its own, members from its own soldiers) in its app, and the דוח 1 standby page shows the same rows, grouped by company. Battalion teams stay with the דוח 1 admin.
+   - A company team is edited by the company `admin` (this module) or a דוח 1 `admin` / `company_user` on that company. A trigger keeps its members to soldiers of that company and its vehicle to that company's vehicles.
+   - Vehicles are assigned to a company by a דוח 1 admin in דוח 1's vehicle list; the company sees only its own.
+   - Migration: an existing team whose members are all in one company gets that company; the rest, and all vehicles, stay battalion (null) until a דוח 1 admin assigns them.
+5. **פעילות** — a one-time activity with who goes, in its own tab (`/company/[unit]/activities`). `company_activities` (`unit_id`, name, date, start/end time, place, commander, notes) with its participants (soldier, role text) and vehicles (the company's own). Created and edited by the company `admin` and platoon commanders. **The participant picker offers only soldiers of the company whose דוח 1 status that day is present and not home** (`counts_as_present` and not `home_day`; the planned status for a future day; no status = not offered). If a participant's status later changes to one that doesn't qualify, the activity flags them ("לא נוכח לפי דוח 1"). It writes nothing to דוח 1. Participants see upcoming activities on אני.
+6. **Vehicles page** (`/company/[unit]/vehicles`) — each of the company's vehicles with the kesher צ׳ mounted on it, its ציוד משלים, and the standby team that uses it. **The company `admin` edits the kesher gear** with the same rules and events as `/kesher/vehicles`: mount / unmount a צ׳ that is on the company; set ציוד משלים quantities, where an increase comes out of the kesher warehouse (needs that many תקינים there) and a decrease returns to it. Writes go through `security definer` functions that check the vehicle and the צ׳ belong to the company; every change is a kesher `serial_edit` / `vehicle_stock` event with who made it, so kesher sees it in its יומן.
+7. **A "חזרה" button** in the shell header on every page reached from somewhere else in the app (a soldier from the roster, a report from the reports tab, a link from the hub): it returns to the page the user came from, or to the module's home when there is none.
+8. **Platoon names on the company page are too crowded.** Rework how the roster shows platoons (e.g. a header per platoon instead of a name on every row, or a platoon filter) — check it on a phone width.
+
+### Calls I made (check these)
+
+33. **Fill rights for דוח 1 של היום and דוח צ׳ inside the company app stay with the department roles.** A company admin who lacks one can grant it (only to others — call 30), or a department admin can.
+34. **Only the company `admin` edits kesher gear on vehicles,** not platoon commanders. This lets a company draw ציוד משלים from the battalion warehouse without a kesher admin — the user chose it knowingly; kesher sees every change in its יומן.
+35. **Unmounting a צ׳ from a company vehicle leaves it on the company** (its location doesn't change), as on `/kesher/vehicles`.
+36. **A platoon commander adds only their own platoon's soldiers** to a פעילות; the company admin adds anyone in the company.
+
 ## Left to the builder
 
 Exact column types and indexes, the rate-limit mechanism on `request_join`, phone format validation, component breakdown, how the roster paginates, and the wording of individual messages (Hebrew, specific, says what to fix).
