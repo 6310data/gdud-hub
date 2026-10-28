@@ -1868,4 +1868,150 @@ describe("company", () => {
       await db.update(people).set({ active: true }).where(eq(people.id, s.b));
     });
   });
+  describe("register (החתמה פנימית)", () => {
+    const { companyItems: cItems, companySignings: signings, kesherEvents: kEvents } = schema;
+    const cCmdr2: TestUser = { authId: randomUUID(), email: "co-plsr2-mm@example.com" };
+    const r = { plsr2: "", d: "", kSerial: "", tent: "", pots: "" };
+    const sign = (u: TestUser, kind: string, id: string, to: string, qty = 1) =>
+      call<{ id: string }>(u, sql`select app.company_sign(${kind}, ${id}::uuid, ${to}::uuid, ${qty}) as id`).then((x) => x[0]!.id);
+    const giveBack = (u: TestUser, id: string) => call(u, sql`select app.company_return(${id}::uuid)`);
+    const openFor = async (serialId: string) =>
+      (await db.select().from(signings).where(eq(signings.kesherSerialId, serialId))).filter((x) => !x.returnedAt);
+
+    beforeAll(async () => {
+      const [plsr2] = await db.insert(units).values({ parentId: ids.plsr, kind: "platoon", name: "מחלקה 2" }).returning();
+      r.plsr2 = plsr2!.id;
+      const [d] = await db.insert(people).values({ unitId: r.plsr2, fullName: "חייל דלת" }).returning();
+      r.d = d!.id;
+      const [u] = await db.insert(appUsers).values({ email: cCmdr2.email, authUserId: cCmdr2.authId }).returning();
+      cCmdr2.appId = u!.id;
+      await db.insert(memberships).values({ userId: cCmdr2.appId, module: "company", role: "platoon_commander", unitId: r.plsr2 });
+      const [ks] = await db.select().from(kSerials).where(eq(kSerials.serial, "CO-K1"));
+      r.kSerial = ks!.id;
+    });
+
+    it("company items: the admin writes; the company's members read; nobody else", async () => {
+      await rejects(as(cCmdr, (tx) => tx.insert(cItems).values({ unitId: ids.plsr, name: "אוהל" })));
+      await rejects(as(cPlntAdmin, (tx) => tx.insert(cItems).values({ unitId: ids.plsr, name: "אוהל" })));
+      await rejects(as(cAdmin, (tx) => tx.insert(cItems).values({ unitId: ids.plsr1, name: "אוהל" })));
+      const [tent] = await as(cAdmin, (tx) => tx.insert(cItems).values({ unitId: ids.plsr, name: "אוהל סיירים", serial: "T-100" }).returning());
+      const [pots] = await as(cAdmin, (tx) => tx.insert(cItems).values({ unitId: ids.plsr, name: "סיר", quantity: 3 }).returning());
+      r.tent = tent!.id;
+      r.pots = pots!.id;
+      await rejects(as(cAdmin, (tx) => tx.insert(cItems).values({ unitId: ids.plsr, name: "כפול", serial: "T-100" })));
+      await rejects(as(cAdmin, (tx) => tx.insert(cItems).values({ unitId: ids.plsr, name: "שני", serial: "T-101", quantity: 2 })));
+      expect(await as(cCmdr2, (tx) => tx.select().from(cItems))).toHaveLength(2);
+      expect(await as(cPlntAdmin, (tx) => tx.select().from(cItems))).toHaveLength(0);
+      expect(await as(gA, (tx) => tx.select().from(cItems))).toHaveLength(0);
+      expect(await as(cCmdr, (tx) => tx.update(cItems).set({ name: "x" }).returning())).toHaveLength(0);
+    });
+
+    it("what can be signed: the company's kesher צ׳ with where each is now — for a member with no kesher role", async () => {
+      const items = await call<{ kind: string; serial: string | null; now_name: string | null; available: number }>(cCmdr2, sql`select * from app.company_register_items(${ids.plsr}::uuid)`);
+      expect(items.find((x) => x.serial === "CO-K1")).toMatchObject({ kind: "kesher", now_name: "חייל בית", available: 1 });
+      expect(items.find((x) => x.serial === null)).toMatchObject({ kind: "company", available: 3 });
+      expect(await as(cCmdr2, (tx) => tx.select().from(kSerials))).toHaveLength(0);
+      expect(await call(cPlntAdmin, sql`select * from app.company_register_items(${ids.plsr}::uuid)`)).toHaveLength(0);
+      expect(await call(gA, sql`select * from app.company_register_items(${ids.plsr}::uuid)`)).toHaveLength(0);
+    });
+
+    it("the receiver picker: names of the company's soldiers only", async () => {
+      const names = await call<Record<string, unknown>>(cCmdr2, sql`select * from app.company_soldier_names(${ids.plsr}::uuid)`);
+      expect(names.map((x) => x.full_name)).toEqual(expect.arrayContaining(["חייל אלף מתוקן", "חייל בית", "חייל דלת"]));
+      expect(names.map((x) => x.full_name)).not.toContain("חייל גימל");
+      expect(Object.keys(names[0]!).sort()).toEqual(["full_name", "id", "unit_id"]);
+      expect(await call(cPlntAdmin, sql`select * from app.company_soldier_names(${ids.plsr}::uuid)`)).toHaveLength(0);
+    });
+
+    it("a platoon commander borrows a kesher צ׳ for their soldier; kesher's records don't change", async () => {
+      const holdersBefore = await db.select().from(kHolders).where(eq(kHolders.serialId, r.kSerial));
+      const eventsBefore = (await db.select().from(kEvents)).length;
+      await sign(cCmdr2, "kesher", r.kSerial, r.d);
+      const open = await openFor(r.kSerial);
+      expect(open).toHaveLength(1);
+      expect(open[0]).toMatchObject({ unitId: ids.plsr, fromPersonId: s.b, toPersonId: r.d, signedBy: cCmdr2.appId });
+      expect(await db.select().from(kHolders).where(eq(kHolders.serialId, r.kSerial))).toEqual(holdersBefore);
+      expect((await db.select().from(kEvents)).length).toBe(eventsBefore);
+      // the usual holder and signer see who has it now
+      const bGear = await call<{ serial: string; with_name: string | null }>(gB, sql`select * from app.my_gear()`);
+      expect(bGear.find((g) => g.serial === "CO-K1")?.with_name).toBe("חייל דלת");
+      const aGear = await call<{ serial: string; with_name: string | null }>(gA, sql`select * from app.my_gear()`);
+      expect(aGear.find((g) => g.serial === "CO-K1")?.with_name).toBe("חייל דלת");
+      const dGear = await call<{ source: string; serial: string; detail: string }>(cCmdr2, sql`select * from app.person_gear(${r.d}::uuid)`);
+      expect(dGear).toEqual([expect.objectContaining({ source: "company", serial: "CO-K1", detail: "מחייל בית" })]);
+    });
+
+    it("passing it on closes the open entry in the same step — never in two places", async () => {
+      await failsWith(sign(cCmdr2, "kesher", r.kSerial, r.d), "GD110");
+      await sign(cCmdr, "kesher", r.kSerial, s.a);
+      const open = await openFor(r.kSerial);
+      expect(open).toHaveLength(1);
+      expect(open[0]).toMatchObject({ fromPersonId: r.d, toPersonId: s.a });
+      expect((await db.select().from(signings).where(eq(signings.kesherSerialId, r.kSerial))).filter((x) => x.returnedAt)).toHaveLength(1);
+      await rejects(as(cAdmin, (tx) => tx.insert(signings).values({ unitId: ids.plsr, kesherSerialId: r.kSerial, toPersonId: s.b })));
+      await rejects(as(cAdmin, (tx) => tx.update(signings).set({ returnedAt: new Date() })));
+    });
+
+    it("only the company admin, or the commander of the platoon it is with or goes to, records it", async () => {
+      // it is with A (מחלקה 1); מ״מ 2 signing it to B (company level) is neither lending nor borrowing
+      await rejects(sign(cCmdr2, "kesher", r.kSerial, s.b));
+      await rejects(sign(cPlntAdmin, "kesher", r.kSerial, s.b));
+      await rejects(sign(gA, "kesher", r.kSerial, s.b));
+      await failsWith(sign(cAdmin, "kesher", r.kSerial, s.c), "GD113");
+      await failsWith(sign(cAdmin, "kesher", r.kSerial, s.gone), "GD113");
+    });
+
+    it("a quantity item: several open entries, never more than the company has", async () => {
+      await sign(cAdmin, "company", r.pots, s.a, 2);
+      await failsWith(sign(cAdmin, "company", r.pots, s.b, 2), "GD111");
+      await sign(cAdmin, "company", r.pots, s.b, 1);
+      await failsWith(as(cAdmin, (tx) => tx.update(cItems).set({ quantity: 2 }).where(eq(cItems.id, r.pots))), "GD111");
+      const tentEntry = await sign(cAdmin, "company", r.tent, r.d);
+      await failsWith(sign(cCmdr, "company", r.tent, r.d), "GD110");
+      await sign(cCmdr, "company", r.tent, s.a);
+      expect((await db.select().from(signings).where(eq(signings.companyItemId, r.tent))).filter((x) => !x.returnedAt)).toHaveLength(1);
+      expect((await db.select().from(signings).where(eq(signings.id, tentEntry)))[0]!.returnedBy).toBe(cCmdr.appId);
+    });
+
+    it("הוחזר: the admin or a commander of the giver's / receiver's platoon; once", async () => {
+      const [entry] = await openFor(r.kSerial);
+      await rejects(giveBack(cPlntAdmin, entry!.id));
+      await rejects(giveBack(gA, entry!.id));
+      await giveBack(cCmdr2, entry!.id); // it came from D, of מחלקה 2
+      await failsWith(giveBack(cAdmin, entry!.id), "GD114");
+      expect(await openFor(r.kSerial)).toHaveLength(0);
+      const bGear = await call<{ serial: string; with_name: string | null }>(gB, sql`select * from app.my_gear()`);
+      expect(bGear.find((g) => g.serial === "CO-K1")?.with_name).toBeNull();
+    });
+
+    it("who reads the register: the company's members, and a soldier about their own entries only", async () => {
+      const all = await db.select().from(signings);
+      expect(await as(cCmdr2, (tx) => tx.select().from(signings))).toHaveLength(all.length);
+      const mine = await as(gA, (tx) => tx.select().from(signings));
+      expect(mine.length).toBeGreaterThan(0);
+      expect(mine.every((x) => x.toPersonId === s.a || x.fromPersonId === s.a)).toBe(true);
+      expect(await as(cPlntAdmin, (tx) => tx.select().from(signings))).toHaveLength(0);
+      expect(await as(clerk, (tx) => tx.select().from(signings))).toHaveLength(0);
+      // the kesher department doesn't see it either
+      const kesherUser: TestUser = { authId: randomUUID(), email: "co-kesher-user@example.com" };
+      const [u] = await db.insert(appUsers).values({ email: kesherUser.email, authUserId: kesherUser.authId }).returning();
+      await db.insert(memberships).values({ userId: u!.id, module: "kesher", role: "admin", unitId: null });
+      expect(await as(kesherUser, (tx) => tx.select().from(signings))).toHaveLength(0);
+    });
+
+    it("the register list: every platoon's entries with names, for the company's members only", async () => {
+      const open = await call<{ item: string; to_name: string; from_name: string | null; signed_by_name: string }>(cCmdr2, sql`select * from app.company_register(${ids.plsr}::uuid, true)`);
+      expect(open.map((x) => `${x.item}:${x.to_name}`).sort()).toEqual(["אוהל סיירים:חייל אלף מתוקן", "סיר:חייל אלף מתוקן", "סיר:חייל בית"].sort());
+      const history = await call<{ item: string; from_name: string | null; returned_by_name: string }>(cCmdr2, sql`select * from app.company_register(${ids.plsr}::uuid, false)`);
+      expect(history.filter((x) => x.item === "מגן מכלול")).toHaveLength(2);
+      expect(await call(cPlntAdmin, sql`select * from app.company_register(${ids.plsr}::uuid, true)`)).toHaveLength(0);
+      expect(await call(gA, sql`select * from app.company_register(${ids.plsr}::uuid, true)`)).toHaveLength(0);
+    });
+
+    it("the roster counts register entries in a soldier's gear", async () => {
+      const roster = await call<{ id: string; gear: number }>(cAdmin, sql`select * from app.company_roster(${ids.plsr}::uuid)`);
+      // A: 2 logistics + 1 kesher (signer) + pots ×2 entry + tent
+      expect(roster.find((x) => x.id === s.a)?.gear).toBe(5);
+    });
+  });
 });

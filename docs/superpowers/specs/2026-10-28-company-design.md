@@ -211,6 +211,15 @@ Push (shared subscriptions): a company admin gets "בקשת הצטרפות חד�
 19. **The old `user` memberships of `company` are deleted** by the migration (the module was a placeholder page, so they gave nothing); `platoon_commander` is given anew.
 20. **The module's sections point at the user's first company**; a user covering several switches with the company pills on each page.
 
+### Made while building (phase 2)
+
+21. **Which kesher צ׳ can be signed:** a `kesher_serials` row with location `company` on that company (what kesher shows on the company page), with or without a holder row.
+22. **A quantity item always comes "from the company".** Moving some of it from one soldier to another is הוחזר + a new entry; only one-piece gear (a kesher צ׳ or a company item with a צ׳) is passed on in one step.
+23. **Every member of the company reads the whole register,** platoon commanders included (to see where a piece is before borrowing it). Names come through `app.company_register` / `company_register_items` / `company_soldier_names`, so a platoon commander gets other platoons' names without their `people` rows.
+24. **If kesher moves a צ׳ off the company while it is lent internally,** the open entry stays (and can be closed with הוחזר); the צ׳ just stops being offered in חדש.
+25. **Company items are deactivated, not deleted,** in the UI (a deleted item would drop its history; the FK refuses it once signed). Its quantity can't go below what is signed out.
+26. **"הוחזר" asks for a second tap**, since there's no confirmation by the receiver.
+
 ## Answered (2026-10-28)
 
 1. **Getting in** — self-signup with the personal number, approved by the company admin.

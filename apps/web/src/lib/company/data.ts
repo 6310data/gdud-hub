@@ -213,3 +213,121 @@ export function subtreeIds(rootId: string, units: readonly UnitNode[]): string[]
   for (let i = 0; i < out.length; i++) for (const u of units) if (u.parentId === out[i]) out.push(u.id);
   return out;
 }
+
+/* ── החתמה פנימית ────────────────────────────────────────────────────────── */
+
+export interface RegisterItem {
+  kind: "kesher" | "company";
+  id: string;
+  name: string;
+  category: string | null;
+  serial: string | null;
+  quantity: number;
+  available: number;
+  nowPersonId: string | null;
+  nowName: string | null;
+  nowUnitId: string | null;
+  openSigningId: string | null;
+}
+
+/** What the company can sign internally, with where each piece is now (app.company_register_items). */
+export async function loadRegisterItems(tx: Tx, unitId: string): Promise<RegisterItem[]> {
+  type Row = {
+    kind: "kesher" | "company";
+    id: string;
+    name: string;
+    category: string | null;
+    serial: string | null;
+    quantity: number;
+    available: number;
+    now_person_id: string | null;
+    now_name: string | null;
+    now_unit_id: string | null;
+    open_signing_id: string | null;
+  };
+  const rows = rowsOf<Row>(await tx.execute(sql`select * from app.company_register_items(${unitId}::uuid)`));
+  return rows
+    .map((r) => ({
+      kind: r.kind,
+      id: r.id,
+      name: r.name,
+      category: r.category,
+      serial: r.serial,
+      quantity: Number(r.quantity),
+      available: Number(r.available),
+      nowPersonId: r.now_person_id,
+      nowName: r.now_name,
+      nowUnitId: r.now_unit_id,
+      openSigningId: r.open_signing_id,
+    }))
+    .sort((a, b) => byHe(a.name, b.name) || byHe(a.serial ?? "", b.serial ?? ""));
+}
+
+export interface SoldierName {
+  id: string;
+  name: string;
+  unitId: string;
+}
+
+/** The receiver picker: names of the company's active soldiers (app.company_soldier_names). */
+export async function loadSoldierNames(tx: Tx, unitId: string): Promise<SoldierName[]> {
+  const rows = rowsOf<{ id: string; full_name: string; unit_id: string }>(await tx.execute(sql`select * from app.company_soldier_names(${unitId}::uuid)`));
+  return rows.map((r) => ({ id: r.id, name: r.full_name, unitId: r.unit_id })).sort((a, b) => byHe(a.name, b.name));
+}
+
+export interface SigningRow {
+  id: string;
+  kind: "kesher" | "company";
+  item: string;
+  serial: string | null;
+  quantity: number;
+  fromPersonId: string | null;
+  fromName: string | null;
+  fromUnitId: string | null;
+  toPersonId: string;
+  toName: string;
+  toUnitId: string;
+  signedAt: Date;
+  signedByName: string | null;
+  returnedAt: Date | null;
+  returnedByName: string | null;
+}
+
+/** The register: open entries, or the history (app.company_register). */
+export async function loadRegister(tx: Tx, unitId: string, open: boolean): Promise<SigningRow[]> {
+  type Row = {
+    id: string;
+    kind: "kesher" | "company";
+    item: string;
+    serial: string | null;
+    quantity: number;
+    from_person_id: string | null;
+    from_name: string | null;
+    from_unit_id: string | null;
+    to_person_id: string;
+    to_name: string;
+    to_unit_id: string;
+    signed_at: string | Date;
+    signed_by_name: string | null;
+    returned_at: string | Date | null;
+    returned_by_name: string | null;
+  };
+  const rows = rowsOf<Row>(await tx.execute(sql`select * from app.company_register(${unitId}::uuid, ${open})`));
+  return rows.map((r) => ({
+    id: r.id,
+    kind: r.kind,
+    item: r.item,
+    serial: r.serial,
+    quantity: Number(r.quantity),
+    fromPersonId: r.from_person_id,
+    fromName: r.from_name,
+    fromUnitId: r.from_unit_id,
+    toPersonId: r.to_person_id,
+    toName: r.to_name,
+    toUnitId: r.to_unit_id,
+    signedAt: new Date(r.signed_at),
+    signedByName: r.signed_by_name,
+    returnedAt: r.returned_at ? new Date(r.returned_at) : null,
+    returnedByName: r.returned_by_name,
+  }));
+}

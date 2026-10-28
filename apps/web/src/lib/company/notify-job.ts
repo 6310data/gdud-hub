@@ -10,6 +10,7 @@ import "server-only";
  *                                                 the soldier (not the soldier): "בקשת עדכון פרטים"
  *   renamed   an approved name change          → the דוח 1 and kesher users covering the company:
  *                                                 "שם של חייל עודכן בפלוגה" (they fix their sheets)
+ *   signed    an internal signing (החתמה פנימית) → the receiver's account: "נרשם עליך ציוד בהחתמה פנימית"
  *
  * Each row is claimed (notified_at / decision_notified_at) before sending, so a parallel run skips it;
  * rows older than two days when first seen are marked, not pushed. Payloads never carry a soldier's
@@ -20,7 +21,7 @@ import { and, eq, inArray, isNull, schema, systemDb } from "@gdud/db";
 import { sendPush, type PushPayload } from "@/lib/doch1/push";
 
 const { units, appUsers, memberships, doch1PushSubscriptions: subs } = schema;
-const { companyJoinRequests: joins, companyProfileRequests: changes } = schema;
+const { companyJoinRequests: joins, companyProfileRequests: changes, companySignings: signings } = schema;
 
 const MAX_AGE_MS = 2 * 86_400_000;
 const TITLE = "ניהול פלוגה";
@@ -31,6 +32,7 @@ export interface CompanyNotifyResult {
   joined: number;
   change: number;
   renamed: number;
+  signed: number;
   /** dead subscriptions removed */
   gone: number;
 }
@@ -61,11 +63,11 @@ function companyOf(unitId: string, parents: UnitParents, kinds: ReadonlyMap<stri
 
 export async function runCompanyNotifyJob(now: Date): Promise<CompanyNotifyResult> {
   const db = systemDb();
-  const result: CompanyNotifyResult = { join: 0, joined: 0, change: 0, renamed: 0, gone: 0 };
+  const result: CompanyNotifyResult = { join: 0, joined: 0, change: 0, renamed: 0, signed: 0, gone: 0 };
   const fresh = (at: Date) => now.getTime() - at.getTime() <= MAX_AGE_MS;
 
   // claim everything due first
-  const [newJoins, approvedJoins, newChanges, renames] = await Promise.all([
+  const [newJoins, approvedJoins, newChanges, renames, newSignings] = await Promise.all([
     db
       .update(joins)
       .set({ notifiedAt: now })
@@ -86,16 +88,18 @@ export async function runCompanyNotifyJob(now: Date): Promise<CompanyNotifyResul
       .set({ decisionNotifiedAt: now })
       .where(and(isNull(changes.decisionNotifiedAt), eq(changes.status, "approved"), eq(changes.field, "full_name")))
       .returning({ unitId: changes.unitId, at: changes.decidedAt }),
+    db.update(signings).set({ notifiedAt: now }).where(isNull(signings.notifiedAt)).returning({ toPersonId: signings.toPersonId, at: signings.signedAt }),
   ]);
   const due = {
     join: newJoins.filter((r) => fresh(r.at)),
     joined: approvedJoins.filter((r) => r.at && fresh(r.at)),
     change: newChanges.filter((r) => fresh(r.at)),
     renamed: renames.filter((r) => r.at && fresh(r.at)),
+    signed: newSignings.filter((r) => fresh(r.at)),
   };
-  if (!due.join.length && !due.joined.length && !due.change.length && !due.renamed.length) return result;
+  if (Object.values(due).every((list) => !list.length)) return result;
 
-  const [unitRows, memberRows, joinedUsers] = await Promise.all([
+  const [unitRows, memberRows, joinedUsers, receivers] = await Promise.all([
     db.select({ id: units.id, parentId: units.parentId, kind: units.kind }).from(units),
     db
       .select({ userId: memberships.userId, module: memberships.module, role: memberships.role, unitId: memberships.unitId })
@@ -107,6 +111,12 @@ export async function runCompanyNotifyJob(now: Date): Promise<CompanyNotifyResul
           .select({ id: appUsers.id })
           .from(appUsers)
           .where(and(inArray(appUsers.authUserId, due.joined.map((r) => r.authUserId)), eq(appUsers.active, true)))
+      : Promise.resolve([]),
+    due.signed.length
+      ? db
+          .select({ id: appUsers.id })
+          .from(appUsers)
+          .where(and(inArray(appUsers.personId, due.signed.map((r) => r.toPersonId)), eq(appUsers.active, true)))
       : Promise.resolve([]),
   ]);
   const parents = toParentMap(unitRows);
@@ -122,6 +132,7 @@ export async function runCompanyNotifyJob(now: Date): Promise<CompanyNotifyResul
     queue(covering(memberRows, "company", ["admin"], r.unitId, parents), "join", "בקשת הצטרפות חדשה", company ? `/company/${company}/settings` : "/company");
   }
   for (const u of joinedUsers) queue([u.id], "joined", "הבקשה שלך אושרה — אפשר להיכנס", "/company/me");
+  for (const u of receivers) queue([u.id], "signed", "נרשם עליך ציוד בהחתמה פנימית", "/company/me");
   for (const r of due.change) {
     const company = companyOf(r.unitId, parents, kinds);
     const admins = covering(memberRows, "company", ["admin"], r.unitId, parents);

@@ -18,6 +18,8 @@ export default async function CompanyLayout({ children }: { children: React.Reac
   const main: AppNavItem[] = [
     ...(access.personId ? [{ href: "/company/me", label: "אני", icon: "person" } as const] : []),
     ...(home ? [{ ...section(""), label: "הפלוגה", icon: "people" } as const] : []),
+    ...(home ? [{ ...section("/signings"), label: "החתמות", icon: "swap" } as const] : []),
+    ...(home?.isAdmin ? [{ ...section("/items"), label: "פריטי פלוגה", short: "פריטים", icon: "box" } as const] : []),
   ];
   const bottom: AppNavItem[] = home?.isAdmin ? [{ ...section("/settings"), label: "הגדרות", icon: "gear" }] : [];
 
