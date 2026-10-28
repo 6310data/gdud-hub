@@ -1,9 +1,7 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { z } from "zod";
 import { israelToday, placement } from "@gdud/core";
 import { withUser } from "@gdud/db";
-import { Icon } from "@gdud/ui";
 import { ActionForm } from "@/components/action-form";
 import { PageHeader, Panel } from "@/components/page-parts";
 import { coversPerson, requireCompanyScope } from "@/lib/company/access";
@@ -34,10 +32,6 @@ export default async function SoldierPage({ params }: { params: Promise<{ unit: 
 
   return (
     <>
-      <Link href={`/company/${scope.company.id}`} className="tz-btn tz-btn-plain tz-btn-sm self-start">
-        <Icon name="chevron" size={15} />
-        חזרה לפלוגה
-      </Link>
       <PageHeader title={details.fullName} sub={place} />
       <PersonView details={details} gear={gear} round={round} changes={changes} today={today} editable={false} place={place} />
       {scope.isAdmin && !details.linked ? (

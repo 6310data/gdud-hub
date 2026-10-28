@@ -225,6 +225,20 @@
       "when": 1793200586746,
       "tag": "0031_company_roles_security",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1793203835102,
+      "tag": "0032_company_register_logistics",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1793203835681,
+      "tag": "0033_company_register_logistics_security",
+      "breakpoints": true
     }
   ]
 }

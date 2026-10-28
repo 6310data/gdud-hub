@@ -4,7 +4,8 @@
  *   join screen (/join)          → company_join_requests, company_join_attempts (rate limit)
  *   אני → הפרטים שלי             → company_profile_requests (name / תפקיד; the phone is written directly)
  *   פריטי פלוגה                  → company_items
- *   החתמות (החתמה פנימית)        → company_signings (kesher צ׳ on the company + company items)
+ *   החתמות (החתמה פנימית)        → company_signings (kesher צ׳ on the company, logistics צ׳ of its
+ *                                  soldiers, company items)
  *
  * The module reads the departments' data (logistics, kesher, דוח 1) only through SECURITY DEFINER
  * functions that return the current user's own rows, and never writes it.
@@ -16,6 +17,7 @@ import { boolean, check, index, integer, pgTable, text, timestamp, uniqueIndex, 
 import { COMPANY_REQUEST_STATUSES, PROFILE_FIELDS } from "@gdud/core";
 import { appUsers, people, units } from "./core";
 import { kesherSerials } from "./kesher";
+import { logisticsSerials } from "./logistics";
 
 const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -146,7 +148,7 @@ export const companyItems = pgTable(
 
 /**
  * החתמה פנימית — the company's register of who has a piece of gear now: a kesher צ׳ on the company,
- * or a company item (or a quantity of it). Open while returned_at is null. Written only by
+ * a logistics צ׳ signed on one of its soldiers, or a company item (or a quantity of it). Open while returned_at is null. Written only by
  * app.company_sign / app.company_return; it never changes kesher or logistics records.
  */
 export const companySignings = pgTable(
@@ -159,6 +161,8 @@ export const companySignings = pgTable(
       .references(() => units.id, { onDelete: "restrict" }),
     companyItemId: uuid("company_item_id").references(() => companyItems.id, { onDelete: "restrict" }),
     kesherSerialId: uuid("kesher_serial_id").references(() => kesherSerials.id, { onDelete: "restrict" }),
+    /** a logistics צ׳ signed on a soldier of the company (register only — logistics keeps its own record) */
+    logisticsSerialId: uuid("logistics_serial_id").references(() => logisticsSerials.id, { onDelete: "restrict" }),
     quantity: integer("quantity").notNull().default(1),
     /** one piece (a kesher צ׳ or a company item with a צ׳): at most one open entry */
     single: boolean("single").notNull().default(true),
@@ -178,10 +182,14 @@ export const companySignings = pgTable(
   (t) => [
     uniqueIndex("company_signings_open_kesher").on(t.kesherSerialId).where(sql`${t.returnedAt} is null and ${t.kesherSerialId} is not null`),
     uniqueIndex("company_signings_open_single_item").on(t.companyItemId).where(sql`${t.returnedAt} is null and ${t.single} and ${t.companyItemId} is not null`),
+    uniqueIndex("company_signings_open_logistics").on(t.logisticsSerialId).where(sql`${t.returnedAt} is null and ${t.logisticsSerialId} is not null`),
     index("company_signings_unit_idx").on(t.unitId, t.returnedAt),
     index("company_signings_to_idx").on(t.toPersonId),
     index("company_signings_from_idx").on(t.fromPersonId),
-    check("company_signings_one_thing", sql`(${t.companyItemId} is null) <> (${t.kesherSerialId} is null)`),
+    check(
+      "company_signings_one_thing",
+      sql`num_nonnulls(${t.companyItemId}, ${t.kesherSerialId}, ${t.logisticsSerialId}) = 1 and (${t.logisticsSerialId} is null or ${t.single})`,
+    ),
     check("company_signings_quantity", sql`${t.quantity} between 1 and 9999 and (not ${t.single} or ${t.quantity} = 1)`),
   ],
 ).enableRLS();

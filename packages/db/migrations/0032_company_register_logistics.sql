@@ -1,0 +1,5 @@
+ALTER TABLE "company_signings" DROP CONSTRAINT "company_signings_one_thing";--> statement-breakpoint
+ALTER TABLE "company_signings" ADD COLUMN "logistics_serial_id" uuid;--> statement-breakpoint
+ALTER TABLE "company_signings" ADD CONSTRAINT "company_signings_logistics_serial_id_logistics_serials_id_fk" FOREIGN KEY ("logistics_serial_id") REFERENCES "public"."logistics_serials"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "company_signings_open_logistics" ON "company_signings" USING btree ("logistics_serial_id") WHERE "company_signings"."returned_at" is null and "company_signings"."logistics_serial_id" is not null;--> statement-breakpoint
+ALTER TABLE "company_signings" ADD CONSTRAINT "company_signings_one_thing" CHECK (num_nonnulls("company_signings"."company_item_id", "company_signings"."kesher_serial_id", "company_signings"."logistics_serial_id") = 1 and ("company_signings"."logistics_serial_id" is null or "company_signings"."single"));

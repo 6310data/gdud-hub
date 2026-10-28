@@ -217,7 +217,7 @@ export function subtreeIds(rootId: string, units: readonly UnitNode[]): string[]
 /* ── החתמה פנימית ────────────────────────────────────────────────────────── */
 
 export interface RegisterItem {
-  kind: "kesher" | "company";
+  kind: "kesher" | "logistics" | "company";
   id: string;
   name: string;
   category: string | null;
@@ -233,7 +233,7 @@ export interface RegisterItem {
 /** What the company can sign internally, with where each piece is now (app.company_register_items). */
 export async function loadRegisterItems(tx: Tx, unitId: string): Promise<RegisterItem[]> {
   type Row = {
-    kind: "kesher" | "company";
+    kind: "kesher" | "logistics" | "company";
     id: string;
     name: string;
     category: string | null;
@@ -277,7 +277,7 @@ export async function loadSoldierNames(tx: Tx, unitId: string): Promise<SoldierN
 
 export interface SigningRow {
   id: string;
-  kind: "kesher" | "company";
+  kind: "kesher" | "logistics" | "company";
   item: string;
   serial: string | null;
   quantity: number;
@@ -297,7 +297,7 @@ export interface SigningRow {
 export async function loadRegister(tx: Tx, unitId: string, open: boolean): Promise<SigningRow[]> {
   type Row = {
     id: string;
-    kind: "kesher" | "company";
+    kind: "kesher" | "logistics" | "company";
     item: string;
     serial: string | null;
     quantity: number;

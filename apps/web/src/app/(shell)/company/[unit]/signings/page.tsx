@@ -10,7 +10,8 @@ import { requireCompanyScope } from "@/lib/company/access";
 import { loadRegister, loadRegisterItems, loadSoldierNames, type SigningRow } from "@/lib/company/data";
 import { fmtCount, fmtDateTime, fmtWhen } from "@/lib/logistics/format";
 import { returnInternal } from "../../_actions/register";
-import { SignForm, type GearOption, type SoldierGroup } from "../../_components/sign-form";
+import type { PickPerson } from "@/components/person-picker";
+import { GEAR_DEPT_LABEL, SignForm, type GearOption } from "../../_components/sign-form";
 import { CompanyPills } from "../../_components/ui";
 
 export const metadata = { title: "החתמות פנימיות" };
@@ -59,20 +60,20 @@ export default async function SigningsPage({
   const base = `/company/${company.id}/signings`;
   const who = (name: string | null, unitId: string | null) => (name ? [name, platoonOf(unitId)?.name].filter(Boolean).join(", ") : "הפלוגה");
 
-  const gear: GearOption[] = items.map((i) => {
-    const where = i.kind === "company" && !i.serial ? `נשארו ${i.available} מתוך ${i.quantity}` : i.nowName ? `אצל ${who(i.nowName, i.nowUnitId)}` : "בפלוגה";
-    return {
-      value: `${i.kind}:${i.id}`,
-      label: `${i.kind === "kesher" ? "קשר · " : ""}${i.name}${i.serial ? ` · צ׳ ${i.serial}` : ""} — ${where}`,
-      available: i.kind === "company" && !i.serial ? i.available : null,
-    };
-  });
-  const groups: SoldierGroup[] = [
-    ...platoons.map((pl) => ({ label: pl.name, soldiers: soldiers.filter((x) => platoonOf(x.unitId)?.id === pl.id) })),
-    { label: "מפקדה / ללא מחלקה", soldiers: soldiers.filter((x) => !platoonOf(x.unitId)) },
-  ].filter((g) => g.soldiers.length);
-  // a platoon commander's own platoon first in the picker
-  groups.sort((a, b) => Number(scope.platoons.some((x) => x.name === b.label)) - Number(scope.platoons.some((x) => x.name === a.label)));
+  const gear: GearOption[] = items.map((i) => ({
+    value: `${i.kind}:${i.id}`,
+    dept: i.kind,
+    name: i.name,
+    serial: i.serial,
+    category: i.category,
+    where: i.kind === "company" && !i.serial ? `נשארו ${i.available} מתוך ${i.quantity}` : i.nowName ? `אצל ${who(i.nowName, i.nowUnitId)}` : "בפלוגה",
+    available: i.kind === "company" && !i.serial ? i.available : null,
+  }));
+  // a platoon commander's own platoon first
+  const people: PickPerson[] = soldiers
+    .map((x) => ({ x, platoon: platoonOf(x.unitId) }))
+    .sort((a, b) => Number(mine.has(b.platoon?.id ?? "")) - Number(mine.has(a.platoon?.id ?? "")))
+    .map(({ x, platoon }) => ({ id: x.id, name: x.name, personalNumber: null, place: platoon?.name ?? "מפקדה" }));
 
   return (
     <>
@@ -104,9 +105,9 @@ export default async function SigningsPage({
       {f.tab === "new" ? (
         <Panel title="החתמה חדשה">
           {gear.length ? (
-            <SignForm unitId={company.id} gear={gear} groups={groups} />
+            <SignForm unitId={company.id} gear={gear} soldiers={people} />
           ) : (
-            <Empty>אין ציוד לרישום: אין צ׳ של קשר על הפלוגה ואין פריטי פלוגה פעילים.</Empty>
+            <Empty>אין ציוד לרישום: אין צ׳ של לוגיסטיקה או קשר על חיילי הפלוגה, ואין פריטי פלוגה פעילים.</Empty>
           )}
         </Panel>
       ) : (
@@ -137,7 +138,7 @@ export default async function SigningsPage({
                             <Serial>{r.serial}</Serial>
                           </>
                         ) : null}
-                        {r.kind === "kesher" ? <span className="tz-footnote"> · קשר</span> : null}
+                        {r.kind !== "company" ? <span className="tz-footnote"> · {GEAR_DEPT_LABEL[r.kind]}</span> : null}
                       </td>
                       <td>{who(r.toName, r.toUnitId)}</td>
                       <td>{who(r.fromName, r.fromUnitId)}</td>

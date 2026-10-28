@@ -266,6 +266,13 @@ Answered with the user after using the first version; these replace the matching
 35. **Unmounting a צ׳ from a company vehicle leaves it on the company** (its location doesn't change), as on `/kesher/vehicles`.
 36. **A platoon commander adds only their own platoon's soldiers** to a פעילות; the company admin adds anyone in the company.
 
+### Made while building (after phase 3)
+
+37. **Logistics gear in the register is "in the company" by its holder:** the company of the soldier with the open logistics assignment owns the entry (`company_logistics_serials`). If logistics returns or transfers the צ׳ while it is lent internally, the open entry stays and can be closed with הוחזר, as with kesher (call 24).
+38. **חדש searches the receiver too** (by name, the commander's own platoon first), not only the gear — the same "no long select lists" reason.
+39. **"חזרה" is in the shared app shell, so every module gets it:** it goes back when the app has a page before this one in this tab (client navigations, the hub included), otherwise to the module's first section; it is hidden on that first section when there is nothing to go back to. On the phone it's in the top bar, on the desktop above the page.
+40. **The roster is one card per platoon** (a header with the count and how many have no דוח 1 today; company-level soldiers first, as "מפקדה"), rows show name, תפקיד and gear count, today's status and a call button; platoon filter as pills with counts.
+
 ## Left to the builder
 
 Exact column types and indexes, the rate-limit mechanism on `request_join`, phone format validation, component breakdown, how the roster paginates, and the wording of individual messages (Hebrew, specific, says what to fix).

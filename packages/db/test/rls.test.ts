@@ -1975,6 +1975,33 @@ describe("company", () => {
       expect((await db.select().from(signings).where(eq(signings.id, tentEntry)))[0]!.returnedBy).toBe(cCmdr.appId);
     });
 
+    it("logistics gear: a צ׳ signed on a soldier of the company is lent internally; logistics' records don't change", async () => {
+      const [co1001, co1002, co1003] = await Promise.all(
+        ["CO1001", "CO1002", "CO1003"].map(async (n) => (await db.select().from(lSerials).where(eq(lSerials.serial, n)))[0]!.id),
+      );
+      const items = await call<{ kind: string; serial: string; now_name: string | null }>(cCmdr2, sql`select * from app.company_register_items(${ids.plsr}::uuid)`);
+      const logistics = items.filter((x) => x.kind === "logistics");
+      // CO1002 is in אפסון, CO1003 is on a soldier of another company
+      expect(logistics.map((x) => `${x.serial}:${x.now_name}`)).toEqual(["CO1001:חייל אלף מתוקן"]);
+      expect(await as(cCmdr2, (tx) => tx.select().from(lAssign))).toHaveLength(0);
+
+      const assignBefore = await db.select().from(lAssign);
+      const id = await sign(cCmdr2, "logistics", co1001!, r.d);
+      expect((await db.select().from(signings).where(eq(signings.id, id)))[0]).toMatchObject({ logisticsSerialId: co1001, fromPersonId: s.a, toPersonId: r.d });
+      expect(await db.select().from(lAssign)).toEqual(assignBefore);
+      const aGear = await call<{ source: string; serial: string; with_name: string | null }>(gA, sql`select * from app.my_gear()`);
+      expect(aGear.find((g) => g.source === "logistics" && g.serial === "CO1001")?.with_name).toBe("חייל דלת");
+      const dGear = await call<{ source: string; item: string; detail: string }>(cCmdr2, sql`select * from app.person_gear(${r.d}::uuid)`);
+      expect(dGear.find((g) => g.source === "company" && g.item === "M4 פלוגה")?.detail).toBe("מחייל אלף מתוקן");
+      const list = await call<{ kind: string; serial: string }>(cCmdr2, sql`select * from app.company_register(${ids.plsr}::uuid, true)`);
+      expect(list.find((x) => x.serial === "CO1001")?.kind).toBe("logistics");
+
+      await failsWith(sign(cAdmin, "logistics", co1002!, r.d), "GD112");
+      await failsWith(sign(cAdmin, "logistics", co1003!, r.d), "GD113");
+      await failsWith(sign(cPlntAdmin, "logistics", co1003!, s.c), "GD110");
+      await giveBack(cCmdr2, id);
+    });
+
     it("הוחזר: the admin or a commander of the giver's / receiver's platoon; once", async () => {
       const [entry] = await openFor(r.kSerial);
       await rejects(giveBack(cPlntAdmin, entry!.id));
