@@ -31,21 +31,30 @@ export const getSession = cache(async (): Promise<Session | null> => {
   if (!claims) return null;
 
   return withUser(claims, async (tx) => {
+    // One batch, one round trip (pipelined with the role setup): the user, their memberships
+    // and the unit tree. Memberships are found through the auth id so they don't wait for `me`.
     const loadMe = () =>
       tx.select().from(schema.appUsers).where(eq(schema.appUsers.authUserId, claims.sub)).limit(1);
+    const loadMemberships = () =>
+      tx
+        .select({ module: schema.memberships.module, role: schema.memberships.role, unitId: schema.memberships.unitId })
+        .from(schema.memberships)
+        .innerJoin(schema.appUsers, eq(schema.appUsers.id, schema.memberships.userId))
+        .where(eq(schema.appUsers.authUserId, claims.sub));
 
-    let [me] = await loadMe();
+    const [meRows, memberRows, unitRows] = await Promise.all([
+      loadMe(),
+      loadMemberships(),
+      tx.select().from(schema.units).orderBy(asc(schema.units.sortOrder), asc(schema.units.name)),
+    ]);
+    let me = meRows[0];
+    let rows = memberRows;
     if (!me) {
       // First sign-in, or invited after an earlier attempt: claim the invite by email.
       await tx.execute(sql`select app.link_auth_user()`);
-      [me] = await loadMe();
+      [[me], rows] = await Promise.all([loadMe(), loadMemberships()]);
     }
     if (!me || !me.active) return null;
-
-    const [rows, unitRows] = await Promise.all([
-      tx.select().from(schema.memberships).where(eq(schema.memberships.userId, me.id)),
-      tx.select().from(schema.units).orderBy(asc(schema.units.sortOrder), asc(schema.units.name)),
-    ]);
 
     const memberships: Membership[] = rows
       .filter((m) => isModuleId(m.module))

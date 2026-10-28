@@ -146,26 +146,29 @@ export async function loadRoundCompanies(tx: Tx, roundId: string): Promise<Round
  */
 export async function loadMembers(tx: Tx, roundId: string, units: UnitNode[]): Promise<MemberVM[]> {
   const byId = new Map(units.map((u) => [u.id, u]));
-  const activeCompanies = new Set((await loadRoundCompanies(tx, roundId)).filter((c) => c.active).map((c) => c.unitId));
-  const rows = await tx
-    .select({
-      personId: members.personId,
-      inReport: members.inReport,
-      callUpOn: members.callUpOn,
-      releasedOn: members.releasedOn,
-      arriving: memberArriving,
-      sheetTab: members.sheetTab,
-      sheetRow: members.sheetRow,
-      locationId: members.locationId,
-      arrivalOptionId: members.arrivalOptionId,
-      enlistmentOptionId: members.enlistmentOptionId,
-      name: people.fullName,
-      roleTitle: people.roleTitle,
-      unitId: people.unitId,
-    })
-    .from(members)
-    .innerJoin(people, eq(people.id, members.personId))
-    .where(eq(members.roundId, roundId));
+  const [companies, rows] = await Promise.all([
+    loadRoundCompanies(tx, roundId),
+      tx
+      .select({
+        personId: members.personId,
+        inReport: members.inReport,
+        callUpOn: members.callUpOn,
+        releasedOn: members.releasedOn,
+        arriving: memberArriving,
+        sheetTab: members.sheetTab,
+        sheetRow: members.sheetRow,
+        locationId: members.locationId,
+        arrivalOptionId: members.arrivalOptionId,
+        enlistmentOptionId: members.enlistmentOptionId,
+        name: people.fullName,
+        roleTitle: people.roleTitle,
+        unitId: people.unitId,
+      })
+      .from(members)
+      .innerJoin(people, eq(people.id, members.personId))
+      .where(eq(members.roundId, roundId)),
+  ]);
+  const activeCompanies = new Set(companies.filter((c) => c.active).map((c) => c.unitId));
   const out: MemberVM[] = [];
   for (const r of rows) {
     const { company, platoon } = placement(r.unitId, byId);

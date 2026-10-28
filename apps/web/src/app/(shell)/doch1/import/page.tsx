@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
-import { withUser } from "@gdud/db";
 import { doch1Access } from "@/lib/doch1/access";
-import { loadActiveRound } from "@/lib/doch1/data";
+import { doch1Rounds } from "@/lib/doch1/rounds";
 import { requireModule } from "@/lib/session";
 import { ImportFlow } from "./_components/import-flow";
 
@@ -12,7 +11,7 @@ export const maxDuration = 300;
 export default async function Doch1Import() {
   const s = await requireModule("doch1");
   if (!doch1Access(s).isAdmin) notFound();
-  const round = await withUser(s.claims, (tx) => loadActiveRound(tx));
+  const { active: round } = await doch1Rounds(s);
   if (!round) return null; // the layout shows "אין סבב פעיל"
 
   return (

@@ -3,7 +3,8 @@ import { can } from "@gdud/auth";
 import { callUpBrigadeText, callUpSummary, inCallUp, isDay, israelToday, type CallUpCounts, type CallUpMember, type EnlistmentEffect } from "@gdud/core";
 import { withUser } from "@gdud/db";
 import { doch1Access } from "@/lib/doch1/access";
-import { loadActiveRound, loadFieldOptions, loadMembers, loadRoundCompanies } from "@/lib/doch1/data";
+import { loadFieldOptions, loadMembers, loadRoundCompanies } from "@/lib/doch1/data";
+import { doch1Rounds } from "@/lib/doch1/rounds";
 import { requireModule } from "@/lib/session";
 import { DayNav } from "../_components/day-nav";
 import { BrigadeCompare } from "./_components/brigade-compare";
@@ -47,14 +48,12 @@ export default async function Doch1CallUp({ searchParams }: { searchParams: Prom
   const sp = await searchParams;
   const today = israelToday(new Date());
 
+  const { active: round } = await doch1Rounds(s);
+  if (!round) return null; // the layout shows "אין סבב פעיל"
   const data = await withUser(s.claims, async (tx) => {
-    const round = await loadActiveRound(tx);
-    if (!round) return null;
     const [companies, members, options] = await Promise.all([loadRoundCompanies(tx, round.id), loadMembers(tx, round.id, s.units), loadFieldOptions(tx, round.id)]);
     return { round, companies, members, options: options.filter((o) => o.field === "enlistment") };
   });
-  if (!data) return null; // the layout shows "אין סבב פעיל"
-  const { round } = data;
   const inRound = (d: string) => d >= round.startsOn && d <= round.endsOn;
   const fallback = round.callUpOn && today < round.callUpOn ? round.callUpOn : today;
   const day = sp.day && isDay(sp.day) && inRound(sp.day) ? sp.day : inRound(fallback) ? fallback : round.startsOn;

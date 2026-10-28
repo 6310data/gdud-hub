@@ -27,11 +27,10 @@ export default async function PeoplePage({ searchParams }: { searchParams: Promi
   const access = logisticsAccess(s);
   const sp = paramsSchema.parse(await searchParams);
 
-  const { people, holdings, stored } = await withUser(s.claims, async (tx) => ({
-    people: await loadPeople(tx, s.units, { includeInactive: true }),
-    holdings: await loadHoldings(tx),
-    stored: await loadStorage(tx),
-  }));
+  const { people, holdings, stored } = await withUser(s.claims, async (tx) => {
+    const [people, holdings, stored] = await Promise.all([loadPeople(tx, s.units, { includeInactive: true }), loadHoldings(tx), loadStorage(tx)]);
+    return { people, holdings, stored };
+  });
 
   const holdingsBy = groupBy(holdings, (h) => h.personId);
   const storedBy = groupBy(stored, (x) => x.personId);

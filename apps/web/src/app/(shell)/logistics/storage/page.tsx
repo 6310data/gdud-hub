@@ -21,10 +21,10 @@ export default async function StoragePage({ searchParams }: { searchParams: Prom
     .parse(await searchParams);
   const current = { unit: sp.unit, q: sp.q };
 
-  const { stored, people } = await withUser(s.claims, async (tx) => ({
-    stored: await loadStorage(tx),
-    people: await loadPeople(tx, s.units, { includeInactive: true }),
-  }));
+  const { stored, people } = await withUser(s.claims, async (tx) => {
+    const [stored, people] = await Promise.all([loadStorage(tx), loadPeople(tx, s.units, { includeInactive: true })]);
+    return { stored, people };
+  });
   const personById = new Map(people.map((p) => [p.id, p]));
   const rows = stored
     .map((x) => ({ ...x, person: personById.get(x.personId) }))

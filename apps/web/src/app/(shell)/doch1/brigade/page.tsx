@@ -2,7 +2,8 @@ import { notFound } from "next/navigation";
 import { hebrewDayLabel, isDay, israelToday, missingMembers, summarize, type BrigadeInput } from "@gdud/core";
 import { withUser } from "@gdud/db";
 import { doch1Access } from "@/lib/doch1/access";
-import { listedOn, loadActiveRound, loadDays, loadMembers, loadRoundCompanies, loadStatuses } from "@/lib/doch1/data";
+import { listedOn, loadDays, loadMembers, loadRoundCompanies, loadStatuses } from "@/lib/doch1/data";
+import { doch1Rounds } from "@/lib/doch1/rounds";
 import { requireModule } from "@/lib/session";
 import { DayNav } from "../_components/day-nav";
 import { BrigadePreview } from "./_components/brigade-preview";
@@ -15,9 +16,9 @@ export default async function Doch1Brigade({ searchParams }: { searchParams: Pro
   const sp = await searchParams;
   const today = israelToday(new Date());
 
+  const { active: round } = await doch1Rounds(s);
+  if (!round) return null; // the layout shows "אין סבב פעיל"
   const data = await withUser(s.claims, async (tx) => {
-    const round = await loadActiveRound(tx);
-    if (!round) return null;
     const day = sp.day && isDay(sp.day) && sp.day >= round.startsOn && sp.day <= round.endsOn ? sp.day : today;
     const [companies, members, statuses, days] = await Promise.all([
       loadRoundCompanies(tx, round.id),

@@ -23,10 +23,10 @@ export default async function AdminPage() {
     );
   }
 
-  const { users, memberships } = await withUser(claims, async (tx) => ({
-    users: await tx.select().from(schema.appUsers).orderBy(asc(schema.appUsers.email)),
-    memberships: await tx.select().from(schema.memberships),
-  }));
+  const { users, memberships } = await withUser(claims, async (tx) => {
+    const [users, memberships] = await Promise.all([tx.select().from(schema.appUsers).orderBy(asc(schema.appUsers.email)), tx.select().from(schema.memberships)]);
+    return { users, memberships };
+  });
 
   const modulesOf = (userId: string) =>
     [...new Set(memberships.filter((m) => m.userId === userId).map((m) => getModule(m.module)?.name ?? m.module))].join(" · ");

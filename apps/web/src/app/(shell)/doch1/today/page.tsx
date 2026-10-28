@@ -3,7 +3,8 @@ import { can, scopesFor } from "@gdud/auth";
 import { addDays, dayRange, hebrewDayLabel, isDay, isDayWritable, israelToday } from "@gdud/core";
 import { withUser } from "@gdud/db";
 import { doch1Access } from "@/lib/doch1/access";
-import { listedOn, loadActiveRound, loadDays, loadMembers, loadRoundCompanies, loadStatuses, membersUnder } from "@/lib/doch1/data";
+import { listedOn, loadDays, loadMembers, loadRoundCompanies, loadStatuses, membersUnder } from "@/lib/doch1/data";
+import { doch1Rounds } from "@/lib/doch1/rounds";
 import { requireModule } from "@/lib/session";
 import { DayNav } from "../_components/day-nav";
 import { PushToggle } from "../_components/push-toggle";
@@ -18,27 +19,9 @@ export default async function Doch1Today({ searchParams }: { searchParams: Promi
   const s = await requireModule("doch1");
   const sp = await searchParams;
 
-  const base = await withUser(s.claims, async (tx) => {
-    const round = await loadActiveRound(tx);
-    return round ? { round, companies: await loadRoundCompanies(tx, round.id) } : null;
-  });
-  if (!base) return null; // the layout shows "אין סבב פעיל"
-  const { round } = base;
-  const companyIds = base.companies.filter((c) => c.active).map((c) => c.unitId);
-  const access = doch1Access(s, companyIds);
-
-  // units this user can open here: where they report, plus read-only (viewer) scopes
-  const viewer = scopesFor(s.user, "doch1", ["viewer"]);
-  const viewerUnits = viewer.includes(null) ? companyIds : viewer.filter((u): u is string => u !== null);
+  const { active: round } = await doch1Rounds(s);
+  if (!round) return null; // the layout shows "אין סבב פעיל"
   const unitById = new Map(s.units.map((u) => [u.id, u]));
-  const scopes = [...new Set([...access.reportScopes, ...viewerUnits])]
-    .filter((id) => unitById.has(id))
-    .sort((a, b) => unitById.get(a)!.sortOrder - unitById.get(b)!.sortOrder);
-  if (!scopes.length) {
-    return <p className="tz-card m-0 p-5 text-ink-muted">אין לך פלוגה או מחלקה בדוח של הסבב הפעיל.</p>;
-  }
-  const unitId = sp.unit && scopes.includes(sp.unit) ? sp.unit : scopes[0]!;
-  const unit = unitById.get(unitId)!;
 
   const now = new Date();
   const today = israelToday(now);
@@ -46,14 +29,34 @@ export default async function Doch1Today({ searchParams }: { searchParams: Promi
   const yesterday = addDays(day, -1);
   const lastDay = [addDays(day, PLAN_DAYS), round.endsOn].sort()[0]!;
 
+  // one transaction: companies, members and statuses in one batch, then the chosen unit's days
   const data = await withUser(s.claims, async (tx) => {
-    const [all, statuses] = await Promise.all([loadMembers(tx, round.id, s.units), loadStatuses(tx, round.id, { includeInactive: true })]);
+    const [companies, all, statuses] = await Promise.all([
+      loadRoundCompanies(tx, round.id),
+      loadMembers(tx, round.id, s.units),
+      loadStatuses(tx, round.id, { includeInactive: true }),
+    ]);
+    const companyIds = companies.filter((c) => c.active).map((c) => c.unitId);
+    const access = doch1Access(s, companyIds);
+    // units this user can open here: where they report, plus read-only (viewer) scopes
+    const viewer = scopesFor(s.user, "doch1", ["viewer"]);
+    const viewerUnits = viewer.includes(null) ? companyIds : viewer.filter((u): u is string => u !== null);
+    const scopes = [...new Set([...access.reportScopes, ...viewerUnits])]
+      .filter((id) => unitById.has(id))
+      .sort((a, b) => unitById.get(a)!.sortOrder - unitById.get(b)!.sortOrder);
+    if (!scopes.length) return null;
+    const unitId = sp.unit && scopes.includes(sp.unit) ? sp.unit : scopes[0]!;
     const under = membersUnder(all, unitId, s.units);
     // only soldiers called up by `day` and not released before it
     const members = listedOn(under, day);
     const loaded = await loadDays(tx, round.id, dayRange(yesterday, lastDay), { personIds: members.map((m) => m.personId) });
-    return { members, statuses, loaded, hidden: under.length - members.length, companyId: under[0]?.companyId ?? null };
+    return { access, scopes, unitId, members, statuses, loaded, hidden: under.length - members.length, companyId: under[0]?.companyId ?? null };
   });
+  if (!data) {
+    return <p className="tz-card m-0 p-5 text-ink-muted">אין לך פלוגה או מחלקה בדוח של הסבב הפעיל.</p>;
+  }
+  const { access, scopes, unitId } = data;
+  const unit = unitById.get(unitId)!;
 
   const platoonOrder = (id: string | null) => (id ? (unitById.get(id)?.sortOrder ?? 0) + 1 : 0);
   const members: TodayMember[] = data.members

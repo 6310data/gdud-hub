@@ -4,7 +4,8 @@ import { availableStatusIds, hebrewDayLabel, isAvailable, isDay, israelClock, is
 import { Icon, Serial } from "@gdud/ui";
 import { withUser } from "@gdud/db";
 import { doch1Access } from "@/lib/doch1/access";
-import { listedOn, loadActiveRound, loadDays, loadMembers, loadRoundCompanies, loadStatuses } from "@/lib/doch1/data";
+import { listedOn, loadDays, loadMembers, loadRoundCompanies, loadStatuses } from "@/lib/doch1/data";
+import { doch1Rounds } from "@/lib/doch1/rounds";
 import { loadLocations, loadStandbyTypes, loadTeams, loadVehicles, standbyCompanies, withReadiness } from "@/lib/doch1/standby";
 import { requireModule } from "@/lib/session";
 import { DayNav } from "../_components/day-nav";
@@ -41,12 +42,12 @@ export default async function Doch1Standby({ searchParams }: { searchParams: Pro
   const now = new Date();
   const today = israelToday(now);
 
+  const { active: round } = await doch1Rounds(s);
+  if (!round) return null; // the layout shows "אין סבב פעיל"
   const data = await withUser(s.claims, async (tx) => {
-    const round = await loadActiveRound(tx);
-    if (!round) return null;
     // teams, members and locations are current; availability and the checks follow `day`'s דוח 1
     const day = sp.day && isDay(sp.day) && sp.day >= round.startsOn && sp.day <= round.endsOn ? sp.day : today;
-    const [companies, members, statuses, locations, types, vehicles, teams] = await Promise.all([
+    const [companies, members, statuses, locations, types, vehicles, teams, days] = await Promise.all([
       loadRoundCompanies(tx, round.id),
       loadMembers(tx, round.id, s.units),
       loadStatuses(tx, round.id, { includeInactive: true }),
@@ -54,8 +55,8 @@ export default async function Doch1Standby({ searchParams }: { searchParams: Pro
       loadStandbyTypes(tx, round.id),
       loadVehicles(tx),
       loadTeams(tx, round.id),
+      loadDays(tx, round.id, [day]),
     ]);
-    const days = await loadDays(tx, round.id, [day]);
     // soldiers not called up yet or already released that day are not in the שבצ״ק lists
     return { round, shownDay: day, companies, members: listedOn(members, day), statuses, locations, types, vehicles, teams, day: days.get(day)! };
   });

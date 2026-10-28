@@ -57,10 +57,11 @@ export default async function LogPage({ searchParams }: { searchParams: Promise<
   );
 
   const [rows, total] = await withUser(s.claims, async (tx) => {
-    const list = await tx.select().from(e).where(where).orderBy(desc(e.at), desc(e.id)).limit(LIMIT);
-    if (list.length < LIMIT) return [list, list.length] as const;
-    const [c] = await tx.select({ n: count() }).from(e).where(where);
-    return [list, c?.n ?? list.length] as const;
+    const [list, [c]] = await Promise.all([
+      tx.select().from(e).where(where).orderBy(desc(e.at), desc(e.id)).limit(LIMIT),
+      tx.select({ n: count() }).from(e).where(where),
+    ]);
+    return [list, list.length < LIMIT ? list.length : (c?.n ?? list.length)] as const;
   });
 
   const filtered = Object.values(f).some(Boolean);

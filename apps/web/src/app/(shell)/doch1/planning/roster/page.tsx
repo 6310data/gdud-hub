@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { desc, ne, schema, withUser } from "@gdud/db";
 import { doch1Access } from "@/lib/doch1/access";
-import { loadPlanningRound } from "@/lib/doch1/data";
+import { doch1Rounds } from "@/lib/doch1/rounds";
 import { ROUND_STATE_LABEL } from "@/lib/doch1/format";
 import { requireModule } from "@/lib/session";
 import { RosterFlow } from "./_components/roster-flow";
@@ -12,8 +12,8 @@ export const metadata = { title: "דוח 1 · רשימת הגדוד" };
 export default async function Doch1Roster() {
   const s = await requireModule("doch1");
   if (!doch1Access(s).isAdmin) notFound();
+  const { planning: round } = await doch1Rounds(s);
   const data = await withUser(s.claims, async (tx) => {
-    const round = await loadPlanningRound(tx);
     const rounds = await tx
       .select({ id: schema.doch1Rounds.id, name: schema.doch1Rounds.name, state: schema.doch1Rounds.state })
       .from(schema.doch1Rounds)

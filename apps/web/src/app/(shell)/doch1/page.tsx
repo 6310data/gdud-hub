@@ -3,7 +3,8 @@ import { can } from "@gdud/auth";
 import { addDays, dayRange, hebrewDayLabel, isDay, israelClock, israelToday, missingMembers, summarize } from "@gdud/core";
 import { withUser } from "@gdud/db";
 import { doch1Access } from "@/lib/doch1/access";
-import { listedOn, loadActiveRound, loadDays, loadMembers, loadRoundCompanies, loadStatuses } from "@/lib/doch1/data";
+import { listedOn, loadDays, loadMembers, loadRoundCompanies, loadStatuses } from "@/lib/doch1/data";
+import { doch1Rounds } from "@/lib/doch1/rounds";
 import { requireModule } from "@/lib/session";
 import type { CompanySummary } from "./_components/company-table";
 import { OverviewView } from "./_components/overview-view";
@@ -23,9 +24,9 @@ export default async function Doch1Overview({ searchParams }: { searchParams: Pr
   const now = new Date();
   const today = israelToday(now);
 
+  const { active: round } = await doch1Rounds(s);
+  if (!round) return null; // the layout shows "אין סבב פעיל"
   const data = await withUser(s.claims, async (tx) => {
-    const round = await loadActiveRound(tx);
-    if (!round) return null;
     const day = sp.day && isDay(sp.day) && sp.day >= round.startsOn && sp.day <= round.endsOn ? sp.day : today;
     const sampled = dayRange(addDays(day, -TREND_STEP * (TREND_POINTS - 1)), day)
       .filter((_, i, all) => (all.length - 1 - i) % TREND_STEP === 0)

@@ -15,11 +15,10 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   const s = await requireModule("logistics");
   const { q = "" } = z.object({ q: z.string().trim().max(80).optional().catch(undefined) }).parse(await searchParams);
 
-  const { stock, people, holdings } = await withUser(s.claims, async (tx) => ({
-    stock: await loadStock(tx),
-    people: await loadPeople(tx, s.units),
-    holdings: await loadHoldings(tx),
-  }));
+  const { stock, people, holdings } = await withUser(s.claims, async (tx) => {
+    const [stock, people, holdings] = await Promise.all([loadStock(tx), loadPeople(tx, s.units), loadHoldings(tx)]);
+    return { stock, people, holdings };
+  });
   const ready = q.length >= 2;
   const itemName = new Map(stock.items.map((i) => [i.id, i.name]));
   const holderBySerial = new Map(holdings.map((h) => [h.serialId, h.personId]));

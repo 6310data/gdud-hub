@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { can } from "@gdud/auth";
-import { withUser } from "@gdud/db";
 import { AppShell, type AppNavItem } from "@/components/app-shell";
 import { doch1Access } from "@/lib/doch1/access";
-import { loadActiveRound, loadPlanningRound } from "@/lib/doch1/data";
+import { doch1Rounds } from "@/lib/doch1/rounds";
 import { moduleRoleLabel } from "@/lib/role-label";
 import { displayName, requireModule } from "@/lib/session";
 
@@ -12,7 +11,7 @@ const dm = (day: string) => `${day.slice(8, 10)}.${day.slice(5, 7)}`;
 /** דוח 1 as its own app (mockup: references/doch1, screens 01 / 03 / 04 / 06 / 07 / 11). */
 export default async function Doch1Layout({ children }: { children: React.ReactNode }) {
   const s = await requireModule("doch1");
-  const [round, planning] = await withUser(s.claims, (tx) => Promise.all([loadActiveRound(tx), loadPlanningRound(tx)]));
+  const { active: round, planning } = await doch1Rounds(s);
   const access = doch1Access(s);
   const role = moduleRoleLabel(s, "doch1");
 

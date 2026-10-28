@@ -16,11 +16,10 @@ export default async function SignPage({ searchParams }: { searchParams: Promise
     .object({ person: z.uuid().optional().catch(undefined), serial: z.uuid().optional().catch(undefined) })
     .parse(await searchParams);
 
-  const { stock, people, holdings } = await withUser(s.claims, async (tx) => ({
-    stock: await loadStock(tx),
-    people: await loadPeople(tx, s.units, { includeInactive: true }),
-    holdings: await loadHoldings(tx),
-  }));
+  const { stock, people, holdings } = await withUser(s.claims, async (tx) => {
+    const [stock, people, holdings] = await Promise.all([loadStock(tx), loadPeople(tx, s.units, { includeInactive: true }), loadHoldings(tx)]);
+    return { stock, people, holdings };
+  });
 
   const personById = new Map(people.map((p) => [p.id, p]));
   const holderBySerial = new Map(holdings.map((h) => [h.serialId, h.personId]));

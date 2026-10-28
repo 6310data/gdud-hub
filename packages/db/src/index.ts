@@ -8,6 +8,12 @@
  *   systemDb()                  ← bypasses RLS. Only for trusted server jobs
  *       (imports, cron, bootstrap). Never call it with user-controlled input
  *       without your own permission check first.
+ *
+ * Round trips matter: the database is in another region, so a page's cost is mostly the
+ * number of sequential round trips, not the queries themselves. Inside a transaction,
+ * postgres-js pipelines queries that are issued without awaiting each other (one round trip
+ * for the whole batch), so load with Promise.all and the role setup rides along with the
+ * first batch (see runAsUser).
  */
 import { sql } from "drizzle-orm";
 import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
@@ -28,16 +34,28 @@ export interface JwtClaims {
   [key: string]: unknown;
 }
 
-let _db: Db | undefined;
+// One pool per process. The dev server bundles this module into more than one server chunk,
+// so a module-level variable would mean one pool per chunk; globalThis is shared by all of them.
+const g = globalThis as typeof globalThis & { __gdudDb?: Db };
 
 function db(): Db {
-  if (_db) return _db;
+  if (g.__gdudDb) return g.__gdudDb;
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL is not set");
-  // Supabase transaction pooler (port 6543) does not support prepared statements.
-  const client = postgres(url, { prepare: false, max: 5, idle_timeout: 20 });
-  _db = drizzle(client, { schema });
-  return _db;
+  const client = postgres(url, {
+    // Supabase transaction pooler (port 6543) does not support prepared statements.
+    prepare: false,
+    max: 5,
+    // Keep connections open while the process lives: opening one costs several round trips
+    // (and seconds on a slow link). Serverless instances are frozen with their connections.
+    idle_timeout: 0,
+    // Encrypt the link. The pooler's certificate chain ends in Supabase's own CA, which Node
+    // doesn't know, so the chain isn't verified ("require" = TLS without CA verification).
+    ssl: "require",
+    connect_timeout: 30,
+  });
+  g.__gdudDb = drizzle(client, { schema });
+  return g.__gdudDb;
 }
 
 /** Run `fn` as the signed-in user, with RLS enforced. */
@@ -54,11 +72,15 @@ export async function runAsUser<T, D extends { transaction: Db["transaction"] }>
 ): Promise<T> {
   return database.transaction(async (tx) => {
     const json = JSON.stringify({ ...claims, role: "authenticated" });
-    // One round trip: set_config('role', …, true) is `set local role`.
-    await tx.execute(
-      sql`select set_config('request.jwt.claims', ${json}, true), set_config('role', 'authenticated', true)`,
-    );
-    return fn(tx as Tx);
+    // set_config(…, true) is `set local`: it lasts for this transaction only.
+    // Issued before fn's queries but not awaited: the driver sends it in the same batch as
+    // fn's first queries and the server runs them in order, so the role is set by the time
+    // they execute — one round trip instead of two. (`.then` starts the query now.)
+    const setup = tx
+      .execute(sql`select set_config('request.jwt.claims', ${json}, true), set_config('role', 'authenticated', true)`)
+      .then(() => undefined);
+    const [, result] = await Promise.all([setup, fn(tx as Tx)]);
+    return result;
   });
 }
 

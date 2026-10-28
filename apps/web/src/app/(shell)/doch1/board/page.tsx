@@ -4,7 +4,8 @@ import { scopesFor } from "@gdud/auth";
 import { addDays, dayRange, isDay, isDayWritable, israelToday, type Day } from "@gdud/core";
 import { withUser } from "@gdud/db";
 import { doch1Access } from "@/lib/doch1/access";
-import { loadActiveRound, loadDays, loadMembers, loadRoundCompanies, loadStatuses } from "@/lib/doch1/data";
+import { loadDays, loadMembers, loadRoundCompanies, loadStatuses } from "@/lib/doch1/data";
+import { doch1Rounds } from "@/lib/doch1/rounds";
 import { requireModule } from "@/lib/session";
 import { BoardGrid, type BoardMember, type DaysByDay } from "./_components/board-grid";
 
@@ -23,22 +24,10 @@ export default async function Doch1Board({ searchParams }: { searchParams: Promi
   if (!doch1Access(s).canBoard) notFound();
   const sp = await searchParams;
 
-  const base = await withUser(s.claims, async (tx) => {
-    const round = await loadActiveRound(tx);
-    return round ? { round, companies: await loadRoundCompanies(tx, round.id) } : null;
-  });
-  if (!base) return null; // the layout shows "אין סבב פעיל"
-  const { round } = base;
-  const roundCompanies = base.companies.filter((c) => c.active).map((c) => c.unitId);
-  const access = doch1Access(s, roundCompanies);
+  const { active: round } = await doch1Rounds(s);
+  if (!round) return null; // the layout shows "אין סבב פעיל"
   const unitById = new Map(s.units.map((u) => [u.id, u]));
   const own = scopesFor(s.user, "doch1", ["company_user"]);
-  const companies = (access.isAdmin || own.includes(null) ? roundCompanies : own.filter((u): u is string => !!u && roundCompanies.includes(u)))
-    .filter((id) => unitById.get(id)?.kind === "company")
-    .sort((a, b) => unitById.get(a)!.sortOrder - unitById.get(b)!.sortOrder);
-  if (!companies.length) return <p className="tz-card m-0 p-5 text-ink-muted">אין לך פלוגה פעילה בסבב.</p>;
-  const unitId = sp.unit && companies.includes(sp.unit) ? sp.unit : companies[0]!;
-  const unit = unitById.get(unitId)!;
 
   const now = new Date();
   const today = israelToday(now);
@@ -51,12 +40,27 @@ export default async function Doch1Board({ searchParams }: { searchParams: Promi
   const shown = dayRange(from, earlier(addDays(from, WINDOW - 1), round.endsOn));
   const loadList = [...new Set([...shown, yesterday, today, tomorrow])];
 
+  // one transaction: companies, members and statuses in one batch, then the chosen company's days
   const data = await withUser(s.claims, async (tx) => {
-    const [all, statuses] = await Promise.all([loadMembers(tx, round.id, s.units), loadStatuses(tx, round.id, { includeInactive: true })]);
+    const [roundCompanyRows, all, statuses] = await Promise.all([
+      loadRoundCompanies(tx, round.id),
+      loadMembers(tx, round.id, s.units),
+      loadStatuses(tx, round.id, { includeInactive: true }),
+    ]);
+    const roundCompanies = roundCompanyRows.filter((c) => c.active).map((c) => c.unitId);
+    const access = doch1Access(s, roundCompanies);
+    const companies = (access.isAdmin || own.includes(null) ? roundCompanies : own.filter((u): u is string => !!u && roundCompanies.includes(u)))
+      .filter((id) => unitById.get(id)?.kind === "company")
+      .sort((a, b) => unitById.get(a)!.sortOrder - unitById.get(b)!.sortOrder);
+    if (!companies.length) return null;
+    const unitId = sp.unit && companies.includes(sp.unit) ? sp.unit : companies[0]!;
     const members = all.filter((m) => m.companyId === unitId);
     const loaded = await loadDays(tx, round.id, loadList, { personIds: members.map((m) => m.personId) });
-    return { members, statuses, loaded };
+    return { access, companies, unitId, members, statuses, loaded };
   });
+  if (!data) return <p className="tz-card m-0 p-5 text-ink-muted">אין לך פלוגה פעילה בסבב.</p>;
+  const { access, companies, unitId } = data;
+  const unit = unitById.get(unitId)!;
 
   const platoonOrder = (id: string | null) => (id ? (unitById.get(id)?.sortOrder ?? 0) + 1 : 0);
   const members: BoardMember[] = data.members
