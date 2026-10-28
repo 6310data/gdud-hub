@@ -15,7 +15,8 @@ import {
 } from "@gdud/core";
 import { withUser } from "@gdud/db";
 import { doch1Access } from "@/lib/doch1/access";
-import { loadActiveRound, loadFieldOptions, loadRoundCompanies, loadStatuses } from "@/lib/doch1/data";
+import { loadFieldOptions, loadRoundCompanies, loadStatuses } from "@/lib/doch1/data";
+import { doch1Rounds } from "@/lib/doch1/rounds";
 import { loadFieldValues, loadSoldier, loadSoldierDays, loadSoldierLog } from "@/lib/doch1/soldier";
 import { loadLocations, loadTeams, loadVehicles } from "@/lib/doch1/standby";
 import { requireModule } from "@/lib/session";
@@ -47,13 +48,12 @@ export default async function Doch1Soldier({ params, searchParams }: { params: P
   const now = new Date();
   const today = israelToday(now);
 
+  const { active: round } = await doch1Rounds(s);
+  if (!round) return null; // the layout shows "אין סבב פעיל"
   const data = await withUser(s.claims, async (tx) => {
-    const round = await loadActiveRound(tx);
-    if (!round) return null;
-    const soldier = await loadSoldier(tx, round.id, personId);
-    if (!soldier) return { round, soldier: null } as const;
-    const editable = can(s.user, "doch1", ["admin", "company_user"], soldier.unitId, s.parents);
-    const [companies, statuses, days, teams, locations, vehicles, log, values, options] = await Promise.all([
+    // one batch; the field values are only handed on when the soldier turns out to be editable
+    const [soldier, companies, statuses, days, teams, locations, vehicles, log, allValues, options] = await Promise.all([
+      loadSoldier(tx, round.id, personId),
       loadRoundCompanies(tx, round.id),
       loadStatuses(tx, round.id, { includeInactive: true }),
       loadSoldierDays(tx, round.id, personId),
@@ -61,14 +61,17 @@ export default async function Doch1Soldier({ params, searchParams }: { params: P
       loadLocations(tx, round.id),
       loadVehicles(tx),
       loadSoldierLog(tx, round.id, personId),
-      editable ? loadFieldValues(tx, round.id) : Promise.resolve(null),
+      loadFieldValues(tx, round.id),
       loadFieldOptions(tx, round.id),
     ]);
+    if (!soldier) return { round, soldier: null } as const;
+    const editable = can(s.user, "doch1", ["admin", "company_user"], soldier.unitId, s.parents);
+    const values = editable ? allValues : null;
     return { round, soldier, editable, companies, statuses, days, teams, locations, vehicles, log, values, options } as const;
   });
   if (!data) return null; // the layout shows "אין סבב פעיל"
   if (!data.soldier) notFound();
-  const { round, soldier, statuses, days } = data;
+  const { soldier, statuses, days } = data;
 
   const access = doch1Access(s, data.companies.filter((c) => c.active).map((c) => c.unitId));
   const unitById = new Map(s.units.map((u) => [u.id, u]));

@@ -8,7 +8,8 @@ import { can } from "@gdud/auth";
 import { buildReports, byHe, isDay, israelToday, type Day, type ReportCompany, type ReportGroup, type Reports, type StatusDef } from "@gdud/core";
 import { asc, eq, schema, withUser, type Tx } from "@gdud/db";
 import type { Session } from "@/lib/session";
-import { loadActiveRound, loadDays, loadMembers, loadRoundCompanies, loadStatuses, type MemberVM, type RoundVM } from "./data";
+import { loadDays, loadMembers, loadRoundCompanies, loadStatuses, type MemberVM, type RoundVM } from "./data";
+import { doch1Rounds } from "./rounds";
 import { loadLocations, type LocationVM } from "./standby";
 
 const { people, doch1Members: members, doch1DmhCategories: categories, doch1ReportGroups: groups } = schema;
@@ -79,9 +80,9 @@ export interface ReportsData {
 /** Load and count the reports of `?day=` (inside the round; default today). null = no active round. */
 export async function loadReportsData(s: Session, dayParam: string | undefined): Promise<ReportsData | null> {
   const today = israelToday(new Date());
+  const { active: round } = await doch1Rounds(s);
+  if (!round) return null;
   const data = await withUser(s.claims, async (tx) => {
-    const round = await loadActiveRound(tx);
-    if (!round) return null;
     const day = dayParam && isDay(dayParam) && dayParam >= round.startsOn && dayParam <= round.endsOn ? dayParam : today;
     const [roundCompanies, list, fields, statuses, days, locations, cats, grps] = await Promise.all([
       loadRoundCompanies(tx, round.id),

@@ -17,11 +17,10 @@ export default async function ReturnPage({ searchParams }: { searchParams: Promi
     .object({ person: z.uuid().optional().catch(undefined), assignment: z.uuid().optional().catch(undefined) })
     .parse(await searchParams);
 
-  const { people, holdings, stored } = await withUser(s.claims, async (tx) => ({
-    people: await loadPeople(tx, s.units, { includeInactive: true }),
-    holdings: await loadHoldings(tx),
-    stored: await loadStorage(tx),
-  }));
+  const { people, holdings, stored } = await withUser(s.claims, async (tx) => {
+    const [people, holdings, stored] = await Promise.all([loadPeople(tx, s.units, { includeInactive: true }), loadHoldings(tx), loadStorage(tx)]);
+    return { people, holdings, stored };
+  });
   const byPerson = groupBy(holdings, (h) => h.personId);
   const storedSerials = new Set(stored.map((x) => x.serialId).filter(Boolean));
   const holders = people.filter((p) => byPerson.has(p.id) && access.canAdminUnit(p.unitId));

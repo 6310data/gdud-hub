@@ -4,7 +4,8 @@ import { planningProgress, type ArrivalEffect } from "@gdud/core";
 import { withUser } from "@gdud/db";
 import { ActionButton } from "@/components/action-button";
 import { doch1Access } from "@/lib/doch1/access";
-import { loadActiveRound, loadFieldOptions, loadPlanningRound } from "@/lib/doch1/data";
+import { loadFieldOptions } from "@/lib/doch1/data";
+import { doch1Rounds } from "@/lib/doch1/rounds";
 import { fmtDay } from "@/lib/doch1/format";
 import { loadPlanningMembers } from "@/lib/doch1/planning";
 import { requireModule } from "@/lib/session";
@@ -26,18 +27,13 @@ export default async function Doch1Planning({ searchParams }: { searchParams: Pr
   const sp = await searchParams;
   const canPlan = access.isAdmin || can(s.user, "doch1", ["company_user"]);
 
+  const { active, planning: round } = await doch1Rounds(s);
   const data = await withUser(s.claims, async (tx) => {
-    const round = await loadPlanningRound(tx);
     if (!round || !canPlan) return { round, active: null, members: [], options: [] };
-    const [active, members, options] = await Promise.all([
-      loadActiveRound(tx),
-      loadPlanningMembers(tx, round.id, s.units),
-      loadFieldOptions(tx, round.id),
-    ]);
+    const [members, options] = await Promise.all([loadPlanningMembers(tx, round.id, s.units), loadFieldOptions(tx, round.id)]);
     return { round, active, members, options: options.filter((o) => o.field === "arrival") };
   });
 
-  const round = data.round;
   if (!round) {
     return (
       <div className="tz-card flex max-w-[640px] flex-col items-start gap-2 p-5">

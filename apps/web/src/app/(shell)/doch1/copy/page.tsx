@@ -3,7 +3,8 @@ import { scopesFor } from "@gdud/auth";
 import { hebrewDayLabel, isDay, israelToday, missingMembers, sheetColumnLines, sheetRowAnchors } from "@gdud/core";
 import { withUser } from "@gdud/db";
 import { doch1Access } from "@/lib/doch1/access";
-import { listedOn, loadActiveRound, loadDays, loadMembers, loadRoundCompanies, loadStatuses } from "@/lib/doch1/data";
+import { listedOn, loadDays, loadMembers, loadRoundCompanies, loadStatuses } from "@/lib/doch1/data";
+import { doch1Rounds } from "@/lib/doch1/rounds";
 import { requireModule } from "@/lib/session";
 import { DayNav } from "../_components/day-nav";
 import { Panel } from "../_components/panel";
@@ -25,30 +26,31 @@ export default async function Doch1Copy({ searchParams }: { searchParams: Promis
   const sp = await searchParams;
   const today = israelToday(new Date());
 
-  const base = await withUser(s.claims, async (tx) => {
-    const round = await loadActiveRound(tx);
-    return round ? { round, companies: await loadRoundCompanies(tx, round.id) } : null;
-  });
-  if (!base) return null; // the layout shows "אין סבב פעיל"
-  const day = sp.day && isDay(sp.day) && sp.day >= base.round.startsOn && sp.day <= base.round.endsOn ? sp.day : today;
-  const roundCompanies = base.companies.filter((c) => c.active).map((c) => c.unitId);
-  const access = doch1Access(s, roundCompanies);
+  const { active: round } = await doch1Rounds(s);
+  if (!round) return null; // the layout shows "אין סבב פעיל"
+  const day = sp.day && isDay(sp.day) && sp.day >= round.startsOn && sp.day <= round.endsOn ? sp.day : today;
   const unitById = new Map(s.units.map((u) => [u.id, u]));
   const own = scopesFor(s.user, "doch1", ["company_user"]);
-  const companies = (access.isAdmin || own.includes(null) ? roundCompanies : own.filter((u): u is string => !!u && roundCompanies.includes(u)))
-    .filter((id) => unitById.get(id)?.kind === "company")
-    .sort((a, b) => unitById.get(a)!.sortOrder - unitById.get(b)!.sortOrder);
-  if (!companies.length) return <p className="tz-card m-0 p-5 text-ink-muted">אין לך פלוגה פעילה בסבב.</p>;
-  const unitId = sp.unit && companies.includes(sp.unit) ? sp.unit : companies[0]!;
 
+  // one transaction, one batch
   const data = await withUser(s.claims, async (tx) => {
-    const [members, statuses, days] = await Promise.all([
-      loadMembers(tx, base.round.id, s.units),
-      loadStatuses(tx, base.round.id, { includeInactive: true }),
-      loadDays(tx, base.round.id, [day]),
+    const [roundCompanyRows, members, statuses, days] = await Promise.all([
+      loadRoundCompanies(tx, round.id),
+      loadMembers(tx, round.id, s.units),
+      loadStatuses(tx, round.id, { includeInactive: true }),
+      loadDays(tx, round.id, [day]),
     ]);
-    return { members: members.filter((m) => m.companyId === unitId), statuses, day: days.get(day)! };
+    const roundCompanies = roundCompanyRows.filter((c) => c.active).map((c) => c.unitId);
+    const access = doch1Access(s, roundCompanies);
+    const companies = (access.isAdmin || own.includes(null) ? roundCompanies : own.filter((u): u is string => !!u && roundCompanies.includes(u)))
+      .filter((id) => unitById.get(id)?.kind === "company")
+      .sort((a, b) => unitById.get(a)!.sortOrder - unitById.get(b)!.sortOrder);
+    if (!companies.length) return null;
+    const unitId = sp.unit && companies.includes(sp.unit) ? sp.unit : companies[0]!;
+    return { companies, unitId, members: members.filter((m) => m.companyId === unitId), statuses, day: days.get(day)! };
   });
+  if (!data) return <p className="tz-card m-0 p-5 text-ink-muted">אין לך פלוגה פעילה בסבב.</p>;
+  const { companies, unitId } = data;
 
   const sheetValue = new Map(data.statuses.map((st) => [st.id, st.sheetValue]));
   const tab = companyTab(data.members.map((m) => m.sheetTab));
@@ -69,7 +71,7 @@ export default async function Doch1Copy({ searchParams }: { searchParams: Promis
           {unitById.get(unitId)!.name} · {hebrewDayLabel(day)}
         </span>
         <h1 className="tz-title">העתקה לגיליון</h1>
-        <DayNav day={day} today={today} min={base.round.startsOn} max={base.round.endsOn} path="/doch1/copy" params={{ unit: unitId }} />
+        <DayNav day={day} today={today} min={round.startsOn} max={round.endsOn} path="/doch1/copy" params={{ unit: unitId }} />
       </div>
 
       <form className="tz-card flex flex-wrap items-end gap-3 p-4" action="/doch1/copy">

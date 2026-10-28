@@ -31,7 +31,7 @@ references/                old Apps Script / platoon-web code to port (not built
 
 1. **Supabase project** (region: Frankfurt / `eu-central-1`).
    - Authentication → Sign In / Providers → enable **Google** (needs a Google Cloud OAuth client; redirect URI is shown on that screen). Disable Email and every other provider.
-   - Authentication → URL Configuration → Site URL = your Vercel URL; add `http://localhost:3000/auth/callback` and `https://<your-domain>/auth/callback` to Redirect URLs.
+   - Authentication → URL Configuration → Site URL = your Vercel URL; add `http://localhost:3000/**` and `https://<your-domain>/**` to Redirect URLs (the callback URL carries `?next=…` and Supabase matches the whole URL against this list, so an entry without `**` doesn't match and sign-in silently lands on the Site URL instead).
 2. `cp .env.example .env` and fill in the values.
 3. Install and migrate:
    ```bash

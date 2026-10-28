@@ -265,10 +265,10 @@ function SerialList({ list }: { list: SerialVM[] }) {
 /** Who holds this item type (only soldiers the user may see). */
 async function SignedList({ itemId }: { itemId: string }) {
   const s = await requireModule("logistics");
-  const { holdings, people } = await withUser(s.claims, async (tx) => ({
-    holdings: await loadHoldings(tx, { itemId }),
-    people: await loadPeople(tx, s.units, { includeInactive: true }),
-  }));
+  const { holdings, people } = await withUser(s.claims, async (tx) => {
+    const [holdings, people] = await Promise.all([loadHoldings(tx, { itemId }), loadPeople(tx, s.units, { includeInactive: true })]);
+    return { holdings, people };
+  });
   const byId = new Map(people.map((p) => [p.id, p]));
   if (!holdings.length) return <p className="tz-footnote m-0 text-center">לא מוחתם על אף חייל במסגרות שלך</p>;
   return (

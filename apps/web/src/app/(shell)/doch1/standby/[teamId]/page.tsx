@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import { addDays, availableStatusIds, hebrewDayLabel, inService, isDayWritable, israelToday } from "@gdud/core";
 import { withUser } from "@gdud/db";
 import { doch1Access } from "@/lib/doch1/access";
-import { loadActiveRound, loadDays, loadMembers, loadRoundCompanies, loadStatuses } from "@/lib/doch1/data";
+import { loadDays, loadMembers, loadRoundCompanies, loadStatuses } from "@/lib/doch1/data";
+import { doch1Rounds } from "@/lib/doch1/rounds";
 import { loadLocations, loadStandbyTypes, loadTeams, loadVehicles } from "@/lib/doch1/standby";
 import { requireModule } from "@/lib/session";
 import { TeamEditor, type CandidateVM, type EditorMember } from "../_components/team-editor";
@@ -21,26 +22,26 @@ export default async function Doch1StandbyTeam({ params }: { params: Promise<{ t
   const today = israelToday(now);
   const yesterday = addDays(today, -1);
 
+  const { active: round } = await doch1Rounds(s);
+  if (!round) return null; // the layout shows "אין סבב פעיל"
   const data = await withUser(s.claims, async (tx) => {
-    const round = await loadActiveRound(tx);
-    if (!round) return null;
-    const teams = await loadTeams(tx, round.id);
-    const team = teams.find((t) => t.id === teamId);
-    if (!team) return { round, team: null } as const;
-    const [companies, members, statuses, locations, types, vehicles] = await Promise.all([
+    const [teams, companies, members, statuses, locations, types, vehicles, days] = await Promise.all([
+      loadTeams(tx, round.id),
       loadRoundCompanies(tx, round.id),
       loadMembers(tx, round.id, s.units),
       loadStatuses(tx, round.id, { includeInactive: true }),
       loadLocations(tx, round.id),
       loadStandbyTypes(tx, round.id),
       loadVehicles(tx),
+      loadDays(tx, round.id, [yesterday, today].filter((d) => d >= round.startsOn && d <= round.endsOn)),
     ]);
-    const days = await loadDays(tx, round.id, [yesterday, today].filter((d) => d >= round.startsOn && d <= round.endsOn));
+    const team = teams.find((t) => t.id === teamId);
+    if (!team) return { round, team: null } as const;
     return { round, team, teams, companies, members, statuses, locations, types, vehicles, days } as const;
   });
   if (!data) return null; // the layout shows "אין סבב פעיל"
   if (!data.team) notFound();
-  const { round, team } = data;
+  const { team } = data;
 
   const activeIds = data.companies.filter((c) => c.active).map((c) => c.unitId);
   const access = doch1Access(s, activeIds);

@@ -17,9 +17,11 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
   if (!can(user, "core", ["admin"], null) || !z.uuid().safeParse(id).success) notFound();
 
   const data = await withUser(claims, async (tx) => {
-    const [target] = await tx.select().from(schema.appUsers).where(eq(schema.appUsers.id, id));
+    const [[target], ms] = await Promise.all([
+      tx.select().from(schema.appUsers).where(eq(schema.appUsers.id, id)),
+      tx.select().from(schema.memberships).where(eq(schema.memberships.userId, id)),
+    ]);
     if (!target) return null;
-    const ms = await tx.select().from(schema.memberships).where(eq(schema.memberships.userId, id));
     return { target, ms };
   });
   if (!data) notFound();

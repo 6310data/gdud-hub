@@ -3,7 +3,8 @@ import { can } from "@gdud/auth";
 import { israelToday } from "@gdud/core";
 import { and, eq, isNull, schema, withUser } from "@gdud/db";
 import { ActionButton } from "@/components/action-button";
-import { loadActiveRound, loadFieldOptions, loadMembers, loadRoundCompanies } from "@/lib/doch1/data";
+import { loadFieldOptions, loadMembers, loadRoundCompanies } from "@/lib/doch1/data";
+import { doch1Rounds } from "@/lib/doch1/rounds";
 import { requireModule } from "@/lib/session";
 import { fillCallUpFromReports } from "../_actions/members";
 import { SoldiersBoard, type SoldierVM } from "./_components/soldiers-board";
@@ -22,9 +23,9 @@ export default async function Doch1Soldiers({ searchParams }: { searchParams: Pr
   const s = await requireModule("doch1");
   const sp = await searchParams;
 
+  const { active: round } = await doch1Rounds(s);
+  if (!round) return null; // the layout shows "אין סבב פעיל"
   const data = await withUser(s.claims, async (tx) => {
-    const round = await loadActiveRound(tx);
-    if (!round) return null;
     const [companies, roster, options, reported] = await Promise.all([
       loadRoundCompanies(tx, round.id),
       loadMembers(tx, round.id, s.units),
