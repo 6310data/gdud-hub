@@ -389,6 +389,13 @@ describe("plan and apply", () => {
     // an existing date wins over the first reported day
     await apply(noCallUp(["רענון", "רענון"]));
     expect(await member()).toMatchObject({ callUpOn: "2026-10-21" });
+    // a day not in the סד״כ ("0") is not showing up
+    await db.update(doch1Members).set({ callUpOn: null }).where(eq(doch1Members.personId, s3!.id));
+    await apply(noCallUp(["0", "רענון"]));
+    expect(await member()).toMatchObject({ callUpOn: "2026-10-21" });
+    await db.update(doch1Members).set({ callUpOn: null }).where(eq(doch1Members.personId, s3!.id));
+    await apply(noCallUp(["0", "0"]));
+    expect(await member()).toMatchObject({ callUpOn: null });
     await apply(baseSheet());
   });
 

@@ -127,6 +127,8 @@ export interface Resolution {
   /** value → status id or "create"; only answered values */
   statusMap: Map<string, string | "create">;
   newStatuses: NewStatus[];
+  /** sheet values whose status counts in the סד״כ (the soldier showed up), not "0" / נפקד */
+  inSadakValues: Set<string>;
   /** per list: canonical text → value id or `create:<effect>`; only answered texts */
   optionMap: Record<OptionField, Map<string, string>>;
   newOptions: NewOption[];
@@ -332,6 +334,10 @@ export async function resolveSheetImport(tx: Tx, roundId: string, parsed: Parsed
     statusMap.set(value, answer);
     if (answer === "create") newStatuses.push({ value, sortOrder: nextSort++, groups: hints.get(value) ?? [] });
   }
+  // a new status counts in the סד״כ unless the sheet groups it as not counted (statusValues() in apply.ts)
+  const inSadakValues = new Set(
+    [...statusMap].filter(([value, id]) => (id === "create" ? !(hints.get(value) ?? []).includes("notCounted") : statuses.find((s) => s.id === id)?.countsInSadak)).map(([value]) => value),
+  );
 
   /* צפי הגעה / סטטוס גיוס: every distinct text → a value of the round's list */
   const optionRows = await tx.select().from(doch1FieldOptions).where(eq(doch1FieldOptions.roundId, roundId));
@@ -423,6 +429,7 @@ export async function resolveSheetImport(tx: Tx, roundId: string, parsed: Parsed
     platoonText,
     statusMap,
     newStatuses,
+    inSadakValues,
     optionMap,
     newOptions,
     roundCompanies,
@@ -519,16 +526,16 @@ export function dayChanges(
       const text = optionText(r, field);
       return text ? (optionOf(field, canonicalName(text)) ?? current ?? null) : null;
     };
-    // the first day of the round the sheet reports a status on
+    // the first day of the round the soldier showed up on: a status that counts in the סד״כ (not "0" / נפקד)
     let firstReported: Day | null = null;
     for (const [day, value] of r.days) {
-      if (value && day >= res.round.startsOn && day <= res.round.endsOn && statusOf(value) && (!firstReported || day < firstReported)) firstReported = day;
+      if (value && day >= res.round.startsOn && day <= res.round.endsOn && res.inSadakValues.has(value) && (!firstReported || day < firstReported)) firstReported = day;
     }
     const member: MemberFields = {
       personId,
       dmhCategory: r.dmhCategory || null,
       arrivalOptionId: option("arrival", had?.arrivalOptionId),
-      // a blank call-up date in the sheet keeps the one entered in the app; without one, the first reported day
+      // a blank call-up date in the sheet keeps the one entered in the app; without one, the first day in the סד״כ
       callUpOn: r.callUpOn ?? had?.callUpOn ?? firstReported,
       enlistmentOptionId: option("enlistment", had?.enlistmentOptionId),
       hasDisc: r.hasDisc,
