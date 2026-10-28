@@ -114,10 +114,7 @@ export default async function CompanyRoster({
             {g.rows.map((r) => (
               <div key={r.id} className="flex items-center gap-3 border-b border-[var(--separator)] px-4 py-2.5 last:border-b-0">
                 <Link href={`${base}/people/${r.id}`} className="flex min-w-0 flex-1 flex-col text-ink no-underline">
-                  <span className="truncate font-semibold">
-                    {r.fullName}
-                    {r.linked ? null : <span className="tz-footnote font-normal"> · בלי חשבון</span>}
-                  </span>
+                  <span className="truncate font-semibold">{r.fullName}</span>
                   <span className="tz-footnote truncate">
                     {[r.roleTitle, r.gear ? `${r.gear} פריטי ציוד` : null].filter(Boolean).join(" · ") || "—"}
                   </span>

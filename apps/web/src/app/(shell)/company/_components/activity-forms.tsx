@@ -31,12 +31,14 @@ export function ActivityForm({ unitId, soldiers, values }: { unitId: string; sol
         <Field label="תאריך">
           <input name="day" type="date" className="tz-input" required defaultValue={values.day} />
         </Field>
-        <Field label="התחלה">
-          <input name="startsAt" type="time" className="tz-input" defaultValue={values.startsAt?.slice(0, 5) ?? ""} />
-        </Field>
-        <Field label="סיום">
-          <input name="endsAt" type="time" className="tz-input" defaultValue={values.endsAt?.slice(0, 5) ?? ""} />
-        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="התחלה">
+            <input name="startsAt" type="time" className="tz-input" defaultValue={values.startsAt?.slice(0, 5) ?? ""} />
+          </Field>
+          <Field label="סיום">
+            <input name="endsAt" type="time" className="tz-input" defaultValue={values.endsAt?.slice(0, 5) ?? ""} />
+          </Field>
+        </div>
         <Field label="מקום">
           <input name="place" className="tz-input" maxLength={80} defaultValue={values.place ?? ""} />
         </Field>

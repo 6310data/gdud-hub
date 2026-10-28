@@ -35,6 +35,7 @@ export default async function CompanyLayout({ children }: { children: React.Reac
       bottom={bottom}
       user={{ name: displayName(s.user, s.claims), email: s.user.email, role: role?.role ?? (access.personId ? "חייל" : undefined), roleTone: role?.tone }}
       current="tinted"
+      phoneTabs={["/company/me", ...(home ? [`/company/${home.company.id}`, `/company/${home.company.id}/signings`, `/company/${home.company.id}/reports`] : [])]}
     >
       {children}
     </AppShell>

@@ -110,7 +110,7 @@ export default async function CompanyReports({ params }: { params: Promise<{ uni
   return (
     <>
       <CompanyPills companies={access.companies} current={company.id} path="/reports" />
-      <PageHeader title="דוחות" sub={`${company.name} · הדוחות שהמחלקות מצפות להם מהפלוגה. כל כפתור פותח את הדוח במחלקה.`} />
+      <PageHeader title="דוחות" sub={`${company.name} · הדוחות שהמחלקות מצפות להם מהפלוגה, למילוי כאן.`} />
       <Panel>
         {reports.length === 0 ? (
           <Empty>אין לך הרשאה למלא דוחות של הפלוגה במחלקות. מנהל הפלוגה נותן הרשאות בהגדרות.</Empty>
@@ -118,12 +118,12 @@ export default async function CompanyReports({ params }: { params: Promise<{ uni
           reports.map((r) => (
             <Link key={r.key} href={r.href} className="tz-row">
               <SmallTile color={r.color} icon={r.icon} />
-              <span className="tz-row-body">
-                <span className="flex min-w-0 flex-1 flex-col">
+              <span className="tz-row-body py-2.5">
+                <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
                   <span className="tz-row-title">{r.title}</span>
                   <span className="tz-row-sub">{r.sub}</span>
+                  {r.status ? <Chip tone={r.status.done ? "ok" : "broken"}>{r.status.text}</Chip> : null}
                 </span>
-                {r.status ? <Chip tone={r.status.done ? "ok" : "broken"}>{r.status.text}</Chip> : null}
                 <Icon name="chevron" size={17} className="tz-chevron" />
               </span>
             </Link>
