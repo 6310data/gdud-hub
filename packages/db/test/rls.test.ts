@@ -2199,4 +2199,91 @@ describe("company", () => {
       expect((await db.select().from(holders).where(eq(holders.teamId, team))).map((h) => h.unitId)).toEqual([ids.plsr]);
     });
   });
+  describe("activities (פעילות)", () => {
+    const { companyActivities: acts, companyActivityParticipants: parts, companyActivityVehicles: actVehicles, doch1Vehicles: vehicles } = schema;
+    const today = israelToday(new Date());
+    let act = "";
+    let tomorrowAct = "";
+    let d = "";
+    let present = "";
+    let home = "";
+    const cCmdr2: TestUser = { authId: randomUUID(), email: "co-act-plsr2-mm@example.com" };
+    const add = (u: TestUser, activityId: string, personId: string) => as(u, (tx) => tx.insert(parts).values({ activityId, personId, role: "לוחם" }));
+
+    beforeAll(async () => {
+      const [round] = await db.select().from(rounds).where(eq(rounds.state, "active"));
+      const st = await db.select().from(statuses).where(eq(statuses.roundId, round!.id));
+      present = st.find((x) => x.name === "פלוגה בבסיס")!.id;
+      home = st.find((x) => x.name === "פלוגה בבית")!.id;
+      const [plsr2] = await db.select().from(units).where(and(eq(units.name, "מחלקה 2"), eq(units.parentId, ids.plsr)));
+      const [dd] = await db.select().from(people).where(eq(people.fullName, "חייל דלת"));
+      d = dd!.id;
+      await db.insert(members).values({ roundId: round!.id, personId: d }).onConflictDoNothing();
+      await db.insert(days).values({ roundId: round!.id, personId: d, day: today, statusId: present });
+      const [u] = await db.insert(appUsers).values({ email: cCmdr2.email, authUserId: cCmdr2.authId }).returning();
+      await db.insert(memberships).values({ userId: u!.id, module: "company", role: "platoon_commander", unitId: plsr2!.id });
+    });
+
+    it("the company admin and the platoon commanders create activities; nobody else", async () => {
+      await rejects(as(cPlntAdmin, (tx) => tx.insert(acts).values({ unitId: ids.plsr, name: "x", day: today })));
+      // soldier B has an account and a kesher role, but no role in this module
+      await rejects(as(gB, (tx) => tx.insert(acts).values({ unitId: ids.plsr, name: "x", day: today })));
+      await rejects(as(cCmdr2, (tx) => tx.insert(acts).values({ unitId: ids.plsr1, name: "x", day: today })));
+      await failsWith(as(cCmdr2, (tx) => tx.insert(acts).values({ unitId: ids.plsr, name: "x", day: today, commanderPersonId: s.c })), "GD119");
+      const [a] = await as(cCmdr2, (tx) => tx.insert(acts).values({ unitId: ids.plsr, name: "סיור", day: today, startsAt: "08:00", endsAt: "12:00", place: "גזרה" }).returning());
+      act = a!.id;
+      expect(a!.createdBy).not.toBeNull();
+      const [b] = await as(cAdmin, (tx) => tx.insert(acts).values({ unitId: ids.plsr, name: "מחר", day: addDays(today, 1) }).returning());
+      tomorrowAct = b!.id;
+      expect(await as(cPlntAdmin, (tx) => tx.select().from(acts))).toHaveLength(0);
+    });
+
+    it("the picker offers only soldiers present and not home that day — a platoon commander their platoon's only", async () => {
+      const byCmdr = await call<{ id: string; status_name: string }>(cCmdr2, sql`select * from app.company_activity_candidates(${act}::uuid)`);
+      expect(byCmdr.map((x) => x.id)).toEqual([d]);
+      const byAdmin = await call<{ id: string }>(cAdmin, sql`select * from app.company_activity_candidates(${act}::uuid)`);
+      expect(byAdmin.map((x) => x.id).sort()).toEqual([s.a, d].sort());
+      // tomorrow A is planned home: not offered
+      expect((await call<{ id: string }>(cAdmin, sql`select * from app.company_activity_candidates(${tomorrowAct}::uuid)`)).map((x) => x.id)).not.toContain(s.a);
+      expect(await call(gB, sql`select * from app.company_activity_candidates(${act}::uuid)`)).toHaveLength(0);
+    });
+
+    it("the same rule when adding: not another platoon's, not someone absent or home, not another company's", async () => {
+      await rejects(add(cCmdr2, act, s.a));
+      await add(cCmdr2, act, d);
+      await add(cAdmin, act, s.a);
+      await failsWith(add(cAdmin, act, s.b), "GD118");
+      await failsWith(add(cAdmin, tomorrowAct, s.a), "GD118");
+      await rejects(add(cAdmin, act, s.c));
+    });
+
+    it("a participant whose status changes is flagged, not removed; the soldier sees the activity on אני", async () => {
+      await db.update(days).set({ statusId: home }).where(and(eq(days.personId, s.a), eq(days.day, today)));
+      const people_ = await call<{ person_id: string; qualifies: boolean }>(cCmdr2, sql`select * from app.company_activity_people(${act}::uuid)`);
+      expect(people_.find((x) => x.person_id === s.a)?.qualifies).toBe(false);
+      expect(people_.find((x) => x.person_id === d)?.qualifies).toBe(true);
+      // soldier B (no role in this module): sees only the activity they take part in
+      expect(await as(gB, (tx) => tx.select().from(acts))).toHaveLength(0);
+      const [round] = await db.select().from(rounds).where(eq(rounds.state, "active"));
+      await db.insert(members).values({ roundId: round!.id, personId: s.b }).onConflictDoNothing();
+      await db.insert(days).values({ roundId: round!.id, personId: s.b, day: today, statusId: present });
+      await add(cAdmin, act, s.b);
+      expect((await as(gB, (tx) => tx.select().from(acts))).map((x) => x.id)).toEqual([act]);
+      expect((await as(gB, (tx) => tx.select().from(parts))).map((x) => x.personId)).toEqual([s.b]);
+      expect((await call<{ name: string }>(gB, sql`select * from app.person_activities(app.my_person_id())`)).map((x) => x.name)).toEqual(["סיור"]);
+      expect(await call(gB, sql`select * from app.company_activity_people(${act}::uuid)`)).toHaveLength(0);
+      await db.update(days).set({ statusId: present }).where(and(eq(days.personId, s.a), eq(days.day, today)));
+    });
+
+    it("vehicles: the company's own only; removing a soldier: the admin, or the soldier's platoon commander", async () => {
+      const [mine] = await db.select().from(vehicles).where(eq(vehicles.number, "CO-777"));
+      const [battalion] = await db.select().from(vehicles).where(eq(vehicles.number, "CO-780"));
+      expect((await as(cCmdr2, (tx) => tx.select().from(vehicles))).map((v) => v.number)).toEqual(["CO-777"]);
+      await as(cCmdr2, (tx) => tx.insert(actVehicles).values({ activityId: act, vehicleId: mine!.id }));
+      await failsWith(as(cAdmin, (tx) => tx.insert(actVehicles).values({ activityId: act, vehicleId: battalion!.id })), "GD119");
+      expect(await as(cCmdr2, (tx) => tx.delete(parts).where(and(eq(parts.activityId, act), eq(parts.personId, s.a))).returning())).toHaveLength(0);
+      expect(await as(cAdmin, (tx) => tx.delete(parts).where(and(eq(parts.activityId, act), eq(parts.personId, s.a))).returning())).toHaveLength(1);
+      expect(await db.select().from(days).where(eq(days.personId, d))).toHaveLength(1);
+    });
+  });
 });

@@ -6,6 +6,7 @@
  *   פריטי פלוגה                  → company_items
  *   החתמות (החתמה פנימית)        → company_signings (kesher צ׳ on the company, logistics צ׳ of its
  *                                  soldiers, company items)
+ *   פעילויות                     → company_activities + their participants and vehicles
  *
  * The module reads the departments' data (logistics, kesher, דוח 1) only through SECURITY DEFINER
  * functions that return the current user's own rows, and never writes it.
@@ -13,9 +14,10 @@
  * 0029_company_register_security.sql (the register).
  */
 import { sql } from "drizzle-orm";
-import { boolean, check, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, check, date, index, integer, pgTable, text, time, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { COMPANY_REQUEST_STATUSES, PROFILE_FIELDS } from "@gdud/core";
 import { appUsers, people, units } from "./core";
+import { doch1Vehicles } from "./doch1";
 import { kesherSerials } from "./kesher";
 import { logisticsSerials } from "./logistics";
 
@@ -192,4 +194,72 @@ export const companySignings = pgTable(
     ),
     check("company_signings_quantity", sql`${t.quantity} between 1 and 9999 and (not ${t.single} or ${t.quantity} = 1)`),
   ],
+).enableRLS();
+
+/**
+ * פעילות — a one-time company activity and who goes. It writes nothing to דוח 1: participants are picked
+ * from the soldiers present (and not home) that day in דוח 1, and flagged if that changes later.
+ */
+export const companyActivities = pgTable(
+  "company_activities",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** the company */
+    unitId: uuid("unit_id")
+      .notNull()
+      .references(() => units.id, { onDelete: "restrict" }),
+    name: text("name").notNull(),
+    day: date("day", { mode: "string" }).notNull(),
+    startsAt: time("starts_at"),
+    endsAt: time("ends_at"),
+    place: text("place"),
+    commanderPersonId: uuid("commander_person_id").references(() => people.id, { onDelete: "set null" }),
+    notes: text("notes"),
+    createdBy: uuid("created_by").references(() => appUsers.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (t) => [
+    index("company_activities_unit_day_idx").on(t.unitId, t.day),
+    check("company_activities_times", sql`${t.endsAt} is null or ${t.startsAt} is null or ${t.endsAt} > ${t.startsAt}`),
+    check(
+      "company_activities_text_len",
+      sql`length(${t.name}) between 1 and 80 and coalesce(length(${t.place}), 0) <= 80 and coalesce(length(${t.notes}), 0) <= 1000`,
+    ),
+  ],
+).enableRLS();
+
+export const companyActivityParticipants = pgTable(
+  "company_activity_participants",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    activityId: uuid("activity_id")
+      .notNull()
+      .references(() => companyActivities.id, { onDelete: "cascade" }),
+    personId: uuid("person_id")
+      .notNull()
+      .references(() => people.id, { onDelete: "cascade" }),
+    role: text("role"),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex("company_activity_participants_one").on(t.activityId, t.personId),
+    index("company_activity_participants_person_idx").on(t.personId),
+    check("company_activity_participants_role_len", sql`coalesce(length(${t.role}), 0) <= 40`),
+  ],
+).enableRLS();
+
+/** The company's own vehicles (doch1_vehicles.unit_id) going on the activity. */
+export const companyActivityVehicles = pgTable(
+  "company_activity_vehicles",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    activityId: uuid("activity_id")
+      .notNull()
+      .references(() => companyActivities.id, { onDelete: "cascade" }),
+    vehicleId: uuid("vehicle_id")
+      .notNull()
+      .references(() => doch1Vehicles.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("company_activity_vehicles_one").on(t.activityId, t.vehicleId)],
 ).enableRLS();

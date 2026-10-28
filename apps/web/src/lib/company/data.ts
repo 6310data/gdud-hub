@@ -372,3 +372,114 @@ export async function loadAccessList(tx: Tx, companyId: string): Promise<AccessU
   }
   return [...byUser.values()].sort((a, b) => byHe(a.fullName, b.fullName));
 }
+
+/* ── פעילויות ────────────────────────────────────────────────────────────── */
+
+const { companyActivities: activities, companyActivityVehicles: activityVehicles, doch1Vehicles: vehicles } = schema;
+
+export interface ActivityRow {
+  id: string;
+  name: string;
+  day: string;
+  startsAt: string | null;
+  endsAt: string | null;
+  place: string | null;
+  commanderPersonId: string | null;
+  notes: string | null;
+}
+
+/** The company's activities (RLS: members of the company), from `from` on, by day. */
+export async function loadActivities(tx: Tx, companyId: string, opts: { from?: string; to?: string } = {}): Promise<ActivityRow[]> {
+  const rows = await tx
+    .select()
+    .from(activities)
+    .where(
+      and(
+        eq(activities.unitId, companyId),
+        opts.from ? sql`${activities.day} >= ${opts.from}::date` : undefined,
+        opts.to ? sql`${activities.day} < ${opts.to}::date` : undefined,
+      ),
+    )
+    .orderBy(opts.to ? desc(activities.day) : activities.day, activities.startsAt);
+  return rows.map((r) => ({ id: r.id, name: r.name, day: r.day, startsAt: r.startsAt, endsAt: r.endsAt, place: r.place, commanderPersonId: r.commanderPersonId, notes: r.notes }));
+}
+
+export interface ActivityPerson {
+  participantId: string;
+  personId: string;
+  name: string;
+  unitId: string;
+  role: string | null;
+  statusName: string | null;
+  /** still present and not home that day in דוח 1 */
+  qualifies: boolean;
+  canRemove: boolean;
+}
+
+export async function loadActivityPeople(tx: Tx, activityId: string): Promise<ActivityPerson[]> {
+  type Row = { participant_id: string; person_id: string; full_name: string; unit_id: string; role: string | null; status_name: string | null; qualifies: boolean; can_remove: boolean };
+  const rows = rowsOf<Row>(await tx.execute(sql`select * from app.company_activity_people(${activityId}::uuid)`));
+  return rows
+    .map((r) => ({ participantId: r.participant_id, personId: r.person_id, name: r.full_name, unitId: r.unit_id, role: r.role, statusName: r.status_name, qualifies: r.qualifies, canRemove: r.can_remove }))
+    .sort((a, b) => byHe(a.name, b.name));
+}
+
+export interface ActivityCandidate {
+  id: string;
+  name: string;
+  unitId: string;
+  statusName: string;
+}
+
+/** Who the user may add: the company's soldiers present and not home that day (app.company_activity_candidates). */
+export async function loadActivityCandidates(tx: Tx, activityId: string): Promise<ActivityCandidate[]> {
+  const rows = rowsOf<{ id: string; full_name: string; unit_id: string; status_name: string }>(await tx.execute(sql`select * from app.company_activity_candidates(${activityId}::uuid)`));
+  return rows.map((r) => ({ id: r.id, name: r.full_name, unitId: r.unit_id, statusName: r.status_name })).sort((a, b) => byHe(a.name, b.name));
+}
+
+export interface CompanyVehicle {
+  id: string;
+  number: string;
+  kind: string | null;
+  state: string;
+}
+
+/** The company's own vehicles (doch1_vehicles.unit_id). */
+export async function loadCompanyVehicles(tx: Tx, companyId: string): Promise<CompanyVehicle[]> {
+  return tx
+    .select({ id: vehicles.id, number: vehicles.number, kind: vehicles.kind, state: vehicles.state })
+    .from(vehicles)
+    .where(and(eq(vehicles.unitId, companyId), eq(vehicles.active, true)))
+    .orderBy(vehicles.number);
+}
+
+export async function loadActivityVehicles(tx: Tx, activityId: string): Promise<CompanyVehicle[]> {
+  return tx
+    .select({ id: vehicles.id, number: vehicles.number, kind: vehicles.kind, state: vehicles.state })
+    .from(activityVehicles)
+    .innerJoin(vehicles, eq(vehicles.id, activityVehicles.vehicleId))
+    .where(eq(activityVehicles.activityId, activityId))
+    .orderBy(vehicles.number);
+}
+
+export interface PersonActivity {
+  id: string;
+  name: string;
+  day: string;
+  startsAt: string | null;
+  endsAt: string | null;
+  place: string | null;
+  role: string | null;
+  commanderName: string | null;
+}
+
+/** A soldier's coming activities (app.person_activities). */
+export async function loadPersonActivities(tx: Tx, personId: string): Promise<PersonActivity[]> {
+  type Row = { id: string; name: string; day: string | Date; starts_at: string | null; ends_at: string | null; place: string | null; role: string | null; commander_name: string | null };
+  const rows = rowsOf<Row>(await tx.execute(sql`select * from app.person_activities(${personId}::uuid)`));
+  return rows.map((r) => ({ id: r.id, name: r.name, day: toDay(r.day), startsAt: r.starts_at, endsAt: r.ends_at, place: r.place, role: r.role, commanderName: r.commander_name }));
+}
+
+/** "08:00–12:00" */
+export const timeRange = (a: { startsAt: string | null; endsAt: string | null }) =>
+  [a.startsAt?.slice(0, 5), a.endsAt?.slice(0, 5)].filter(Boolean).join("–");

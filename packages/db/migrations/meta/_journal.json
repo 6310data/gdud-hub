@@ -253,6 +253,20 @@
       "when": 1793205218053,
       "tag": "0035_company_standby_security",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1793205943743,
+      "tag": "0036_company_activities",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1793205944332,
+      "tag": "0037_company_activities_security",
+      "breakpoints": true
     }
   ]
 }

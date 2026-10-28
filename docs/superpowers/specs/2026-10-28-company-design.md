@@ -281,6 +281,11 @@ Answered with the user after using the first version; these replace the matching
 46. **The דוח 1 standby page groups teams by owner** (גדודיים, then each company's); the company's screen shows only its own teams and vehicles. Soldiers' שבצ״ק locations are shown on the company's screen too, editable with the דוח 1 roles as before.
 47. **Shared screens:** `TodayScreen` (doch1/today/today-screen.tsx), `StandbyScreen` / `TeamScreen` (doch1/standby/…) and `CheckScreen` (kesher/check/check-screen.tsx) are the department pages' bodies with a path and a company limit; the department pages render them too. A soldier in the company's דוח 1 opens in the company app.
 
+48. **The פעילות rule is checked in the database too,** not only by the picker: adding a soldier who isn't present-and-not-home that day is refused (`GD118`). Changing an activity's date removes nobody; the list flags who no longer qualifies.
+49. **Who edits a פעילות:** any commander of the company (its admin or one of its platoon commanders) edits the details and vehicles; adding and removing soldiers follows call 36 (a platoon commander only their platoon's soldiers).
+50. **The commander of a פעילות is a soldier of the company** (picked by name); the company's own vehicles are now readable by every member of the company (platoon commanders put them on activities).
+51. **A soldier sees an activity they take part in** (name, day, times, place, their role, the commander) on אני, but not the list of the other participants.
+
 ## Left to the builder
 
 Exact column types and indexes, the rate-limit mechanism on `request_join`, phone format validation, component breakdown, how the roster paginates, and the wording of individual messages (Hebrew, specific, says what to fix).
