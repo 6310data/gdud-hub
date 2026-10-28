@@ -239,6 +239,20 @@
       "when": 1793203835681,
       "tag": "0033_company_register_logistics_security",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1793205217468,
+      "tag": "0034_company_standby",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1793205218053,
+      "tag": "0035_company_standby_security",
+      "breakpoints": true
     }
   ]
 }

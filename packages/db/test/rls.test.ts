@@ -2136,4 +2136,67 @@ describe("company", () => {
       expect(await as(plntDoch1, (tx) => tx.select().from(changes))).toHaveLength(0);
     });
   });
+  describe("standby (כוננות של הפלוגה)", () => {
+    const { doch1StandbyTeams: teams, doch1StandbyHolders: holders, doch1StandbyMembers: teamMembers, doch1Vehicles: vehicles } = schema;
+    let roundId = "";
+    let team = "";
+
+    beforeAll(async () => {
+      roundId = (await db.select().from(rounds).where(eq(rounds.state, "active")))[0]!.id;
+    });
+
+    it("a company admin with no דוח 1 role reads their company's round rows and days, not another company's", async () => {
+      expect(await as(cAdmin, (tx) => tx.select().from(rounds))).not.toHaveLength(0);
+      expect((await as(cAdmin, (tx) => tx.select().from(statuses))).length).toBeGreaterThan(0);
+      const ms = await as(cAdmin, (tx) => tx.select().from(members));
+      expect(ms.map((m) => m.personId)).toContain(s.a);
+      expect(ms.map((m) => m.personId)).not.toContain(s.c);
+      expect((await as(cAdmin, (tx) => tx.select().from(days))).every((d) => d.personId !== s.c)).toBe(true);
+      // a platoon commander of the module doesn't get this
+      expect(await as(cCmdr, (tx) => tx.select().from(members))).toHaveLength(0);
+      // and nobody writes דוח 1 days through it
+      expect(await as(cAdmin, (tx) => tx.update(days).set({ updatedAt: new Date() }).returning())).toHaveLength(0);
+      expect(await as(cAdmin, (tx) => tx.update(members).set({ notes: "x" }).returning())).toHaveLength(0);
+    });
+
+    it("the company admin builds the company's own team: its holder is the company, its soldiers the company's", async () => {
+      await rejects(as(cAdmin, (tx) => tx.insert(teams).values({ roundId, name: "כוננות פלנט", unitId: ids.plnt })));
+      await rejects(as(cCmdr, (tx) => tx.insert(teams).values({ roundId, name: "כוננות", unitId: ids.plsr })));
+      await rejects(as(cAdmin, (tx) => tx.insert(teams).values({ roundId, name: "כוננות גדודית" })));
+      const [t] = await as(cAdmin, (tx) => tx.insert(teams).values({ roundId, name: "כיתת כוננות פלסר", unitId: ids.plsr }).returning());
+      team = t!.id;
+      expect((await db.select().from(holders).where(eq(holders.teamId, team))).map((h) => h.unitId)).toEqual([ids.plsr]);
+      await as(cAdmin, (tx) => tx.insert(teamMembers).values({ roundId, teamId: team, personId: s.a, role: "לוחם" }));
+      expect(await as(cAdmin, (tx) => tx.select().from(teamMembers).where(eq(teamMembers.teamId, team)))).toHaveLength(1);
+      // a soldier of another company, a holder of another company: refused even for a super admin
+      await failsWith(as(su, (tx) => tx.insert(teamMembers).values({ roundId, teamId: team, personId: s.c })), "GD005");
+      await failsWith(as(su, (tx) => tx.insert(holders).values({ teamId: team, unitId: ids.plnt })), "GD005");
+      await as(cAdmin, (tx) => tx.update(teams).set({ name: "כיתת כוננות א" }).where(eq(teams.id, team)));
+      expect(await as(cPlntAdmin, (tx) => tx.update(teams).set({ name: "x" }).where(eq(teams.id, team)).returning())).toHaveLength(0);
+      expect(await as(cPlntAdmin, (tx) => tx.select().from(teams).where(eq(teams.id, team)))).toHaveLength(0);
+    });
+
+    it("vehicles: the company adds its own and uses only its own; only a דוח 1 admin moves one between companies", async () => {
+      const [mine] = await as(cAdmin, (tx) => tx.insert(vehicles).values({ number: "CO-777", unitId: ids.plsr }).returning());
+      await rejects(as(cAdmin, (tx) => tx.insert(vehicles).values({ number: "CO-778" })));
+      await rejects(as(cAdmin, (tx) => tx.insert(vehicles).values({ number: "CO-779", unitId: ids.plnt })));
+      const [battalion] = await as(su, (tx) => tx.insert(vehicles).values({ number: "CO-780" }).returning());
+      await as(cAdmin, (tx) => tx.update(teams).set({ vehicleId: mine!.id }).where(eq(teams.id, team)));
+      await failsWith(as(cAdmin, (tx) => tx.update(teams).set({ vehicleId: battalion!.id }).where(eq(teams.id, team))), "GD005");
+      expect((await as(cAdmin, (tx) => tx.select().from(vehicles))).map((v) => v.number)).not.toContain("CO-780");
+      expect(await as(cPlntAdmin, (tx) => tx.select().from(vehicles).where(eq(vehicles.id, mine!.id)))).toHaveLength(0);
+      await as(cAdmin, (tx) => tx.update(vehicles).set({ state: "service" }).where(eq(vehicles.id, mine!.id)));
+      await failsWith(as(cAdmin, (tx) => tx.update(vehicles).set({ unitId: null }).where(eq(vehicles.id, mine!.id))), "GD006");
+      await failsWith(as(su, (tx) => tx.update(vehicles).set({ unitId: ids.plnt }).where(eq(vehicles.id, mine!.id))), "GD005");
+    });
+
+    it("only a דוח 1 admin moves a team between battalion and a company", async () => {
+      await failsWith(as(cAdmin, (tx) => tx.update(teams).set({ unitId: null }).where(eq(teams.id, team))), "GD006");
+      await as(su, (tx) => tx.update(teams).set({ unitId: null, vehicleId: null }).where(eq(teams.id, team)));
+      // battalion again: the company admin no longer edits it
+      expect(await as(cAdmin, (tx) => tx.update(teams).set({ name: "y" }).where(eq(teams.id, team)).returning())).toHaveLength(0);
+      await as(su, (tx) => tx.update(teams).set({ unitId: ids.plsr }).where(eq(teams.id, team)));
+      expect((await db.select().from(holders).where(eq(holders.teamId, team))).map((h) => h.unitId)).toEqual([ids.plsr]);
+    });
+  });
 });

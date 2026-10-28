@@ -13,6 +13,9 @@ export function dbErrorMessage(err: unknown): string {
   // raised by the doch1_members guards (0020_doch1_round_planning_security.sql)
   if (code === "GD003") return "הערך לא שייך לרשימה הזו.";
   if (code === "GD004") return "רק מנהל גדודי מעביר חייל בין פלוגות.";
+  // raised by the company-standby guards (0035_company_standby_security.sql)
+  if (code === "GD005") return "צוות של פלוגה מקבל רק חיילים ורכבים של אותה פלוגה.";
+  if (code === "GD006") return "רק מנהל גדודי בדוח 1 מעביר צוות או רכב בין פלוגות.";
   console.error(err);
   return "הפעולה נכשלה. נסו שוב.";
 }

@@ -273,6 +273,14 @@ Answered with the user after using the first version; these replace the matching
 39. **"חזרה" is in the shared app shell, so every module gets it:** it goes back when the app has a page before this one in this tab (client navigations, the hub included), otherwise to the module's first section; it is hidden on that first section when there is nothing to go back to. On the phone it's in the top bar, on the desktop above the page.
 40. **The roster is one card per platoon** (a header with the count and how many have no דוח 1 today; company-level soldiers first, as "מפקדה"), rows show name, תפקיד and gear count, today's status and a call button; platoon filter as pills with counts.
 
+41. **Company teams and holders (answered 2026-10-28):** `unit_id` is the team's owner and its only holder (a trigger keeps the holder in step). Teams held by several companies stay battalion, and their companies' דוח 1 company users keep editing them as before; a team the battalion admin wants shared is "גדודי" in the team editor.
+42. **Migration (answered):** a team whose members are all of one company *and that no other company holds* becomes that company's; its vehicle moves with it when only that company's teams use it; a team whose vehicle can't move stays battalion.
+43. **New vehicles (answered):** a vehicle a company adds from its own team (in its app or in דוח 1) is that company's; a דוח 1 admin moves vehicles between companies (the vehicles list in דוח 1 now has a company select for the admin).
+44. **A team a company user opens in דוח 1 is now the company's own team;** the דוח 1 admin may open a shared (battalion) one instead.
+45. **What a company admin without a דוח 1 role reads:** the round, its statuses, value lists, locations and standby types, and their company's soldiers' round rows and days — what the standby screen needs. Read only: filling דוח 1 stays with the דוח 1 roles (call 33). A platoon commander of the module gets none of this.
+46. **The דוח 1 standby page groups teams by owner** (גדודיים, then each company's); the company's screen shows only its own teams and vehicles. Soldiers' שבצ״ק locations are shown on the company's screen too, editable with the דוח 1 roles as before.
+47. **Shared screens:** `TodayScreen` (doch1/today/today-screen.tsx), `StandbyScreen` / `TeamScreen` (doch1/standby/…) and `CheckScreen` (kesher/check/check-screen.tsx) are the department pages' bodies with a path and a company limit; the department pages render them too. A soldier in the company's דוח 1 opens in the company app.
+
 ## Left to the builder
 
 Exact column types and indexes, the rate-limit mechanism on `request_join`, phone format validation, component breakdown, how the roster paginates, and the wording of individual messages (Hebrew, specific, says what to fix).

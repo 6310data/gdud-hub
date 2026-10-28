@@ -27,10 +27,17 @@ export interface Doch1Access {
   canReport: (unitId: string) => boolean;
   /** may create a standby team: admin or a company user (for their own company) */
   canCreateTeam: boolean;
-  /** may edit a standby team held by these companies: admin, or a company user of one of them */
-  canEditTeam: (holderIds: readonly string[]) => boolean;
+  /**
+   * may edit a standby team held by these companies: admin, or a company user of one of them; a
+   * company's own team (`teamUnitId`) also by that company's admin in ניהול פלוגה (0035)
+   */
+  canEditTeam: (holderIds: readonly string[], teamUnitId?: string | null) => boolean;
+  /** may edit a company's own standby (teams, vehicles): admin, its company user, or its ניהול פלוגה admin */
+  canEditCompanyStandby: (unitId: string) => boolean;
   /** may set a soldier's שבצ״ק location: admin / company_user covering the soldier's unit */
   canLocate: (unitId: string) => boolean;
+  /** may put this soldier on a team: canLocate, or for a company's own team that company's ניהול פלוגה admin */
+  canPlace: (unitId: string, teamUnitId?: string | null) => boolean;
 }
 
 const REPORT_ROLES = ["admin", "company_user", "platoon_commander"] as const;
@@ -51,7 +58,11 @@ export function doch1Access({ user, parents }: Pick<Session, "user" | "parents">
     reportScopes: battalionWide ? [...roundCompanyIds] : scopes.filter((u): u is string => u !== null),
     canReport: (unitId) => can(user, "doch1", REPORT_ROLES, unitId, parents),
     canCreateTeam: isAdmin || can(user, "doch1", ["company_user"]),
-    canEditTeam: (holderIds) => isAdmin || holderIds.some((u) => can(user, "doch1", ["company_user"], u, parents)),
+    canEditTeam: (holderIds, teamUnitId) =>
+      isAdmin || holderIds.some((u) => can(user, "doch1", ["company_user"], u, parents)) || (!!teamUnitId && can(user, "company", ["admin"], teamUnitId, parents)),
+    canEditCompanyStandby: (unitId) => can(user, "doch1", ["admin", "company_user"], unitId, parents) || can(user, "company", ["admin"], unitId, parents),
     canLocate: (unitId) => can(user, "doch1", ["admin", "company_user"], unitId, parents),
+    canPlace: (unitId, teamUnitId) =>
+      can(user, "doch1", ["admin", "company_user"], unitId, parents) || (!!teamUnitId && can(user, "company", ["admin"], teamUnitId, parents)),
   };
 }

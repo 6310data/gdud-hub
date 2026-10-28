@@ -33,6 +33,7 @@ export function TeamCard({
   isAvailable,
   editable,
   when = "היום",
+  href,
 }: {
   team: TeamStatusVM;
   statusOf: (personId: string) => StatusDef | null;
@@ -40,6 +41,8 @@ export function TeamCard({
   editable: boolean;
   /** "היום" or "של 19.10" */
   when?: string;
+  /** the team editor (default: דוח 1's) */
+  href?: string;
 }) {
   const gap = gapText(team);
   const full = team.readiness.state === "full";
@@ -96,7 +99,7 @@ export function TeamCard({
             {gap ? `${gap} · ${team.readiness.state === "short" ? `הצוות לא שלם ${when}` : `הצוות לא כשיר ${when}`}` : "הצוות שלם וכשיר"}
           </span>
           {editable ? (
-            <Link href={`/doch1/standby/${team.id}`} className="tz-btn tz-btn-plain tz-btn-sm whitespace-nowrap">
+            <Link href={href ?? `/doch1/standby/${team.id}`} className="tz-btn tz-btn-plain tz-btn-sm whitespace-nowrap">
               {gap ? "בחירת מחליף" : "עריכה"}
             </Link>
           ) : null}

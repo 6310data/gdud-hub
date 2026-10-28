@@ -2,7 +2,7 @@
 import { useOptimistic, useState, useTransition } from "react";
 import { VEHICLE_STATE_LABEL, VEHICLE_STATES, type VehicleState } from "@gdud/core";
 import { Serial } from "@gdud/ui";
-import { setVehicleState } from "../../_actions/standby";
+import { setVehicleCompany, setVehicleState } from "../../_actions/standby";
 
 export interface VehicleRow {
   id: string;
@@ -11,16 +11,30 @@ export interface VehicleRow {
   state: VehicleState;
   /** "חפ״ק · פלסר, …" */
   teams: string;
+  /** the company it belongs to; null = battalion */
+  company: string | null;
+  unitId: string | null;
   editable: boolean;
 }
 
 export const VEHICLE_CHIP: Record<VehicleState, string> = { ok: "tz-chip-ok", service: "tz-chip-broken", broken: "tz-chip-broken" };
 
-/** The vehicles of the user's teams (admin: the whole registry) with their state (mockup 11, "רכבים"). */
-export function VehiclesList({ rows }: { rows: VehicleRow[] }) {
+/**
+ * The vehicles of the user's teams and companies (admin: the whole registry) with their state (mockup 11,
+ * "רכבים"). With `companies` (the battalion admin) each vehicle's company can be set here.
+ */
+export function VehiclesList({ rows, companies }: { rows: VehicleRow[]; companies?: { id: string; name: string }[] }) {
   const [list, optimistic] = useOptimistic(rows, (cur, c: { id: string; state: VehicleState }) => cur.map((v) => (v.id === c.id ? { ...v, state: c.state } : v)));
   const [pending, start] = useTransition();
   const [error, setError] = useState<string>();
+
+  const assign = (id: string, unitId: string | null) => {
+    setError(undefined);
+    start(async () => {
+      const r = await setVehicleCompany({ vehicleId: id, unitId });
+      if (r?.error) setError(r.error);
+    });
+  };
 
   const set = (id: string, state: VehicleState) => {
     setError(undefined);
@@ -48,8 +62,24 @@ export function VehiclesList({ rows }: { rows: VehicleRow[] }) {
               </span>
               <span className="tz-row-title min-w-[140px]">
                 {v.teams || "לא משובץ לצוות"}
-                {v.kind ? <span className="tz-row-sub">{v.kind}</span> : null}
+                <span className="tz-row-sub">{[v.kind, companies ? null : v.company].filter(Boolean).join(" · ")}</span>
               </span>
+              {companies ? (
+                <select
+                  className="tz-input w-[130px] flex-none"
+                  aria-label={`השייכות של רכב ${v.number}`}
+                  value={v.unitId ?? ""}
+                  disabled={pending}
+                  onChange={(e) => assign(v.id, e.target.value || null)}
+                >
+                  <option value="">גדודי</option>
+                  {companies.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
               {v.editable ? (
                 <span className="tz-seg w-[210px] flex-none" role="tablist" aria-label={`מצב הרכב ${v.number}`}>
                   {VEHICLE_STATES.map((st) => (

@@ -56,6 +56,8 @@ export function TodayList({
   members: serverMembers,
   statuses,
   days: serverDays,
+  backHref,
+  soldierHref,
 }: {
   unitId: string;
   unitName: string;
@@ -78,6 +80,10 @@ export function TodayList({
   /** every status of the round, including replaced versions (for counting and chips) */
   statuses: StatusDef[];
   days: DaysByDay;
+  /** this screen's address, for the soldier card's way back (default: /doch1/today) */
+  backHref?: string;
+  /** where a soldier opens: their card here, `${soldierHref}/${personId}` (default: the דוח 1 soldier card) */
+  soldierHref?: string;
 }) {
   const [days, optimistic] = useOptimistic(serverDays, applyWrites);
   const [allMembers, optimisticReport] = useOptimistic(serverMembers, (list, c: { personId: string; inReport: boolean }) =>
@@ -196,8 +202,9 @@ export function TodayList({
 
   const hideToast = useCallback(() => setToast(null), [setToast]);
   const closeSheet = useCallback(() => setSheetFor(null), [setSheetFor]);
-  const back = `/doch1/today?unit=${unitId}${isToday ? "" : `&day=${day}`}`;
-  const cardHref = (personId: string) => `/doch1/soldiers/${personId}?back=${encodeURIComponent(back)}`;
+  const back = backHref ?? `/doch1/today?unit=${unitId}${isToday ? "" : `&day=${day}`}`;
+  const cardHref = (personId: string) =>
+    soldierHref ? `${soldierHref}/${personId}` : `/doch1/soldiers/${personId}?back=${encodeURIComponent(back)}`;
   const closeBulk = useCallback(() => setBulkOpen(false), [setBulkOpen]);
 
   const overwrittenFor = (list: Day[], statusId: string) => {
