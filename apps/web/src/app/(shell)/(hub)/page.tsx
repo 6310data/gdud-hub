@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { accessibleModules } from "@gdud/auth";
-import { Chip, Icon, LargeTitle, Section } from "@gdud/ui";
+import { getModule } from "@gdud/core";
+import { Chip, Icon, LargeTitle, LinkRow, Section } from "@gdud/ui";
 import { displayName, requireSession } from "@/lib/session";
 
 const TILE_COLOR = {
@@ -11,10 +13,18 @@ const TILE_COLOR = {
   core: "var(--tile-neutral)",
 } as const;
 
-/** The hub: one card per module the user may open. Each module opens as its own app. */
+/**
+ * The hub: one card per module the user may open. Each module opens as its own app. A linked
+ * soldier also opens ניהול פלוגה (their אני page); with nothing else, they land there directly.
+ */
 export default async function HomePage() {
-  const { user, claims } = await requireSession();
+  const { user, claims, personId } = await requireSession();
   const modules = accessibleModules(user);
+  const company = getModule("company");
+  if (personId && company && !modules.some((m) => m.id === "company")) {
+    if (!modules.length) redirect("/company/me");
+    modules.push(company as (typeof modules)[number]);
+  }
   const first = displayName(user, claims).split(" ")[0];
 
   return (
@@ -24,6 +34,7 @@ export default async function HomePage() {
       {modules.length === 0 ? (
         <Section footer="מנהל המערכת צריך לשייך אותך למחלקה לפני שתוכל להתחיל.">
           <div className="p-4 text-ink-muted">עדיין אין לך הרשאה לאף מחלקה.</div>
+          <LinkRow as={Link} href="/join" title="אני חייל בגדוד — קישור החשבון לפרטים שלי" />
         </Section>
       ) : (
         <section aria-label="המחלקות שלי" className="grid gap-3 sm:grid-cols-2">

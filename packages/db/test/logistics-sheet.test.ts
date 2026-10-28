@@ -297,6 +297,22 @@ describe("diffLogistics: assignments and storage", () => {
     expect((await s.db.select({ n: count() }).from(people))[0]!.n).toBe(before);
   });
 
+  it("a soldier renamed in ניהול פלוגה still matches by the previous name, and the line says so", async () => {
+    const [req] = await s.db
+      .insert(schema.companyProfileRequests)
+      .values({ personId: s.ron, unitId: s.ids.plnt, field: "full_name", oldValue: "רון לויאן", newValue: "רון לוי", status: "approved" })
+      .returning();
+    const { lines } = await diff({ assignments: rows(signed("דני כהן", "1234567", "7710433"), signed("רון  לויאן", "", "7710432")) }, ["assignments"]);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({ group: "new", personName: "רון לוי", message: 'לפי שם קודם: "רון לויאן" נקרא היום רון לוי' });
+    expect(lines[0]!.op).toMatchObject({ personId: s.ron });
+    // a pending (not approved) change is not a previous name
+    await s.db.update(schema.companyProfileRequests).set({ status: "pending" }).where(eq(schema.companyProfileRequests.id, req!.id));
+    const pending = await diff({ assignments: rows(signed("דני כהן", "1234567", "7710433"), signed("רון לויאן", "", "7710432")) }, ["assignments"]);
+    expect(pending.lines).toEqual([expect.objectContaining({ group: "error", row: 3 })]);
+    await s.db.delete(schema.companyProfileRequests).where(eq(schema.companyProfileRequests.id, req!.id));
+  });
+
   it("the same צ׳ for two soldiers → the later row is an error", async () => {
     const { lines } = await diff(
       { assignments: rows(signed("דני כהן", "1234567", "7710433"), signed("רון לוי", "7654321", "77104-33")) },

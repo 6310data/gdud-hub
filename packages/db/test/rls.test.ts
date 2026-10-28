@@ -1505,3 +1505,608 @@ describe("kesher", () => {
     await rejects(as(stranger, (tx) => tx.insert(subs).values({ endpoint: "https://push.example/stranger", p256dh: "k", auth: "a" })));
   });
 });
+
+describe("company", () => {
+  const {
+    companyJoinRequests: joins,
+    companyJoinAttempts: attempts,
+    companyProfileRequests: changes,
+    doch1Rounds: rounds,
+    doch1Statuses: statuses,
+    doch1Members: members,
+    doch1Days: days,
+    doch1PushSubscriptions: subs,
+    logisticsItems: lItems,
+    logisticsSerials: lSerials,
+    logisticsAssignments: lAssign,
+    logisticsStorage: lStorage,
+    kesherItems: kItems,
+    kesherSerials: kSerials,
+    kesherHolders: kHolders,
+  } = schema;
+
+  // company members (invited, with memberships)
+  const cAdmin: TestUser = { authId: randomUUID(), email: "co-plsr-admin@example.com" };
+  const cCmdr: TestUser = { authId: randomUUID(), email: "co-plsr1-mm@example.com" };
+  const cPlntAdmin: TestUser = { authId: randomUUID(), email: "co-plnt-admin@example.com" };
+  const plntDoch1: TestUser = { authId: randomUUID(), email: "co-plnt-doch1@example.com" };
+  const members_ = [cAdmin, cCmdr, cPlntAdmin, plntDoch1];
+  // Google accounts that were never invited (join through /join)
+  const gA: TestUser = { authId: randomUUID(), email: "soldier-a@gmail.com" };
+  const gB: TestUser = { authId: randomUUID(), email: "soldier-b@gmail.com" };
+  const gA2: TestUser = { authId: randomUUID(), email: "soldier-a-second@gmail.com" };
+  const gNone: TestUser = { authId: randomUUID(), email: "nobody@gmail.com" };
+  const gSpam: TestUser = { authId: randomUUID(), email: "spam@gmail.com" };
+
+  const s = { a: "", b: "", c: "", gone: "" };
+
+  const pgCodeOf = (err: unknown): string | undefined => {
+    let e: unknown = err;
+    for (let i = 0; i < 4 && e && typeof e === "object"; i++) {
+      const code = (e as { code?: unknown }).code;
+      if (typeof code === "string") return code;
+      e = (e as { cause?: unknown }).cause;
+    }
+    return undefined;
+  };
+  async function failsWith(p: Promise<unknown>, code: string) {
+    const err = await p.then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(err, `expected ${code}`).not.toBeNull();
+    expect(pgCodeOf(err)).toBe(code);
+  }
+  const rowsOf = <T,>(r: unknown) => (Array.isArray(r) ? r : (r as { rows: T[] }).rows) as T[];
+  const call = <T = Record<string, unknown>,>(u: TestUser, q: ReturnType<typeof sql>, extra?: Partial<JwtClaims>) =>
+    as(u, async (tx) => rowsOf<T>(await tx.execute(q)), extra);
+  const join = (u: TestUser, pn: string, last4: string, extra?: Partial<JwtClaims>) =>
+    call(u, sql`select app.request_join(${pn}, ${last4}) as r`, extra);
+  const approve = (u: TestUser, id: string, yes = true) => call(u, sql`select app.approve_join(${id}::uuid, ${yes})`);
+  const myPerson = async (u: TestUser) => (await call<{ id: string | null }>(u, sql`select app.my_person_id() as id`))[0]!.id;
+
+  beforeAll(async () => {
+    const rows = await db
+      .insert(appUsers)
+      .values(members_.map((u) => ({ email: u.email, authUserId: u.authId })))
+      .returning();
+    for (const u of members_) u.appId = rows.find((r) => r.email === u.email)!.id;
+    await db.insert(memberships).values([
+      { userId: cAdmin.appId!, module: "company", role: "admin", unitId: ids.plsr },
+      { userId: cCmdr.appId!, module: "company", role: "platoon_commander", unitId: ids.plsr1 },
+      { userId: cPlntAdmin.appId!, module: "company", role: "admin", unitId: ids.plnt },
+      { userId: plntDoch1.appId!, module: "doch1", role: "company_user", unitId: ids.plnt },
+    ]);
+    const ppl = await db
+      .insert(people)
+      .values([
+        { unitId: ids.plsr1, fullName: "חייל אלף", personalNumber: "8100001", phone: "050-111-2233", roleTitle: "קשר" },
+        { unitId: ids.plsr, fullName: "חייל בית", personalNumber: "8100002", phone: "0521114455" },
+        { unitId: ids.plnt, fullName: "חייל גימל", personalNumber: "8100003", phone: "0531116677" },
+        { unitId: ids.plsr, fullName: "חייל שהשתחרר", personalNumber: "8100004", phone: "0541118899", active: false },
+      ])
+      .returning();
+    [s.a, s.b, s.c, s.gone] = ppl.map((p) => p.id) as [string, string, string, string];
+
+    // gear: logistics (one signed, one signed and in אפסון), kesher (signer of one צ׳), on soldier A
+    const [item] = await db.insert(lItems).values({ name: "M4 פלוגה" }).returning();
+    const ls = await db
+      .insert(lSerials)
+      .values([
+        { itemId: item!.id, serial: "CO1001" },
+        { itemId: item!.id, serial: "CO1002" },
+        { itemId: item!.id, serial: "CO1003" },
+      ])
+      .returning();
+    await db.insert(lAssign).values([
+      { serialId: ls[0]!.id, personId: s.a },
+      { serialId: ls[1]!.id, personId: s.a },
+      { serialId: ls[2]!.id, personId: s.c },
+    ]);
+    await db.insert(lStorage).values({ personId: s.a, serialId: ls[1]!.id, itemName: "M4 פלוגה" });
+    const [kItem] = await db.insert(kItems).values({ name: "מגן מכלול", kind: "serial" }).returning();
+    const [kSerial] = await db.insert(kSerials).values({ itemId: kItem!.id, serial: "CO-K1", location: "company", unitId: ids.plsr }).returning();
+    await db.insert(kHolders).values({ serialId: kSerial!.id, unitId: ids.plsr, signerPersonId: s.a, holderPersonId: s.b });
+
+    // days in the active round
+    const today = israelToday(new Date());
+    let [round] = await db.select().from(rounds).where(eq(rounds.state, "active"));
+    round ??= (await db.insert(rounds).values({ name: "סבב פלוגה", startsOn: addDays(today, -30), endsOn: addDays(today, 30), state: "active" }).returning())[0];
+    const st = await db
+      .insert(statuses)
+      .values([
+        { roundId: round!.id, name: "פלוגה בבסיס", color: "#2e7d32", displayGroup: "בבסיס", sheetValue: "co1", countsAsPresent: true },
+        { roundId: round!.id, name: "פלוגה בבית", color: "#1565c0", displayGroup: "בבית", sheetValue: "co2", homeDay: true },
+      ])
+      .returning();
+    await db.insert(members).values([
+      { roundId: round!.id, personId: s.a },
+      { roundId: round!.id, personId: s.c },
+    ]);
+    await db.insert(days).values([
+      { roundId: round!.id, personId: s.a, day: addDays(today, -2), statusId: st[0]!.id },
+      { roundId: round!.id, personId: s.a, day: addDays(today, -1), statusId: st[1]!.id },
+      { roundId: round!.id, personId: s.a, day: today, statusId: st[0]!.id },
+      { roundId: round!.id, personId: s.a, day: addDays(today, 1), statusId: st[1]!.id },
+      { roundId: round!.id, personId: s.c, day: today, statusId: st[0]!.id },
+    ]);
+  });
+
+  describe("joining", () => {
+    it("an unlinked account has no soldier and sees nothing of the module", async () => {
+      expect(await myPerson(gA)).toBeNull();
+      expect(await as(gA, (tx) => tx.select().from(joins))).toHaveLength(0);
+      expect(await call(gA, sql`select * from app.my_gear()`)).toHaveLength(0);
+      expect(await call(gA, sql`select * from app.person_gear(${s.a}::uuid)`)).toHaveLength(0);
+    });
+
+    it("gives the same answer whether or not the personal number matched; no match leaves no row", async () => {
+      const matched = await join(gA, "81-00001", "2233");
+      const wrongPhone = await join(gNone, "8100001", "0000");
+      const noSuchNumber = await join(gNone, "8999999", "2233");
+      const inactive = await join(gNone, "8100004", "8899");
+      expect(wrongPhone).toEqual(matched);
+      expect(noSuchNumber).toEqual(matched);
+      expect(inactive).toEqual(matched);
+      const all = await db.select().from(joins);
+      expect(all.filter((r) => r.authUserId === gNone.authId)).toHaveLength(0);
+      const mine = all.filter((r) => r.authUserId === gA.authId);
+      expect(mine).toHaveLength(1);
+      expect(mine[0]).toMatchObject({ personId: s.a, unitId: ids.plsr1, status: "pending", email: gA.email });
+      // every attempt is counted, match or not
+      expect((await db.select().from(attempts)).filter((a) => a.authUserId === gNone.authId)).toHaveLength(3);
+    });
+
+    it("one open request per account: asking again replaces it", async () => {
+      await join(gB, "8100001", "2233");
+      await join(gB, "8100002", "4455");
+      const mine = (await db.select().from(joins)).filter((r) => r.authUserId === gB.authId);
+      expect(mine).toHaveLength(1);
+      expect(mine[0]).toMatchObject({ personId: s.b, unitId: ids.plsr });
+    });
+
+    it("needs a Google account with a verified email, and input in the right format", async () => {
+      await rejects(join(gNone, "8100001", "2233", { user_metadata: { email_verified: false } }));
+      await rejects(join(gNone, "8100001", "2233", { app_metadata: { provider: "email" } }));
+      await failsWith(join(gNone, "12", "2233"), "GD102");
+      await failsWith(join(gNone, "8100001", "22"), "GD102");
+    });
+
+    it("is limited to 5 attempts per account a day", async () => {
+      for (let i = 0; i < 5; i++) await join(gSpam, "8999999", "0000");
+      await failsWith(join(gSpam, "8100001", "2233"), "GD101");
+      expect((await db.select().from(joins)).filter((r) => r.authUserId === gSpam.authId)).toHaveLength(0);
+    });
+
+    it("requests are seen by the soldier's company admins only", async () => {
+      expect((await as(cAdmin, (tx) => tx.select().from(joins))).map((r) => r.personId).sort()).toEqual([s.a, s.b].sort());
+      expect(await as(cPlntAdmin, (tx) => tx.select().from(joins))).toHaveLength(0);
+      expect(await as(cCmdr, (tx) => tx.select().from(joins))).toHaveLength(0);
+      expect(await as(clerk, (tx) => tx.select().from(joins))).toHaveLength(0);
+    });
+
+    it("nobody writes requests or attempts directly", async () => {
+      await rejects(as(cAdmin, (tx) => tx.insert(joins).values({ authUserId: gNone.authId, email: gNone.email, personId: s.b, unitId: ids.plsr })));
+      await rejects(as(cAdmin, (tx) => tx.update(joins).set({ status: "approved" })));
+      await rejects(as(su, (tx) => tx.select().from(attempts)));
+    });
+
+    it("only a company admin of the soldier's unit approves; it links the account", async () => {
+      const [reqA] = await db.select().from(joins).where(and(eq(joins.authUserId, gA.authId), eq(joins.status, "pending")));
+      await rejects(approve(cCmdr, reqA!.id));
+      await rejects(approve(cPlntAdmin, reqA!.id));
+      await rejects(approve(gA, reqA!.id));
+      await approve(cAdmin, reqA!.id);
+      expect(await myPerson(gA)).toBe(s.a);
+      const [u] = await db.select().from(appUsers).where(eq(appUsers.authUserId, gA.authId));
+      expect(u).toMatchObject({ email: gA.email, personId: s.a, active: true, isSuperAdmin: false, displayName: "חייל אלף" });
+      expect(await db.select().from(memberships).where(eq(memberships.userId, u!.id))).toHaveLength(0);
+      await failsWith(approve(cAdmin, reqA!.id), "GD103");
+      // the approval and the new account are in the audit log, by the admin
+      const log = await db.select().from(auditLog).where(and(eq(auditLog.tableName, "app_users"), eq(auditLog.rowId, u!.id)));
+      expect(log[0]?.actorUserId).toBe(cAdmin.appId);
+    });
+
+    it("a linked account can't ask again, and a second account for the same soldier isn't approved", async () => {
+      await join(gA, "8100002", "4455");
+      expect((await db.select().from(joins)).filter((r) => r.authUserId === gA.authId && r.status === "pending")).toHaveLength(0);
+      await join(gA2, "8100001", "2233");
+      const [req] = await db.select().from(joins).where(and(eq(joins.authUserId, gA2.authId), eq(joins.status, "pending")));
+      await failsWith(approve(cAdmin, req!.id), "GD105");
+      await approve(cAdmin, req!.id, false);
+      expect((await db.select().from(joins).where(eq(joins.id, req!.id)))[0]!.status).toBe("rejected");
+      expect(await myPerson(gA2)).toBeNull();
+    });
+
+    it("a disabled account stays out: its request is silent and never approved", async () => {
+      await db.update(appUsers).set({ personId: null }).where(eq(appUsers.id, inactive.appId!));
+      await join(inactive, "8100002", "4455");
+      expect((await db.select().from(joins)).filter((r) => r.authUserId === inactive.authId)).toHaveLength(0);
+    });
+    it("a company admin links a soldier to a Google email by hand; the soldier claims it on sign-in", async () => {
+      const gC: TestUser = { authId: randomUUID(), email: "soldier-c@gmail.com" };
+      const link = (u: TestUser, person: string, email: string) => call(u, sql`select app.company_link_account(${person}::uuid, ${email})`);
+      await rejects(link(cAdmin, s.c, gC.email));
+      await rejects(link(cCmdr, s.a, gC.email));
+      await failsWith(link(cPlntAdmin, s.c, "not-an-email"), "GD109");
+      await failsWith(link(cPlntAdmin, s.c, inactive.email), "GD106");
+      await link(cPlntAdmin, s.c, " Soldier-C@gmail.com ");
+      expect(await myPerson(gC)).toBeNull();
+      await call(gC, sql`select app.link_auth_user()`);
+      expect(await myPerson(gC)).toBe(s.c);
+      await failsWith(link(cPlntAdmin, s.c, "other@gmail.com"), "GD105");
+    });
+  });
+
+  describe("אני", () => {
+    it("the soldier reads their own gear: logistics (אפסון marked) and kesher", async () => {
+      const gear = await call<{ source: string; serial: string; detail: string | null }>(gA, sql`select * from app.my_gear()`);
+      expect(gear.map((g) => `${g.source}:${g.serial}:${g.detail ?? ""}`).sort()).toEqual(
+        ["kesher:CO-K1:חותם על הפלוגה", "logistics:CO1001:", "logistics:CO1002:באפסון"].sort(),
+      );
+    });
+
+    it("a soldier can't see another soldier's gear, days or details", async () => {
+      expect(await call(gA, sql`select * from app.person_gear(${s.c}::uuid)`)).toHaveLength(0);
+      expect(await call(gA, sql`select * from app.person_days(${s.c}::uuid)`)).toHaveLength(0);
+      expect(await call(gA, sql`select * from app.person_details(${s.b}::uuid)`)).toHaveLength(0);
+      expect(await call(gA, sql`select * from app.company_roster(${ids.plsr}::uuid)`)).toHaveLength(0);
+      // and no department table opens up to them
+      expect(await as(gA, (tx) => tx.select().from(people))).toHaveLength(0);
+      expect(await as(gA, (tx) => tx.select().from(lAssign))).toHaveLength(0);
+      expect(await as(gA, (tx) => tx.select().from(kHolders))).toHaveLength(0);
+      expect(await as(gA, (tx) => tx.select().from(days))).toHaveLength(0);
+    });
+
+    it("the soldier reads their own details (never the personal number) and days of the active round", async () => {
+      const [me] = await call<Record<string, unknown>>(gA, sql`select * from app.person_details(app.my_person_id())`);
+      expect(me).toMatchObject({ full_name: "חייל אלף", role_title: "קשר", phone: "050-111-2233" });
+      expect(Object.keys(me!)).not.toContain("personal_number");
+      const ds = await call<{ day: unknown; present: boolean; home: boolean }>(gA, sql`select * from app.my_days()`);
+      expect(ds).toHaveLength(4);
+      expect(ds.filter((d) => d.present)).toHaveLength(2);
+      expect(ds.filter((d) => d.home)).toHaveLength(2);
+    });
+
+    it("a commander sees a soldier they cover, not one of another company or platoon", async () => {
+      expect(await call(cAdmin, sql`select * from app.person_gear(${s.a}::uuid)`)).toHaveLength(3);
+      expect(await call(cCmdr, sql`select * from app.person_gear(${s.a}::uuid)`)).toHaveLength(3);
+      expect(await call(cCmdr, sql`select * from app.person_details(${s.b}::uuid)`)).toHaveLength(0);
+      expect(await call(cPlntAdmin, sql`select * from app.person_gear(${s.a}::uuid)`)).toHaveLength(0);
+      expect(await call(cPlntAdmin, sql`select * from app.person_gear(${s.c}::uuid)`)).toHaveLength(1);
+    });
+
+    it("the roster: the covered soldiers with today's status and gear count, no personal number", async () => {
+      const r = await call<Record<string, unknown>>(cAdmin, sql`select * from app.company_roster(${ids.plsr}::uuid)`);
+      const a = r.find((x) => x.id === s.a)!;
+      expect(a).toMatchObject({ full_name: "חייל אלף", status_name: "פלוגה בבסיס", gear: 3, linked: true });
+      expect(Object.keys(a)).not.toContain("personal_number");
+      expect(r.map((x) => x.id)).not.toContain(s.gone);
+      expect(r.map((x) => x.id)).not.toContain(s.c);
+      const mm = await call<{ id: string }>(cCmdr, sql`select * from app.company_roster(${ids.plsr}::uuid)`);
+      expect(mm.map((x) => x.id)).toContain(s.a);
+      expect(mm.map((x) => x.id)).not.toContain(s.b);
+      expect(await call(cPlntAdmin, sql`select * from app.company_roster(${ids.plsr}::uuid)`)).toHaveLength(0);
+    });
+
+    it("a linked soldier may subscribe to push", async () => {
+      await as(gA, (tx) => tx.insert(subs).values({ endpoint: "https://push.example/soldier", p256dh: "k", auth: "a" }));
+      expect(await as(gA, (tx) => tx.select().from(subs))).toHaveLength(1);
+      await rejects(as(gNone, (tx) => tx.insert(subs).values({ endpoint: "https://push.example/none", p256dh: "k", auth: "a" })));
+    });
+  });
+
+  describe("self-edit", () => {
+    it("the soldier fixes their own phone at once, audited; nobody else through this", async () => {
+      const [r] = await call<{ phone: string }>(gA, sql`select app.update_my_phone('+972 50-999-8877') as phone`);
+      expect(r!.phone).toBe("0509998877");
+      const [p] = await db.select().from(people).where(eq(people.id, s.a));
+      expect(p!.phone).toBe("0509998877");
+      const [u] = await db.select().from(appUsers).where(eq(appUsers.authUserId, gA.authId));
+      const log = await db.select().from(auditLog).where(and(eq(auditLog.tableName, "people"), eq(auditLog.rowId, s.a)));
+      expect(log.at(-1)?.actorUserId).toBe(u!.id);
+      await failsWith(call(gA, sql`select app.update_my_phone('12345')`), "GD107");
+      await rejects(call(gNone, sql`select app.update_my_phone('0501234567')`));
+      await rejects(call(cAdmin, sql`select app.update_my_phone('0501234567')`));
+      // the soldier can't write people directly
+      expect(await as(gA, (tx) => tx.update(people).set({ fullName: "x" }).where(eq(people.id, s.a)).returning())).toHaveLength(0);
+    });
+
+    it("a name change waits for approval; the soldier sees their own request only", async () => {
+      const [r] = await call<{ id: string }>(gA, sql`select app.request_profile_change('full_name', '  חייל   אלף  חדש ') as id`);
+      const [p] = await db.select().from(people).where(eq(people.id, s.a));
+      expect(p!.fullName).toBe("חייל אלף");
+      const mine = await as(gA, (tx) => tx.select().from(changes));
+      expect(mine).toHaveLength(1);
+      expect(mine[0]).toMatchObject({ id: r!.id, field: "full_name", oldValue: "חייל אלף", newValue: "חייל אלף חדש", status: "pending", unitId: ids.plsr1 });
+      // asking again replaces the open request
+      await call(gA, sql`select app.request_profile_change('full_name', 'חייל אלף מתוקן')`);
+      expect(await db.select().from(changes).where(eq(changes.personId, s.a))).toHaveLength(1);
+      await failsWith(call(gA, sql`select app.request_profile_change('full_name', 'א')`), "GD108");
+      await rejects(call(gA, sql`select app.request_profile_change('phone', '0501234567')`));
+      await rejects(call(gNone, sql`select app.request_profile_change('full_name', 'שם')`));
+    });
+
+    it("change requests are seen by the soldier's commanders, not by another company", async () => {
+      expect(await as(cAdmin, (tx) => tx.select().from(changes))).toHaveLength(1);
+      expect(await as(cCmdr, (tx) => tx.select().from(changes))).toHaveLength(1);
+      expect(await as(cPlntAdmin, (tx) => tx.select().from(changes))).toHaveLength(0);
+      expect(await as(clerk, (tx) => tx.select().from(changes))).toHaveLength(0);
+    });
+
+    it("the platoon commander approves for their platoon; the name and the previous name are kept", async () => {
+      const [req] = await db.select().from(changes).where(and(eq(changes.personId, s.a), eq(changes.status, "pending")));
+      await rejects(call(cPlntAdmin, sql`select app.decide_profile_change(${req!.id}::uuid, true)`));
+      await rejects(call(gA, sql`select app.decide_profile_change(${req!.id}::uuid, true)`));
+      await call(cCmdr, sql`select app.decide_profile_change(${req!.id}::uuid, true)`);
+      const [p] = await db.select().from(people).where(eq(people.id, s.a));
+      expect(p!.fullName).toBe("חייל אלף מתוקן");
+      const [done] = await db.select().from(changes).where(eq(changes.id, req!.id));
+      expect(done).toMatchObject({ status: "approved", oldValue: "חייל אלף", decidedBy: cCmdr.appId });
+      await failsWith(call(cAdmin, sql`select app.decide_profile_change(${req!.id}::uuid, false)`), "GD103");
+    });
+
+    it("a platoon commander can't decide for a soldier outside their platoon; the company admin can", async () => {
+      // soldier B (company level, not in מחלקה 1), linked through the request from before
+      const [reqB] = await db.select().from(joins).where(and(eq(joins.authUserId, gB.authId), eq(joins.status, "pending")));
+      await approve(cAdmin, reqB!.id);
+      const [id] = await call<{ id: string }>(gB, sql`select app.request_profile_change('role_title', 'נהג') as id`);
+      await rejects(call(cCmdr, sql`select app.decide_profile_change(${id!.id}::uuid, true)`));
+      await call(cAdmin, sql`select app.decide_profile_change(${id!.id}::uuid, false)`);
+      const [p] = await db.select().from(people).where(eq(people.id, s.b));
+      expect(p!.roleTitle).toBeNull();
+    });
+
+    it("proposing the current value withdraws the open request", async () => {
+      await call(gB, sql`select app.request_profile_change('role_title', 'נהג')`);
+      await call(gB, sql`select app.request_profile_change('role_title', '')`);
+      expect((await db.select().from(changes).where(eq(changes.personId, s.b))).map((r) => r.status).sort()).toEqual(["cancelled", "rejected"]);
+    });
+
+    it("an inactive soldier's account loses its soldier", async () => {
+      await db.update(people).set({ active: false }).where(eq(people.id, s.b));
+      expect(await myPerson(gB)).toBeNull();
+      expect(await call(gB, sql`select * from app.my_gear()`)).toHaveLength(0);
+      await db.update(people).set({ active: true }).where(eq(people.id, s.b));
+    });
+  });
+  describe("register (החתמה פנימית)", () => {
+    const { companyItems: cItems, companySignings: signings, kesherEvents: kEvents } = schema;
+    const cCmdr2: TestUser = { authId: randomUUID(), email: "co-plsr2-mm@example.com" };
+    const r = { plsr2: "", d: "", kSerial: "", tent: "", pots: "" };
+    const sign = (u: TestUser, kind: string, id: string, to: string, qty = 1) =>
+      call<{ id: string }>(u, sql`select app.company_sign(${kind}, ${id}::uuid, ${to}::uuid, ${qty}) as id`).then((x) => x[0]!.id);
+    const giveBack = (u: TestUser, id: string) => call(u, sql`select app.company_return(${id}::uuid)`);
+    const openFor = async (serialId: string) =>
+      (await db.select().from(signings).where(eq(signings.kesherSerialId, serialId))).filter((x) => !x.returnedAt);
+
+    beforeAll(async () => {
+      const [plsr2] = await db.insert(units).values({ parentId: ids.plsr, kind: "platoon", name: "מחלקה 2" }).returning();
+      r.plsr2 = plsr2!.id;
+      const [d] = await db.insert(people).values({ unitId: r.plsr2, fullName: "חייל דלת" }).returning();
+      r.d = d!.id;
+      const [u] = await db.insert(appUsers).values({ email: cCmdr2.email, authUserId: cCmdr2.authId }).returning();
+      cCmdr2.appId = u!.id;
+      await db.insert(memberships).values({ userId: cCmdr2.appId, module: "company", role: "platoon_commander", unitId: r.plsr2 });
+      const [ks] = await db.select().from(kSerials).where(eq(kSerials.serial, "CO-K1"));
+      r.kSerial = ks!.id;
+    });
+
+    it("company items: the admin writes; the company's members read; nobody else", async () => {
+      await rejects(as(cCmdr, (tx) => tx.insert(cItems).values({ unitId: ids.plsr, name: "אוהל" })));
+      await rejects(as(cPlntAdmin, (tx) => tx.insert(cItems).values({ unitId: ids.plsr, name: "אוהל" })));
+      await rejects(as(cAdmin, (tx) => tx.insert(cItems).values({ unitId: ids.plsr1, name: "אוהל" })));
+      const [tent] = await as(cAdmin, (tx) => tx.insert(cItems).values({ unitId: ids.plsr, name: "אוהל סיירים", serial: "T-100" }).returning());
+      const [pots] = await as(cAdmin, (tx) => tx.insert(cItems).values({ unitId: ids.plsr, name: "סיר", quantity: 3 }).returning());
+      r.tent = tent!.id;
+      r.pots = pots!.id;
+      await rejects(as(cAdmin, (tx) => tx.insert(cItems).values({ unitId: ids.plsr, name: "כפול", serial: "T-100" })));
+      await rejects(as(cAdmin, (tx) => tx.insert(cItems).values({ unitId: ids.plsr, name: "שני", serial: "T-101", quantity: 2 })));
+      expect(await as(cCmdr2, (tx) => tx.select().from(cItems))).toHaveLength(2);
+      expect(await as(cPlntAdmin, (tx) => tx.select().from(cItems))).toHaveLength(0);
+      expect(await as(gA, (tx) => tx.select().from(cItems))).toHaveLength(0);
+      expect(await as(cCmdr, (tx) => tx.update(cItems).set({ name: "x" }).returning())).toHaveLength(0);
+    });
+
+    it("what can be signed: the company's kesher צ׳ with where each is now — for a member with no kesher role", async () => {
+      const items = await call<{ kind: string; serial: string | null; now_name: string | null; available: number }>(cCmdr2, sql`select * from app.company_register_items(${ids.plsr}::uuid)`);
+      expect(items.find((x) => x.serial === "CO-K1")).toMatchObject({ kind: "kesher", now_name: "חייל בית", available: 1 });
+      expect(items.find((x) => x.serial === null)).toMatchObject({ kind: "company", available: 3 });
+      expect(await as(cCmdr2, (tx) => tx.select().from(kSerials))).toHaveLength(0);
+      expect(await call(cPlntAdmin, sql`select * from app.company_register_items(${ids.plsr}::uuid)`)).toHaveLength(0);
+      expect(await call(gA, sql`select * from app.company_register_items(${ids.plsr}::uuid)`)).toHaveLength(0);
+    });
+
+    it("the receiver picker: names of the company's soldiers only", async () => {
+      const names = await call<Record<string, unknown>>(cCmdr2, sql`select * from app.company_soldier_names(${ids.plsr}::uuid)`);
+      expect(names.map((x) => x.full_name)).toEqual(expect.arrayContaining(["חייל אלף מתוקן", "חייל בית", "חייל דלת"]));
+      expect(names.map((x) => x.full_name)).not.toContain("חייל גימל");
+      expect(Object.keys(names[0]!).sort()).toEqual(["full_name", "id", "unit_id"]);
+      expect(await call(cPlntAdmin, sql`select * from app.company_soldier_names(${ids.plsr}::uuid)`)).toHaveLength(0);
+    });
+
+    it("a platoon commander borrows a kesher צ׳ for their soldier; kesher's records don't change", async () => {
+      const holdersBefore = await db.select().from(kHolders).where(eq(kHolders.serialId, r.kSerial));
+      const eventsBefore = (await db.select().from(kEvents)).length;
+      await sign(cCmdr2, "kesher", r.kSerial, r.d);
+      const open = await openFor(r.kSerial);
+      expect(open).toHaveLength(1);
+      expect(open[0]).toMatchObject({ unitId: ids.plsr, fromPersonId: s.b, toPersonId: r.d, signedBy: cCmdr2.appId });
+      expect(await db.select().from(kHolders).where(eq(kHolders.serialId, r.kSerial))).toEqual(holdersBefore);
+      expect((await db.select().from(kEvents)).length).toBe(eventsBefore);
+      // the usual holder and signer see who has it now
+      const bGear = await call<{ serial: string; with_name: string | null }>(gB, sql`select * from app.my_gear()`);
+      expect(bGear.find((g) => g.serial === "CO-K1")?.with_name).toBe("חייל דלת");
+      const aGear = await call<{ serial: string; with_name: string | null }>(gA, sql`select * from app.my_gear()`);
+      expect(aGear.find((g) => g.serial === "CO-K1")?.with_name).toBe("חייל דלת");
+      const dGear = await call<{ source: string; serial: string; detail: string }>(cCmdr2, sql`select * from app.person_gear(${r.d}::uuid)`);
+      expect(dGear).toEqual([expect.objectContaining({ source: "company", serial: "CO-K1", detail: "מחייל בית" })]);
+    });
+
+    it("passing it on closes the open entry in the same step — never in two places", async () => {
+      await failsWith(sign(cCmdr2, "kesher", r.kSerial, r.d), "GD110");
+      await sign(cCmdr, "kesher", r.kSerial, s.a);
+      const open = await openFor(r.kSerial);
+      expect(open).toHaveLength(1);
+      expect(open[0]).toMatchObject({ fromPersonId: r.d, toPersonId: s.a });
+      expect((await db.select().from(signings).where(eq(signings.kesherSerialId, r.kSerial))).filter((x) => x.returnedAt)).toHaveLength(1);
+      await rejects(as(cAdmin, (tx) => tx.insert(signings).values({ unitId: ids.plsr, kesherSerialId: r.kSerial, toPersonId: s.b })));
+      await rejects(as(cAdmin, (tx) => tx.update(signings).set({ returnedAt: new Date() })));
+    });
+
+    it("only the company admin, or the commander of the platoon it is with or goes to, records it", async () => {
+      // it is with A (מחלקה 1); מ״מ 2 signing it to B (company level) is neither lending nor borrowing
+      await rejects(sign(cCmdr2, "kesher", r.kSerial, s.b));
+      await rejects(sign(cPlntAdmin, "kesher", r.kSerial, s.b));
+      await rejects(sign(gA, "kesher", r.kSerial, s.b));
+      await failsWith(sign(cAdmin, "kesher", r.kSerial, s.c), "GD113");
+      await failsWith(sign(cAdmin, "kesher", r.kSerial, s.gone), "GD113");
+    });
+
+    it("a quantity item: several open entries, never more than the company has", async () => {
+      await sign(cAdmin, "company", r.pots, s.a, 2);
+      await failsWith(sign(cAdmin, "company", r.pots, s.b, 2), "GD111");
+      await sign(cAdmin, "company", r.pots, s.b, 1);
+      await failsWith(as(cAdmin, (tx) => tx.update(cItems).set({ quantity: 2 }).where(eq(cItems.id, r.pots))), "GD111");
+      const tentEntry = await sign(cAdmin, "company", r.tent, r.d);
+      await failsWith(sign(cCmdr, "company", r.tent, r.d), "GD110");
+      await sign(cCmdr, "company", r.tent, s.a);
+      expect((await db.select().from(signings).where(eq(signings.companyItemId, r.tent))).filter((x) => !x.returnedAt)).toHaveLength(1);
+      expect((await db.select().from(signings).where(eq(signings.id, tentEntry)))[0]!.returnedBy).toBe(cCmdr.appId);
+    });
+
+    it("הוחזר: the admin or a commander of the giver's / receiver's platoon; once", async () => {
+      const [entry] = await openFor(r.kSerial);
+      await rejects(giveBack(cPlntAdmin, entry!.id));
+      await rejects(giveBack(gA, entry!.id));
+      await giveBack(cCmdr2, entry!.id); // it came from D, of מחלקה 2
+      await failsWith(giveBack(cAdmin, entry!.id), "GD114");
+      expect(await openFor(r.kSerial)).toHaveLength(0);
+      const bGear = await call<{ serial: string; with_name: string | null }>(gB, sql`select * from app.my_gear()`);
+      expect(bGear.find((g) => g.serial === "CO-K1")?.with_name).toBeNull();
+    });
+
+    it("who reads the register: the company's members, and a soldier about their own entries only", async () => {
+      const all = await db.select().from(signings);
+      expect(await as(cCmdr2, (tx) => tx.select().from(signings))).toHaveLength(all.length);
+      const mine = await as(gA, (tx) => tx.select().from(signings));
+      expect(mine.length).toBeGreaterThan(0);
+      expect(mine.every((x) => x.toPersonId === s.a || x.fromPersonId === s.a)).toBe(true);
+      expect(await as(cPlntAdmin, (tx) => tx.select().from(signings))).toHaveLength(0);
+      expect(await as(clerk, (tx) => tx.select().from(signings))).toHaveLength(0);
+      // the kesher department doesn't see it either
+      const kesherUser: TestUser = { authId: randomUUID(), email: "co-kesher-user@example.com" };
+      const [u] = await db.insert(appUsers).values({ email: kesherUser.email, authUserId: kesherUser.authId }).returning();
+      await db.insert(memberships).values({ userId: u!.id, module: "kesher", role: "admin", unitId: null });
+      expect(await as(kesherUser, (tx) => tx.select().from(signings))).toHaveLength(0);
+    });
+
+    it("the register list: every platoon's entries with names, for the company's members only", async () => {
+      const open = await call<{ item: string; to_name: string; from_name: string | null; signed_by_name: string }>(cCmdr2, sql`select * from app.company_register(${ids.plsr}::uuid, true)`);
+      expect(open.map((x) => `${x.item}:${x.to_name}`).sort()).toEqual(["אוהל סיירים:חייל אלף מתוקן", "סיר:חייל אלף מתוקן", "סיר:חייל בית"].sort());
+      const history = await call<{ item: string; from_name: string | null; returned_by_name: string }>(cCmdr2, sql`select * from app.company_register(${ids.plsr}::uuid, false)`);
+      expect(history.filter((x) => x.item === "מגן מכלול")).toHaveLength(2);
+      expect(await call(cPlntAdmin, sql`select * from app.company_register(${ids.plsr}::uuid, true)`)).toHaveLength(0);
+      expect(await call(gA, sql`select * from app.company_register(${ids.plsr}::uuid, true)`)).toHaveLength(0);
+    });
+
+    it("the roster counts register entries in a soldier's gear", async () => {
+      const roster = await call<{ id: string; gear: number }>(cAdmin, sql`select * from app.company_roster(${ids.plsr}::uuid)`);
+      // A: 2 logistics + 1 kesher (signer) + pots ×2 entry + tent
+      expect(roster.find((x) => x.id === s.a)?.gear).toBe(5);
+    });
+  });
+  describe("roles (הגדרות)", () => {
+    const grant = (u: TestUser, userId: string, module: string, role: string, unit: string) =>
+      call<{ id: string }>(u, sql`select app.company_grant_role(${userId}::uuid, ${module}::module_id, ${role}, ${unit}::uuid) as id`).then((x) => x[0]!.id);
+    const revoke = (u: TestUser, id: string) => call(u, sql`select app.company_revoke_role(${id}::uuid)`);
+    const appIdOf = async (u: TestUser) => (await db.select().from(appUsers).where(eq(appUsers.authUserId, u.authId)))[0]!.id;
+
+    it("a company admin gives the whitelisted roles to the company's linked soldiers", async () => {
+      const a = await appIdOf(gA);
+      const id = await grant(cAdmin, a, "doch1", "company_user", ids.plsr);
+      const [m] = await db.select().from(memberships).where(eq(memberships.id, id));
+      expect(m).toMatchObject({ userId: a, module: "doch1", role: "company_user", unitId: ids.plsr, viaCompany: true });
+      // the role works: soldier A, now a doch1 company user, sees the company's people
+      expect((await as(gA, (tx) => tx.select().from(people))).length).toBeGreaterThan(1);
+      await grant(cAdmin, a, "doch1", "viewer", ids.plsr); // same unit: changes the role
+      expect((await db.select().from(memberships).where(eq(memberships.id, id)))[0]!.role).toBe("viewer");
+      const mm = await grant(cAdmin, a, "company", "platoon_commander", ids.plsr1);
+      expect((await db.select().from(memberships).where(eq(memberships.id, mm)))[0]).toMatchObject({ module: "company", unitId: ids.plsr1 });
+      await grant(cAdmin, a, "kesher", "user", ids.plsr);
+      await grant(cAdmin, a, "logistics", "company_user", ids.plsr);
+      await grant(cAdmin, a, "doch1", "platoon_commander", ids.plsr1);
+    });
+
+    it("never an admin role, a battalion or another company's unit, or the wrong level", async () => {
+      const b = await appIdOf(gB);
+      for (const [mod, role, unit] of [
+        ["doch1", "admin", ids.plsr],
+        ["doch1", "master_admin", ids.plsr],
+        ["company", "admin", ids.plsr],
+        ["kesher", "admin", ids.plsr],
+        ["kesher", "user", ids.plsr1],
+        ["logistics", "admin", ids.plsr],
+        ["doch1", "platoon_commander", ids.plsr],
+        ["core", "editor", ids.plsr],
+      ] as const)
+        await failsWith(grant(cAdmin, b, mod, role, unit), "GD115");
+      await rejects(grant(cAdmin, b, "doch1", "company_user", ids.bat));
+      await rejects(grant(cAdmin, b, "doch1", "company_user", ids.plnt));
+    });
+
+    it("only to an account linked to an active soldier of the company; never by a platoon commander or to oneself", async () => {
+      await failsWith(grant(cAdmin, clerk.appId!, "doch1", "viewer", ids.plsr), "GD116");
+      const gC = (await db.select().from(appUsers).where(eq(appUsers.email, "soldier-c@gmail.com")))[0]!;
+      await failsWith(grant(cAdmin, gC.id, "doch1", "viewer", ids.plsr), "GD116");
+      await rejects(grant(cCmdr, await appIdOf(gB), "doch1", "viewer", ids.plsr));
+      await rejects(grant(cAdmin, cAdmin.appId!, "doch1", "viewer", ids.plsr));
+      // the memberships policies are not widened
+      await rejects(as(cAdmin, (tx) => tx.insert(memberships).values({ userId: gC.id, module: "doch1", role: "viewer", unitId: ids.plsr })));
+    });
+
+    it("a role given in /admin is read-only here: not overwritten, not revoked; via_company can't be faked", async () => {
+      const b = await appIdOf(gB);
+      const [m] = await as(coreAdmin, (tx) =>
+        tx.insert(memberships).values({ userId: b, module: "kesher", role: "user", unitId: ids.plsr, viaCompany: true }).returning(),
+      );
+      expect(m!.viaCompany).toBe(false);
+      await failsWith(grant(cAdmin, b, "kesher", "user", ids.plsr), "GD117");
+      await rejects(revoke(cAdmin, m!.id));
+    });
+
+    it("revoke: a company admin of that company, roles given here only", async () => {
+      const a = await appIdOf(gA);
+      const [m] = await db.select().from(memberships).where(and(eq(memberships.userId, a), eq(memberships.module, "kesher")));
+      await rejects(revoke(cPlntAdmin, m!.id));
+      await rejects(revoke(cCmdr, m!.id));
+      await revoke(cAdmin, m!.id);
+      expect(await db.select().from(memberships).where(eq(memberships.id, m!.id))).toHaveLength(0);
+      const [own] = await db.select().from(memberships).where(eq(memberships.userId, cCmdr.appId!));
+      await rejects(revoke(cAdmin, own!.id));
+    });
+
+    it("the access list: the company's linked accounts and their roles, for the company admin only", async () => {
+      const rows = await call<{ email: string; module: string | null; role: string | null; editable: boolean }>(cAdmin, sql`select * from app.company_access_list(${ids.plsr}::uuid)`);
+      expect(rows.filter((r) => r.email === gA.email).map((r) => `${r.module}:${r.role}:${r.editable}`).sort()).toEqual(
+        ["company:platoon_commander:true", "doch1:platoon_commander:true", "doch1:viewer:true", "logistics:company_user:true"].sort(),
+      );
+      expect(rows.find((r) => r.email === gB.email && r.module === "kesher")).toMatchObject({ editable: false });
+      expect(rows.map((r) => r.email)).not.toContain("soldier-c@gmail.com");
+      expect(await call(cCmdr, sql`select * from app.company_access_list(${ids.plsr}::uuid)`)).toHaveLength(0);
+      expect(await call(cPlntAdmin, sql`select * from app.company_access_list(${ids.plsr}::uuid)`)).toHaveLength(0);
+    });
+
+    it("a soldier's previous names are readable by whoever sees the soldier (for the imports), nothing else", async () => {
+      const kesherAdmin: TestUser = { authId: randomUUID(), email: "co-kesher-importer@example.com" };
+      const [u] = await db.insert(appUsers).values({ email: kesherAdmin.email, authUserId: kesherAdmin.authId }).returning();
+      await db.insert(memberships).values({ userId: u!.id, module: "kesher", role: "admin", unitId: null });
+      const seen = await as(kesherAdmin, (tx) => tx.select().from(changes));
+      expect(seen.length).toBeGreaterThan(0);
+      expect(seen.every((r) => r.field === "full_name" && r.status === "approved")).toBe(true);
+      expect(seen.find((r) => r.personId === s.a)?.oldValue).toBe("חייל אלף");
+      // a doch1 user of another company doesn't see it
+      expect(await as(plntDoch1, (tx) => tx.select().from(changes))).toHaveLength(0);
+    });
+  });
+});

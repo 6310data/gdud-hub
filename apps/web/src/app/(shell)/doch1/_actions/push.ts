@@ -1,7 +1,8 @@
 "use server";
 /**
- * Push subscriptions: each doch1 or kesher member manages their own browsers (RLS: own rows only).
- * One subscription per browser serves both departments; kesher uses this toggle too.
+ * Push subscriptions: each doch1, kesher or company member — and each linked soldier — manages their
+ * own browsers (RLS: own rows only). One subscription per browser serves every module; kesher and
+ * ניהול פלוגה use this toggle too.
  */
 import { z } from "zod";
 import { can } from "@gdud/auth";
@@ -24,7 +25,7 @@ const subInput = z.object({
 
 async function member() {
   const s = await getSession();
-  return s && (can(s.user, "doch1", "any") || can(s.user, "kesher", "any")) ? s : null;
+  return s && (can(s.user, "doch1", "any") || can(s.user, "kesher", "any") || can(s.user, "company", "any") || s.personId) ? s : null;
 }
 
 export async function saveSubscription(sub: { endpoint: string; keys: { p256dh: string; auth: string }; userAgent?: string }): Promise<ActionResult> {

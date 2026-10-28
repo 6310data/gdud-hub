@@ -64,13 +64,21 @@ export const MODULES = [
   {
     id: "company",
     name: "ניהול פלוגה",
-    description: "שגרת קו, משמרות וניהול פלוגה",
+    description: "החתמות פנימיות, מצבה וכוח אדם בפלוגה",
     href: "/company",
     icon: "people",
     status: "planned",
     roles: [
-      { id: "admin", label: "מנהל", description: "שיבוץ, סבבים, לוגיסטיקה פלוגתית והגדרות" },
-      { id: "user", label: "משתמש", description: "לוח שגרת קו ועדכון מצבה" },
+      {
+        id: "admin",
+        label: "מנהל פלוגה",
+        description: "מ״פ / סמ״פ / רס״פ: כל הפלוגה, אישור הצטרפות ופרטים, פריטי הפלוגה והרשאות",
+      },
+      {
+        id: "platoon_commander",
+        label: "מפקד מחלקה",
+        description: "המחלקה שלו: מצבה, החתמות פנימיות ואישור עדכוני פרטים",
+      },
     ],
   },
   {

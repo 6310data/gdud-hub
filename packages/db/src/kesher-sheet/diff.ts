@@ -13,6 +13,7 @@ import { createHash } from "node:crypto";
 import { guessName, KESHER_WAREHOUSE, kesherLogKind, normalizeSerial, searchKey, type KesherLocation } from "@gdud/core";
 import type { Tx } from "../index";
 import { formatSheetDate, parseSheetDate, sheetDay } from "../logistics-sheet/sheet";
+import { previousNameMessage } from "../sheet-import/previous-names";
 import { fingerprintLines } from "../sheet-import/index";
 import type { LineGroup, PickChoice } from "../sheet-import/preview";
 import { MSG } from "./preview";
@@ -126,7 +127,8 @@ class Differ {
 
   /**
    * Exact, unique full name among the company's active soldiers; an ambiguous name may be picked.
-   * No exact name: the closest fit (`guess: false` — the log keeps exact links only).
+   * Else the one soldier of the company who was once called that (לפי שם קודם). No exact name: the
+   * closest fit (`guess: false` — the log keeps exact links only).
    */
   private soldier(company: CompanyRef, name: string, opts: { guess?: boolean } = {}): Soldier {
     const n = nameKey(name);
@@ -144,6 +146,9 @@ class Differ {
       if (chosen) return { id: chosen, pick };
       return { error: `יש ${found.length} חיילים בשם "${n}" ב${company.name} — בחרו את החייל`, label, pick };
     }
+    // once called that (an approved name change in ניהול פלוגה): linked, and the line says so
+    const before = this.st.peopleByPreviousName.get(key) ?? [];
+    if (before.length === 1) return { id: before[0]!.id, guess: previousNameMessage(n, before[0]!.fullName) };
     if (opts.guess === false) return { error: MSG.noSoldier, label };
     const g = guessName(n, this.st.peopleByCompany.get(company.id) ?? []);
     if (g.kind === "none") return { error: MSG.noSoldier, label };

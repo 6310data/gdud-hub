@@ -6,6 +6,7 @@ import { isNotNull } from "drizzle-orm";
 import { ancestorOfKind, searchKey, type KesherLocation } from "@gdud/core";
 import type { Tx } from "../index";
 import * as schema from "../schema/index";
+import { loadPreviousNames } from "../sheet-import/previous-names";
 import { nameKey } from "./sheet";
 
 const { units, people, kesherItems, kesherKitItems, kesherSerials, kesherHolders, kesherStock, kesherEvents, kesherChecks, kesherCheckLines, kesherSettings } =
@@ -61,6 +62,8 @@ export interface State {
   peopleByName: Map<string, PersonRef[]>;
   /** company id → its active soldiers (for close matches when no name matches exactly) */
   peopleByCompany: Map<string, PersonRef[]>;
+  /** `${companyId}|${searchKey(previous name)}` → active soldiers of that company once called that (ניהול פלוגה name changes) */
+  peopleByPreviousName: Map<string, PersonRef[]>;
   itemsByName: Map<string, ItemRef>;
   itemsById: Map<string, ItemRef>;
   kits: KitRef[];
@@ -88,6 +91,7 @@ export async function loadState(tx: Tx): Promise<State> {
     peopleById: new Map(),
     peopleByName: new Map(),
     peopleByCompany: new Map(),
+    peopleByPreviousName: new Map(),
     itemsByName: new Map(),
     itemsById: new Map(),
     kits: [],
@@ -111,6 +115,7 @@ export async function loadState(tx: Tx): Promise<State> {
   }
 
   const ppl = await tx.select({ id: people.id, fullName: people.fullName, unitId: people.unitId, active: people.active }).from(people);
+  const companyOfPerson = new Map<string, string>();
   for (const p of ppl) {
     const company = ancestorOfKind(p.unitId, "company", unitById);
     const platoon = ancestorOfKind(p.unitId, "platoon", unitById);
@@ -120,6 +125,15 @@ export async function loadState(tx: Tx): Promise<State> {
     const key = personKey(company.id, p.fullName);
     st.peopleByName.set(key, [...(st.peopleByName.get(key) ?? []), ref]);
     st.peopleByCompany.set(company.id, [...(st.peopleByCompany.get(company.id) ?? []), ref]);
+    companyOfPerson.set(p.id, company.id);
+  }
+  for (const prev of await loadPreviousNames(tx)) {
+    const companyId = companyOfPerson.get(prev.personId);
+    const ref = st.peopleById.get(prev.personId);
+    if (!companyId || !ref || searchKey(nameKey(prev.name)) === searchKey(nameKey(ref.fullName))) continue;
+    const key = personKey(companyId, prev.name);
+    const list = st.peopleByPreviousName.get(key) ?? [];
+    if (!list.includes(ref)) st.peopleByPreviousName.set(key, [...list, ref]);
   }
 
   for (const i of await tx
