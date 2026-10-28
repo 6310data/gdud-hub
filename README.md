@@ -6,8 +6,9 @@ One web app for the whole battalion. Each department (לוגיסטיקה, דוח
 
 ```
 apps/web/                  the Next.js app (one domain, one route per module)
-  src/app/(shell)/         signed-in area. (hub)/: home (pick a module), /admin, /company/[unit], /kesher;
-                           /logistics and /doch1 are each their own app (components/app-shell.tsx)
+  src/app/(shell)/         signed-in area. (hub)/: home (pick a module), /admin;
+                           /logistics, /doch1, /kesher and /company are each their own app (components/app-shell.tsx)
+  src/app/join/            הצטרפות: an account not linked to a soldier asks to be linked
   src/app/login, auth/     Google sign-in, callback, sign-out
   src/proxy.ts             session refresh, redirect to /login, per-request CSP
   src/lib/session.ts       requireSession() / requireModule() — load the user + memberships
@@ -20,7 +21,7 @@ references/                old Apps Script / platoon-web code to port (not built
 
 ## How permissions work
 
-- **Sign-in:** Google only. The account's email must be invited first (`/admin`), otherwise the user lands on "אין לך עדיין גישה".
+- **Sign-in:** Google only. Either the account's email is invited (`/admin`), or a soldier joins on their own: `/join` asks for the personal number and the last 4 phone digits, and a company admin of ניהול פלוגה approves (the account is then linked to the soldier and sees only their own אני page). Any other account lands on `/join`.
 - **Membership:** a user has a role per module, optionally limited to a unit (a company covers its platoons and teams). No unit = whole battalion.
 - **Department roles** (לוגיסטיקה, דוח 1): **מנהל ראשי** (`master_admin`) — everything an admin does, plus the department's settings page and its own roles (who holds which role in that department, for already-invited users); **מנהל** (`admin`) — day-to-day work; **משתמש פלוגה** (`company_user`) — their own company (in logistics: view and print, no החתמה / זיכוי). `can()` and SQL `has_role()` count a master admin as an admin.
 - **Company colors:** one color per company, shared by all departments; edited in `/admin/units`. Tables tint a company's column or row with it (`.tz-tint`).

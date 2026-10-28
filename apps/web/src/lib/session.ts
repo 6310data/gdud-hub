@@ -11,6 +11,8 @@ export interface Session {
   user: AppUser;
   units: UnitNode[];
   parents: UnitParents;
+  /** the linked, active soldier of this account (app.my_person_id()), or null */
+  personId: string | null;
 }
 
 /** Verified JWT claims of the signed-in Google account, or null. Cached per request. */
@@ -31,8 +33,8 @@ export const getSession = cache(async (): Promise<Session | null> => {
   if (!claims) return null;
 
   return withUser(claims, async (tx) => {
-    // One batch, one round trip (pipelined with the role setup): the user, their memberships
-    // and the unit tree. Memberships are found through the auth id so they don't wait for `me`.
+    // One batch, one round trip (pipelined with the role setup): the user, their memberships,
+    // the unit tree and their linked soldier. Memberships are found through the auth id so they don't wait for `me`.
     const loadMe = () =>
       tx.select().from(schema.appUsers).where(eq(schema.appUsers.authUserId, claims.sub)).limit(1);
     const loadMemberships = () =>
@@ -42,17 +44,20 @@ export const getSession = cache(async (): Promise<Session | null> => {
         .innerJoin(schema.appUsers, eq(schema.appUsers.id, schema.memberships.userId))
         .where(eq(schema.appUsers.authUserId, claims.sub));
 
-    const [meRows, memberRows, unitRows] = await Promise.all([
+    const loadPerson = () => tx.execute<{ id: string | null }>(sql`select app.my_person_id() as id`);
+    const [meRows, memberRows, unitRows, firstPerson] = await Promise.all([
       loadMe(),
       loadMemberships(),
       tx.select().from(schema.units).orderBy(asc(schema.units.sortOrder), asc(schema.units.name)),
+      loadPerson(),
     ]);
     let me = meRows[0];
     let rows = memberRows;
+    let personRows = firstPerson;
     if (!me) {
       // First sign-in, or invited after an earlier attempt: claim the invite by email.
       await tx.execute(sql`select app.link_auth_user()`);
-      [[me], rows] = await Promise.all([loadMe(), loadMemberships()]);
+      [[me], rows, personRows] = await Promise.all([loadMe(), loadMemberships(), loadPerson()]);
     }
     if (!me || !me.active) return null;
 
@@ -82,16 +87,22 @@ export const getSession = cache(async (): Promise<Session | null> => {
       },
       units,
       parents: toParentMap(units),
+      personId: firstRow<{ id: string | null }>(personRows)?.id ?? null,
     };
   });
 });
 
-/** Signed in AND invited, or redirect. */
+/** The first row of tx.execute() (an array on postgres-js, `{ rows }` on PGlite). */
+function firstRow<T>(res: unknown): T | undefined {
+  return (Array.isArray(res) ? res : (res as { rows: T[] }).rows)[0] as T | undefined;
+}
+
+/** Signed in AND invited (or linked to a soldier), or redirect — an unknown account goes to /join. */
 export async function requireSession(): Promise<Session> {
   const claims = await getClaims();
   if (!claims) redirect("/login");
   const session = await getSession();
-  if (!session) redirect("/no-access");
+  if (!session) redirect("/join");
   return session;
 }
 

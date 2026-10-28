@@ -198,6 +198,19 @@ Push (shared subscriptions): a company admin gets "בקשת הצטרפות חד�
 9. **The company `admin` role itself is given in `/admin`**, not by another company admin — one company admin can't create more of their own level.
 10. **Name changes reach the sheets by hand.** The app flags them and the imports match the previous name; nobody writes to a Google Sheet.
 
+### Made while building (phase 1)
+
+11. **The `app_users` row is created on approval, not on request.** `app.request_join` writes only the request (on a match) and an attempt row; `app.approve_join` creates the account (or links an existing, active, unlinked one). A stranger who never matches leaves no account, and there's no "inactive but pending" state to confuse with an account a core admin disabled. A disabled account gets the same silent answer and is never approved (`GD106`).
+12. **One active account per soldier.** Approving a second account for a soldier who already has one is refused ("פנו למנהל המערכת"); approving one cancels the soldier's other open requests. A changed Google account goes through a core admin.
+13. **Nobody approves their own request** (join or change), except a super admin. A commander who is also a soldier gets their change approved by another commander.
+14. **Rate limit:** 5 join attempts per Google account in 24 hours, counted in `company_join_attempts` (no grants; written only by `request_join`), whether or not they match. Personal numbers are compared as digits without leading zeros; the phone's last 4 digits after stripping everything but digits.
+15. **Phones are stored as digits** starting with 0 (`+972` → `0`), 9–10 digits; shown as `050-1234567`.
+16. **A commander's view of a soldier** uses the same functions as אני, which take a soldier id (`app.person_gear` / `person_days` / `person_details`) and answer only for the caller themselves or a soldier in the caller's `company` scope. `app.my_gear()` / `my_days()` are those for `my_person_id()`. The roster is `app.company_roster(unit)`.
+17. **Linking by hand (call 3)** is an email: the company admin types the soldier's Google address on the soldier's page and it becomes an invite tied to the soldier (`app.company_link_account`), claimed by the usual `link_auth_user()` on sign-in.
+18. **Push is sent by the cron job** (`/api/doch1/cron` → `lib/company/notify-job.ts`), like kesher's, never inside a request: each request row has `notified_at` / `decision_notified_at`, claimed by the job. A soldier can only subscribe once linked, so "הבקשה שלך אושרה" reaches them only on a device they subscribed later — in practice, approval is told in person.
+19. **The old `user` memberships of `company` are deleted** by the migration (the module was a placeholder page, so they gave nothing); `platoon_commander` is given anew.
+20. **The module's sections point at the user's first company**; a user covering several switches with the company pills on each page.
+
 ## Answered (2026-10-28)
 
 1. **Getting in** — self-signup with the personal number, approved by the company admin.

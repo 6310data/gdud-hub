@@ -6,7 +6,7 @@ The app holds personal data about soldiers. Check with the unit's ביטחון �
 
 | Layer | What protects it |
 |---|---|
-| Who can sign in | Google OAuth only + invite list (`app_users`). `app.link_auth_user()` only accepts provider `google` with a verified email. |
+| Who can sign in | Google OAuth only + invite list (`app_users`). `app.link_auth_user()` only accepts provider `google` with a verified email. A soldier may also join (`app.request_join`: personal number + last 4 phone digits, same answer whether or not they match, 5 attempts a day); only a company admin's approval (`app.approve_join`) creates the account. |
 | Who sees which rows | Postgres RLS on every table; all user queries run through `withUser()` as role `authenticated`. Tested in `packages/db/test/rls.test.ts`. |
 | What the UI offers | `can()` from `@gdud/auth` + `requireModule()`. Convenience only — never the only check. |
 | Writes | Server Actions: `can()` check → zod validation → `withUser()` write (RLS checks again). |
@@ -28,6 +28,8 @@ The app holds personal data about soldiers. Check with the unit's ביטחון �
 
 - doch1 (דוח 1), 2026-10-22: ביטחון מידע approval for soldier names, personal numbers and phones, outposts, standby readiness and vehicle numbers carries over from the approved Google Sheet "דוח 1 - סבב שביעי". Recorded by the battalion admin.
 - kesher (מחלקת קשר), 2026-10-27: ביטחון מידע approval for which soldier (from the דוח 1 list) holds which communications device, kesher roles and frames, device serial numbers, company holdings and vehicle numbers, carried over from the approved Google Sheet "פיזור ושליטה מחלקת קשר". The sheet's emails and access codes are not imported. Confirmed by the user in the kesher design (docs/superpowers/specs/2026-10-27-kesher-design.md).
+
+- company (ניהול פלוגה): **not approved yet.** Phase 1 (self-join and אני) opens the platform to every soldier and shows them their own gear, דוח 1 status and details; ביטחון מידע must approve before it goes live (docs/superpowers/specs/2026-10-28-company-design.md, "Security and privacy").
 
 ## Accounts to protect (2-step verification on all)
 
