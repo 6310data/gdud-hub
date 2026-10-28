@@ -8,7 +8,7 @@ import { requireModule } from "@/lib/session";
 import { fillCallUpFromReports } from "../_actions/members";
 import { SoldiersBoard, type SoldierVM } from "./_components/soldiers-board";
 
-const { doch1Members: members, doch1Days: days } = schema;
+const { doch1Members: members, doch1Days: days, doch1Statuses: statuses } = schema;
 
 export const metadata = { title: "דוח 1 · חיילים" };
 
@@ -29,12 +29,13 @@ export default async function Doch1Soldiers({ searchParams }: { searchParams: Pr
       loadRoundCompanies(tx, round.id),
       loadMembers(tx, round.id, s.units),
       loadFieldOptions(tx, round.id),
-      // soldiers without a call-up date who already have reported days
+      // soldiers without a call-up date who already showed up (a day in the סד״כ)
       tx
         .selectDistinct({ personId: days.personId })
         .from(days)
         .innerJoin(members, and(eq(members.roundId, days.roundId), eq(members.personId, days.personId)))
-        .where(and(eq(days.roundId, round.id), isNull(members.callUpOn))),
+        .innerJoin(statuses, eq(statuses.id, days.statusId))
+        .where(and(eq(days.roundId, round.id), isNull(members.callUpOn), eq(statuses.countsInSadak, true))),
     ]);
     return { round, companies, members: roster, options, reported: new Set(reported.map((r) => r.personId)) };
   });
@@ -91,7 +92,7 @@ export default async function Doch1Soldiers({ searchParams }: { searchParams: Pr
       {fillable.length ? (
         <div className="tz-alert m-0 flex flex-wrap items-center justify-between gap-2">
           <span>
-            {fillable.length === 1 ? "לחייל אחד" : <><span className="tz-num">{fillable.length}</span> חיילים</>} אין תאריך גיוס אבל יש דיווחים בסבב. תאריך הגיוס שלהם יהיה יום הדיווח הראשון.
+            {fillable.length === 1 ? "לחייל אחד" : <>ל־<span className="tz-num">{fillable.length}</span> חיילים</>} אין תאריך גיוס, אבל יש ימים בסד״כ בסבב. תאריך הגיוס יהיה היום הראשון בסד״כ (לא 0 ולא נפקד).
           </span>
           <ActionButton action={fillCallUpFromReports.bind(null, { personIds: fillable })} label="השלמת תאריך גיוס" variant="tinted" />
         </div>

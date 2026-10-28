@@ -5,15 +5,19 @@ import { KESHER_EVENT_LABEL, matches } from "@gdud/core";
 import { desc, eq, schema, withUser, type Tx } from "@gdud/db";
 import { Icon, Serial } from "@gdud/ui";
 import { Empty, PageHeader, Panel, SmallTile, withParams } from "@/components/page-parts";
+import { kesherAccess } from "@/lib/kesher/access";
 import { leftCompany, loadKesher, loadLastSeen, type KSerial, type LastSeen } from "@/lib/kesher/data";
-import { companiesOf } from "@/lib/logistics/data";
+import { companiesOf, loadPeople, personPlace } from "@/lib/logistics/data";
 import { fmtCount, fmtWhen } from "@/lib/logistics/format";
 import { requireModule } from "@/lib/session";
+import { distinct } from "@/lib/kesher/suggestions";
+import type { SheetPerson } from "../_components/serial-sheet";
 import { LocationChip, SearchBox, SeenChip, companyRefs, pillCount, type CompanyRef } from "../_components/ui";
+import { SerialEdit } from "./_components/serial-edit";
 
 export const metadata = { title: "צ׳ במערכת" };
 
-const SHOWN = 150;
+const SHOWN = 500;
 const FILTERS = ["", "wh", "co", "none", "miss", "left", "nosigner"] as const;
 type Filter = (typeof FILTERS)[number];
 const searchSchema = z.object({
@@ -53,7 +57,8 @@ function keep(x: KSerial, f: Filter, seen: LastSeen | undefined): boolean {
 
 /**
  * צ׳ במערכת (mockup #/serials): every צ׳ with its place; holders only for the companies the user
- * covers (RLS). Replaces both חיפוש צ׳ and ניהול צ׳ (the admin fixes arrive in Phase 2).
+ * covers (RLS). Replaces both חיפוש צ׳ and ניהול צ׳: the inspector's עריכה opens the company page's
+ * sheet — a battalion admin edits every field, a company user the holder inside their company.
  */
 export default async function KesherSerials({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const s = await requireModule("kesher");
@@ -61,11 +66,13 @@ export default async function KesherSerials({ searchParams }: { searchParams: Pr
   const now = new Date();
   const companies = companyRefs(companiesOf(s.units));
 
-  const { data, lastSeen, history } = await withUser(s.claims, async (tx) => {
+  const access = kesherAccess(s);
+  const { data, lastSeen, history, soldiers } = await withUser(s.claims, async (tx) => {
     const [data, lastSeen] = await Promise.all([loadKesher(tx, s.units), loadLastSeen(tx)]);
     const sel = f.sel ? data.serials.find((x) => x.id === f.sel) : undefined;
-    const history = sel ? await loadHistory(tx, sel.id, sel.serial) : [];
-    return { data, lastSeen, history };
+    const editable = sel && (access.isAdmin || (sel.location === "company" && access.covers(sel.unitId)));
+    const [history, soldiers] = await Promise.all([sel ? loadHistory(tx, sel.id, sel.serial) : [], editable ? loadPeople(tx, s.units) : null]);
+    return { data, lastSeen, history, soldiers };
   });
 
   const counts = Object.fromEntries(FILTERS.map((k) => [k, data.serials.filter((x) => keep(x, k, lastSeen.get(x.id))).length])) as Record<Filter, number>;
@@ -139,6 +146,36 @@ export default async function KesherSerials({ searchParams }: { searchParams: Pr
         </div>
         {sel ? (
           <Inspector
+            edit={
+              soldiers ? (
+                <SerialEdit
+                  isAdmin={access.isAdmin}
+                  companies={access.companies.map((c) => ({ id: c.id, name: c.name }))}
+                  people={soldiers
+                    .filter((p) => access.isAdmin || p.companyId === sel.unitId)
+                    .map((p): SheetPerson => ({ id: p.id, name: p.name, personalNumber: p.personalNumber, place: personPlace(p), platoonName: p.platoonName, companyId: p.companyId }))}
+                  suggestions={{
+                    role: distinct(data.serials.map((x) => x.holder?.holderRole ?? null)),
+                    frame: distinct(data.serials.filter((x) => x.unitId === sel.unitId).map((x) => x.holder?.frame ?? null)),
+                    signerRole: distinct(data.serials.map((x) => x.holder?.signerRole ?? null)),
+                  }}
+                  row={{
+                    serialId: sel.id,
+                    serial: sel.serial,
+                    item: sel.itemName,
+                    location: sel.location,
+                    unitId: sel.unitId,
+                    vehicle: sel.vehicle,
+                    notes: sel.notes,
+                    holderPersonId: sel.holder?.holder?.id ?? null,
+                    holderRole: sel.holder?.holderRole ?? null,
+                    frame: sel.holder?.frame ?? null,
+                    signerPersonId: sel.holder?.signer?.id ?? null,
+                    signerRole: sel.holder?.signerRole ?? null,
+                  }}
+                />
+              ) : null
+            }
             x={sel}
             company={companies.get(sel.unitId ?? "")}
             seen={lastSeen.get(sel.id)}
@@ -185,6 +222,7 @@ async function loadHistory(tx: Tx, serialId: string, serial: string): Promise<Hi
 }
 
 function Inspector({
+  edit,
   x,
   company,
   seen,
@@ -193,6 +231,8 @@ function Inspector({
   closeHref,
   now,
 }: {
+  /** the עריכה button, when the user may edit this צ׳ */
+  edit: ReactNode;
   x: KSerial;
   company?: CompanyRef;
   seen: LastSeen | undefined;
@@ -222,6 +262,7 @@ function Inspector({
               <Serial>{x.serial}</Serial>
             </span>
           </span>
+          {edit}
           <Link href={closeHref} scroll={false} className="tz-icon-btn" aria-label="סגירה">
             <Icon name="close" size={18} />
           </Link>

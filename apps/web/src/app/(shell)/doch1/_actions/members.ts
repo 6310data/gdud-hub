@@ -88,9 +88,9 @@ export async function setServiceDates(raw: {
 const fillInput = z.object({ personIds: z.array(uuid).min(1, "לא נבחרו חיילים").max(1000) });
 
 /**
- * Soldiers without a call-up date who already have reported days: the first reported day becomes
- * their call-up date (the import does the same for a blank sheet cell). A release date before that
- * day is left alone, and so is that soldier.
+ * Soldiers without a call-up date who already showed up: the first day they have a status that counts
+ * in the סד״כ (not "0" / נפקד) becomes their call-up date (the import does the same for a blank sheet
+ * cell). A release date before that day is left alone, and so is that soldier.
  */
 export async function fillCallUpFromReports(raw: { personIds: string[] }): Promise<ActionResult> {
   const ctx = await doch1Ctx();
@@ -110,9 +110,10 @@ export async function fillCallUpFromReports(raw: { personIds: string[] }): Promi
       await tx.execute(sql`
         update public.doch1_members m set call_up_on = f.first
         from (
-          select person_id, min(day) as first from public.doch1_days
-          where round_id = ${ctx.round.id}::uuid and person_id in (${ids})
-          group by person_id
+          select d.person_id, min(d.day) as first from public.doch1_days d
+          join public.doch1_statuses s on s.id = d.status_id
+          where d.round_id = ${ctx.round.id}::uuid and d.person_id in (${ids}) and s.counts_in_sadak
+          group by d.person_id
         ) f
         where m.round_id = ${ctx.round.id}::uuid and m.person_id = f.person_id and m.call_up_on is null
           and (m.released_on is null or m.released_on >= f.first)`);

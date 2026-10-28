@@ -48,10 +48,19 @@ export function ReportChip({ status }: { status: CheckStatus }) {
 
 /** When a צ׳ was last seen in a דוח צ׳ (dimmed when older than staleDays). */
 export function SeenChip({ seen, staleDays, now }: { seen: LastSeen | undefined; staleDays: number; now: Date }) {
-  if (!seen) return <span className="text-xs text-ink-muted">לא נבדק</span>;
+  if (!seen)
+    return (
+      <span className="text-xs text-ink-muted" data-sort="">
+        לא נבדק
+      </span>
+    );
   if (!seen.found) return <Chip tone="broken">לא נמצא</Chip>;
   const days = Math.max(0, Math.floor((now.getTime() - seen.at.getTime()) / DAY_MS));
-  return <span className={`text-xs ${days > staleDays ? "text-ink-muted" : ""}`}>{days === 0 ? "היום" : `לפני ${days} ימים`}</span>;
+  return (
+    <span className={`text-xs ${days > staleDays ? "text-ink-muted" : ""}`} data-sort={seen.at.toISOString()}>
+      {days === 0 ? "היום" : `לפני ${days} ימים`}
+    </span>
+  );
 }
 
 /** done/total with a small bar. */
@@ -71,7 +80,12 @@ export function Meter({ done, total }: { done: number; total: number }) {
 
 /** A soldier's name, with a warning when they no longer count as this company's. */
 export function SoldierName({ person, unitId }: { person: KPerson | null; unitId: string }) {
-  if (!person) return <span className="text-ink-muted">לא משויך</span>;
+  if (!person)
+    return (
+      <span className="text-ink-muted" data-sort="">
+        לא משויך
+      </span>
+    );
   return (
     <span className="inline-flex flex-wrap items-center gap-1.5">
       <span>{person.name}</span>

@@ -350,3 +350,12 @@ button.tz-cell:active { transform: scale(.94); }
 @media (prefers-reduced-transparency: reduce) {
   .tz-tabs, .tz-app-top { background: var(--surface-100); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
+
+/* Sortable table headers (apps/web components/table-sort.tsx marks them) */
+:is(.tz-table, .tz-board) thead th[data-sortable] { cursor: pointer; user-select: none; }
+:is(.tz-table, .tz-board) thead th[data-sortable]:hover { color: var(--ink); }
+:is(.tz-table, .tz-board) thead th[data-sortable]:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+:is(.tz-table, .tz-board) thead th[aria-sort] { color: var(--ink); }
+:is(.tz-table, .tz-board) thead th[aria-sort]::after { content: ""; display: inline-block; margin-inline-start: 5px; vertical-align: middle; border-inline: 4px solid transparent; border-bottom: 5px solid currentColor; }
+:is(.tz-table, .tz-board) thead th[aria-sort="descending"]::after { border-bottom: 0; border-top: 5px solid currentColor; }
+@media print { :is(.tz-table, .tz-board) thead th[aria-sort]::after { display: none; } }
