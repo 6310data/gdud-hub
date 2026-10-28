@@ -6,6 +6,7 @@ import { isNotNull } from "drizzle-orm";
 import type { Condition, KitLine } from "@gdud/core";
 import type { Tx } from "../index";
 import * as schema from "../schema/index";
+import { loadPreviousNames } from "../sheet-import/previous-names";
 import { nameKey } from "./sheet";
 
 const { people } = schema;
@@ -56,6 +57,8 @@ export interface State {
   peopleByPid: Map<string, PersonRef>;
   /** nameKey(full name) → everyone with that name */
   peopleByName: Map<string, PersonRef[]>;
+  /** nameKey(a previous name, from an approved ניהול פלוגה name change) → soldiers once called that */
+  peopleByPreviousName: Map<string, PersonRef[]>;
   itemsByName: Map<string, ItemRef>;
   itemsById: Map<string, ItemRef>;
   kit: KitRef[];
@@ -75,6 +78,7 @@ export async function loadState(tx: Tx): Promise<State> {
     peopleById: new Map(),
     peopleByPid: new Map(),
     peopleByName: new Map(),
+    peopleByPreviousName: new Map(),
     itemsByName: new Map(),
     itemsById: new Map(),
     kit: [],
@@ -92,6 +96,13 @@ export async function loadState(tx: Tx): Promise<State> {
     if (p.personalNumber) state.peopleByPid.set(p.personalNumber, p);
     const key = nameKey(p.fullName);
     state.peopleByName.set(key, [...(state.peopleByName.get(key) ?? []), p]);
+  }
+  for (const prev of await loadPreviousNames(tx)) {
+    const p = state.peopleById.get(prev.personId);
+    const key = nameKey(prev.name);
+    if (!p || key === nameKey(p.fullName)) continue;
+    const list = state.peopleByPreviousName.get(key) ?? [];
+    if (!list.includes(p)) state.peopleByPreviousName.set(key, [...list, p]);
   }
 
   const itemRows = await tx

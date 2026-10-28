@@ -1529,7 +1529,8 @@ describe("company", () => {
   const cAdmin: TestUser = { authId: randomUUID(), email: "co-plsr-admin@example.com" };
   const cCmdr: TestUser = { authId: randomUUID(), email: "co-plsr1-mm@example.com" };
   const cPlntAdmin: TestUser = { authId: randomUUID(), email: "co-plnt-admin@example.com" };
-  const members_ = [cAdmin, cCmdr, cPlntAdmin];
+  const plntDoch1: TestUser = { authId: randomUUID(), email: "co-plnt-doch1@example.com" };
+  const members_ = [cAdmin, cCmdr, cPlntAdmin, plntDoch1];
   // Google accounts that were never invited (join through /join)
   const gA: TestUser = { authId: randomUUID(), email: "soldier-a@gmail.com" };
   const gB: TestUser = { authId: randomUUID(), email: "soldier-b@gmail.com" };
@@ -1574,6 +1575,7 @@ describe("company", () => {
       { userId: cAdmin.appId!, module: "company", role: "admin", unitId: ids.plsr },
       { userId: cCmdr.appId!, module: "company", role: "platoon_commander", unitId: ids.plsr1 },
       { userId: cPlntAdmin.appId!, module: "company", role: "admin", unitId: ids.plnt },
+      { userId: plntDoch1.appId!, module: "doch1", role: "company_user", unitId: ids.plnt },
     ]);
     const ppl = await db
       .insert(people)
@@ -2012,6 +2014,99 @@ describe("company", () => {
       const roster = await call<{ id: string; gear: number }>(cAdmin, sql`select * from app.company_roster(${ids.plsr}::uuid)`);
       // A: 2 logistics + 1 kesher (signer) + pots ×2 entry + tent
       expect(roster.find((x) => x.id === s.a)?.gear).toBe(5);
+    });
+  });
+  describe("roles (הגדרות)", () => {
+    const grant = (u: TestUser, userId: string, module: string, role: string, unit: string) =>
+      call<{ id: string }>(u, sql`select app.company_grant_role(${userId}::uuid, ${module}::module_id, ${role}, ${unit}::uuid) as id`).then((x) => x[0]!.id);
+    const revoke = (u: TestUser, id: string) => call(u, sql`select app.company_revoke_role(${id}::uuid)`);
+    const appIdOf = async (u: TestUser) => (await db.select().from(appUsers).where(eq(appUsers.authUserId, u.authId)))[0]!.id;
+
+    it("a company admin gives the whitelisted roles to the company's linked soldiers", async () => {
+      const a = await appIdOf(gA);
+      const id = await grant(cAdmin, a, "doch1", "company_user", ids.plsr);
+      const [m] = await db.select().from(memberships).where(eq(memberships.id, id));
+      expect(m).toMatchObject({ userId: a, module: "doch1", role: "company_user", unitId: ids.plsr, viaCompany: true });
+      // the role works: soldier A, now a doch1 company user, sees the company's people
+      expect((await as(gA, (tx) => tx.select().from(people))).length).toBeGreaterThan(1);
+      await grant(cAdmin, a, "doch1", "viewer", ids.plsr); // same unit: changes the role
+      expect((await db.select().from(memberships).where(eq(memberships.id, id)))[0]!.role).toBe("viewer");
+      const mm = await grant(cAdmin, a, "company", "platoon_commander", ids.plsr1);
+      expect((await db.select().from(memberships).where(eq(memberships.id, mm)))[0]).toMatchObject({ module: "company", unitId: ids.plsr1 });
+      await grant(cAdmin, a, "kesher", "user", ids.plsr);
+      await grant(cAdmin, a, "logistics", "company_user", ids.plsr);
+      await grant(cAdmin, a, "doch1", "platoon_commander", ids.plsr1);
+    });
+
+    it("never an admin role, a battalion or another company's unit, or the wrong level", async () => {
+      const b = await appIdOf(gB);
+      for (const [mod, role, unit] of [
+        ["doch1", "admin", ids.plsr],
+        ["doch1", "master_admin", ids.plsr],
+        ["company", "admin", ids.plsr],
+        ["kesher", "admin", ids.plsr],
+        ["kesher", "user", ids.plsr1],
+        ["logistics", "admin", ids.plsr],
+        ["doch1", "platoon_commander", ids.plsr],
+        ["core", "editor", ids.plsr],
+      ] as const)
+        await failsWith(grant(cAdmin, b, mod, role, unit), "GD115");
+      await rejects(grant(cAdmin, b, "doch1", "company_user", ids.bat));
+      await rejects(grant(cAdmin, b, "doch1", "company_user", ids.plnt));
+    });
+
+    it("only to an account linked to an active soldier of the company; never by a platoon commander or to oneself", async () => {
+      await failsWith(grant(cAdmin, clerk.appId!, "doch1", "viewer", ids.plsr), "GD116");
+      const gC = (await db.select().from(appUsers).where(eq(appUsers.email, "soldier-c@gmail.com")))[0]!;
+      await failsWith(grant(cAdmin, gC.id, "doch1", "viewer", ids.plsr), "GD116");
+      await rejects(grant(cCmdr, await appIdOf(gB), "doch1", "viewer", ids.plsr));
+      await rejects(grant(cAdmin, cAdmin.appId!, "doch1", "viewer", ids.plsr));
+      // the memberships policies are not widened
+      await rejects(as(cAdmin, (tx) => tx.insert(memberships).values({ userId: gC.id, module: "doch1", role: "viewer", unitId: ids.plsr })));
+    });
+
+    it("a role given in /admin is read-only here: not overwritten, not revoked; via_company can't be faked", async () => {
+      const b = await appIdOf(gB);
+      const [m] = await as(coreAdmin, (tx) =>
+        tx.insert(memberships).values({ userId: b, module: "kesher", role: "user", unitId: ids.plsr, viaCompany: true }).returning(),
+      );
+      expect(m!.viaCompany).toBe(false);
+      await failsWith(grant(cAdmin, b, "kesher", "user", ids.plsr), "GD117");
+      await rejects(revoke(cAdmin, m!.id));
+    });
+
+    it("revoke: a company admin of that company, roles given here only", async () => {
+      const a = await appIdOf(gA);
+      const [m] = await db.select().from(memberships).where(and(eq(memberships.userId, a), eq(memberships.module, "kesher")));
+      await rejects(revoke(cPlntAdmin, m!.id));
+      await rejects(revoke(cCmdr, m!.id));
+      await revoke(cAdmin, m!.id);
+      expect(await db.select().from(memberships).where(eq(memberships.id, m!.id))).toHaveLength(0);
+      const [own] = await db.select().from(memberships).where(eq(memberships.userId, cCmdr.appId!));
+      await rejects(revoke(cAdmin, own!.id));
+    });
+
+    it("the access list: the company's linked accounts and their roles, for the company admin only", async () => {
+      const rows = await call<{ email: string; module: string | null; role: string | null; editable: boolean }>(cAdmin, sql`select * from app.company_access_list(${ids.plsr}::uuid)`);
+      expect(rows.filter((r) => r.email === gA.email).map((r) => `${r.module}:${r.role}:${r.editable}`).sort()).toEqual(
+        ["company:platoon_commander:true", "doch1:platoon_commander:true", "doch1:viewer:true", "logistics:company_user:true"].sort(),
+      );
+      expect(rows.find((r) => r.email === gB.email && r.module === "kesher")).toMatchObject({ editable: false });
+      expect(rows.map((r) => r.email)).not.toContain("soldier-c@gmail.com");
+      expect(await call(cCmdr, sql`select * from app.company_access_list(${ids.plsr}::uuid)`)).toHaveLength(0);
+      expect(await call(cPlntAdmin, sql`select * from app.company_access_list(${ids.plsr}::uuid)`)).toHaveLength(0);
+    });
+
+    it("a soldier's previous names are readable by whoever sees the soldier (for the imports), nothing else", async () => {
+      const kesherAdmin: TestUser = { authId: randomUUID(), email: "co-kesher-importer@example.com" };
+      const [u] = await db.insert(appUsers).values({ email: kesherAdmin.email, authUserId: kesherAdmin.authId }).returning();
+      await db.insert(memberships).values({ userId: u!.id, module: "kesher", role: "admin", unitId: null });
+      const seen = await as(kesherAdmin, (tx) => tx.select().from(changes));
+      expect(seen.length).toBeGreaterThan(0);
+      expect(seen.every((r) => r.field === "full_name" && r.status === "approved")).toBe(true);
+      expect(seen.find((r) => r.personId === s.a)?.oldValue).toBe("חייל אלף");
+      // a doch1 user of another company doesn't see it
+      expect(await as(plntDoch1, (tx) => tx.select().from(changes))).toHaveLength(0);
     });
   });
 });

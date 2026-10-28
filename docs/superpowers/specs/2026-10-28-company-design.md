@@ -220,6 +220,15 @@ Push (shared subscriptions): a company admin gets "בקשת הצטרפות חד�
 25. **Company items are deactivated, not deleted,** in the UI (a deleted item would drop its history; the FK refuses it once signed). Its quantity can't go below what is signed out.
 26. **"הוחזר" asks for a second tap**, since there's no confirmation by the receiver.
 
+### Made while building (phase 3)
+
+27. **"Done today" on the report buttons:** דוח 1 — the listed soldiers of the company (or of the platoon, for a platoon commander) without a status today; שבצ״ק וכוננות — there is no daily שבצ״ק report to be done, so it shows the listed soldiers without a שבצ״ק location; דוח צ׳ — whether one was filed today (Israel date) and if everything was found. Each is read with the user's own department access.
+28. **Who sees each button:** דוח 1 — a דוח 1 admin / company user / platoon commander covering the company or one of its platoons (a platoon commander's button opens their platoon); שבצ״ק — a דוח 1 admin or company user of the company; דוח צ׳ — any kesher role covering the company. Links: `/doch1/today?unit=`, `/doch1/standby?co=`, `/kesher/check?unit=`.
+29. **Roles given in הגדרות are marked** (`memberships.via_company`), set only inside `app.company_grant_role` (a trigger keeps everyone else from setting it, and clears it when `/admin` or a master admin changes that membership's role or unit). Only marked roles can be revoked there; the rest show read-only.
+30. **A company admin doesn't grant roles to their own account,** and gives this module's `platoon_commander` on a platoon only (the company `admin` role stays in `/admin`, call 9).
+31. **Granting on a (module, unit) where the account already has a role:** a role given here is changed; one given in a department or `/admin` is left alone and the grant is refused (`GD117`).
+32. **Previous names are readable by whoever sees the soldier** (an approved full_name change row, under the same unit rule as `people`), so the imports read them with the importer's own access. A previous name is tried only when no current name matches; a previous name shared by two soldiers is an error in logistics and falls through to the close-match pick in kesher. The דוח 1 sheet imports are unchanged (the spec names kesher and logistics).
+
 ## Answered (2026-10-28)
 
 1. **Getting in** — self-signup with the personal number, approved by the company admin.

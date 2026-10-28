@@ -67,3 +67,21 @@ export function countDays(days: readonly RoundDay[], today: string): DayCounts {
   }
   return out;
 }
+
+/**
+ * The roles a company admin gives in ניהול פלוגה → הגדרות, and on which level (mirrors
+ * app.company_role_allowed in 0031_company_roles_security.sql). Never admin / master_admin.
+ */
+export const COMPANY_GRANTABLE = [
+  { module: "company", role: "platoon_commander", level: "platoon" },
+  { module: "doch1", role: "company_user", level: "company" },
+  { module: "doch1", role: "platoon_commander", level: "platoon" },
+  { module: "doch1", role: "viewer", level: "company" },
+  { module: "logistics", role: "company_user", level: "company" },
+  { module: "kesher", role: "user", level: "company" },
+] as const;
+export type CompanyGrantable = (typeof COMPANY_GRANTABLE)[number];
+
+export function isCompanyGrantable(module: string, role: string, level: string): boolean {
+  return COMPANY_GRANTABLE.some((g) => g.module === module && g.role === role && g.level === level);
+}

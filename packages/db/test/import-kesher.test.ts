@@ -264,6 +264,23 @@ describe("kesher import", () => {
       expect(find(picked, (l) => l.id === "pizur:serial.add:489006")!.op).toMatchObject({ signer: { personId: s.yossi } });
     });
 
+    it("a soldier renamed in ניהול פלוגה is linked by the previous name, and the line says so", async () => {
+      const [req] = await s.db
+        .insert(schema.companyProfileRequests)
+        .values({ personId: s.dani, unitId: s.ids.plsr1, field: "full_name", oldValue: "דניאל כהן", newValue: "דני כהן", status: "approved" })
+        .returning();
+      const renamed: KesherSheets = {
+        ...sheets,
+        pizur: { ...sheets.pizur!, rows: sheets.pizur!.rows.map((r) => (r.cells[1]?.replace(/\s/g, "") === "489001" ? { ...r, cells: r.cells.map((c, i) => (i === 6 ? "דניאל כהן" : c)) } : r)) },
+      };
+      const d2 = await diff(renamed);
+      const line = find(d2, (l) => l.id === "pizur:serial.add:489001")!;
+      expect(line.op).toMatchObject({ signer: { personId: s.dani } });
+      expect(line.message).toBe('לפי שם קודם: "דניאל כהן" נקרא היום דני כהן');
+      expect(find(d2, (l) => l.id === "pizur:error:489001:signer")).toBeUndefined();
+      await s.db.delete(schema.companyProfileRequests).where(eq(schema.companyProfileRequests.id, req!.id));
+    });
+
     it("the same צ׳ twice: the first row wins", () => {
       expect(errors(d, "pizur").find((l) => l.row === 9)!.message).toMatch(/פעמיים \(גם בשורה 8\)/);
     });

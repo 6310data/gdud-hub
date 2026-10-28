@@ -331,3 +331,44 @@ export async function loadRegister(tx: Tx, unitId: string, open: boolean): Promi
     returnedByName: r.returned_by_name,
   }));
 }
+
+/* ── הגדרות → הרשאות ─────────────────────────────────────────────────────── */
+
+export interface AccessRole {
+  membershipId: string;
+  module: string;
+  role: string;
+  unitId: string | null;
+  editable: boolean;
+}
+export interface AccessUser {
+  userId: string;
+  email: string;
+  personId: string;
+  fullName: string;
+  personUnitId: string;
+  roles: AccessRole[];
+}
+
+/** The company's linked accounts and their roles (app.company_access_list, company admin only). */
+export async function loadAccessList(tx: Tx, companyId: string): Promise<AccessUser[]> {
+  type Row = {
+    user_id: string;
+    email: string;
+    person_id: string;
+    full_name: string;
+    person_unit_id: string;
+    membership_id: string | null;
+    module: string | null;
+    role: string | null;
+    unit_id: string | null;
+    editable: boolean;
+  };
+  const byUser = new Map<string, AccessUser>();
+  for (const r of rowsOf<Row>(await tx.execute(sql`select * from app.company_access_list(${companyId}::uuid)`))) {
+    const u = byUser.get(r.user_id) ?? { userId: r.user_id, email: r.email, personId: r.person_id, fullName: r.full_name, personUnitId: r.person_unit_id, roles: [] };
+    if (r.membership_id && r.module && r.role) u.roles.push({ membershipId: r.membership_id, module: r.module, role: r.role, unitId: r.unit_id, editable: r.editable });
+    byUser.set(r.user_id, u);
+  }
+  return [...byUser.values()].sort((a, b) => byHe(a.fullName, b.fullName));
+}

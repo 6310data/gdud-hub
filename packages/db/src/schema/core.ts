@@ -107,6 +107,8 @@ export const memberships = pgTable(
     module: moduleId("module").notNull(),
     role: text("role").notNull(),
     unitId: uuid("unit_id").references(() => units.id, { onDelete: "cascade" }),
+    /** given by a company admin in ניהול פלוגה → הגדרות (app.company_grant_role); only those can be revoked there */
+    viaCompany: boolean("via_company").notNull().default(false),
     ...timestamps,
   },
   (t) => [

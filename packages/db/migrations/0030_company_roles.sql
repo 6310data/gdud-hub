@@ -1,0 +1,1 @@
+ALTER TABLE "memberships" ADD COLUMN "via_company" boolean DEFAULT false NOT NULL;

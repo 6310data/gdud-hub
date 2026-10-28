@@ -9,6 +9,7 @@ import { createHash } from "node:crypto";
 import { cleanKit, CONDITION_LABEL, kitToString, normalizeSerial, parseKitText } from "@gdud/core";
 import type { Tx } from "../index";
 import { fingerprintLines } from "../sheet-import/index";
+import { previousNameMessage } from "../sheet-import/previous-names";
 import { MSG } from "./preview";
 import {
   cell,
@@ -139,9 +140,11 @@ class Differ {
 
   /**
    * By personal number; else the row's name → its personal number in the אלפון; else the one
-   * app soldier with that name. A same-named soldier with a different personal number is someone else.
+   * app soldier with that name; else the one soldier who was once called that (an approved name
+   * change in ניהול פלוגה — `note` says so on the line). A same-named soldier with a different
+   * personal number is someone else.
    */
-  private person(name: string, pidText: string): { person: PersonRef } | { error: string } {
+  private person(name: string, pidText: string): { person: PersonRef; note?: string } | { error: string } {
     const n = nameKey(name);
     const pid = normalizeSerial(pidText);
     const byPid = pid ? this.st.peopleByPid.get(pid) : undefined;
@@ -153,6 +156,9 @@ class Differ {
     const sameName = (this.st.peopleByName.get(n) ?? []).filter((p) => !pid || !p.personalNumber);
     if (sameName.length > 1) return { error: `יש כמה חיילים בשם "${n}" – הוסף מס׳ אישי` };
     if (sameName[0]) return { person: sameName[0] };
+    const before = (this.st.peopleByPreviousName.get(n) ?? []).filter((p) => !pid || !p.personalNumber);
+    if (before.length > 1) return { error: `כמה חיילים נקראו פעם "${n}" – הוסף מס׳ אישי` };
+    if (before[0]) return { person: before[0], note: previousNameMessage(n, before[0].fullName) };
     return { error: MSG.noSoldier };
   }
 
@@ -368,12 +374,12 @@ class Differ {
         this.error("assignments", r.row, res.error, f);
         continue;
       }
-      const { person } = res;
+      const { person, note } = res;
       const notes = cell(r, 7) || null;
       const kit = parseKitText(cell(r, 8));
       const app = this.st.serialsBySerial.get(serial);
       const open = app ? this.st.openAssignments.get(app.id) : undefined;
-      const lf = { key: serial, item: app ? this.itemName(app.itemId) : itemName || null, serial, personName: person.fullName };
+      const lf = { key: serial, item: app ? this.itemName(app.itemId) : itemName || null, serial, personName: person.fullName, message: note ?? null };
 
       if (!open) {
         const needs = this.serialFor(serial, itemName, { sheet: "assignments", row: r.row }, f);
@@ -456,7 +462,7 @@ class Differ {
       const app = appByKey.get(rec.key);
       if (!app) continue;
       matched.add(app.id);
-      const lf = { key: rec.key, ...rec.f, personName: rec.person.fullName };
+      const lf = { key: rec.key, ...rec.f, personName: rec.person.fullName, message: rec.note };
       if (!app.releasedAt) {
         if (!rec.releasedAt) {
           this.same("storage");
@@ -504,6 +510,7 @@ class Differ {
         key: rec.key,
         ...rec.f,
         personName: rec.person.fullName,
+        message: rec.note,
         after: rec.releasedAt ? `שוחרר ${fmtDate(rec.releasedAt)}` : `באפסון מ-${fmtDate(rec.storedAt)}`,
         dependsOn,
       });
@@ -544,6 +551,7 @@ class Differ {
       row: r.row,
       key: storageKey(res.person.id, serial, itemName, storedAt),
       person: res.person,
+      note: res.note ?? null,
       serial,
       itemName,
       storedAt,
@@ -618,6 +626,8 @@ interface StorageRow {
   row: number;
   key: string;
   person: PersonRef;
+  /** matched by a previous name: said on the line */
+  note: string | null;
   /** "" = no serial */
   serial: string;
   itemName: string;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { countDays, formatPhone, normalizePhone, type RoundDay } from "./company";
+import { countDays, formatPhone, isCompanyGrantable, normalizePhone, type RoundDay } from "./company";
 
 describe("normalizePhone()", () => {
   it("keeps digits and turns +972 into 0", () => {
@@ -50,5 +50,16 @@ describe("countDays()", () => {
 
   it("is all zero with no days", () => {
     expect(countDays([], "2026-10-06")).toEqual({ present: 0, home: 0, org: 0, other: 0, planned: 0 });
+  });
+});
+
+describe("isCompanyGrantable()", () => {
+  it("allows the whitelist on its level only, never an admin role", () => {
+    expect(isCompanyGrantable("doch1", "company_user", "company")).toBe(true);
+    expect(isCompanyGrantable("doch1", "platoon_commander", "platoon")).toBe(true);
+    expect(isCompanyGrantable("doch1", "platoon_commander", "company")).toBe(false);
+    expect(isCompanyGrantable("kesher", "user", "platoon")).toBe(false);
+    expect(isCompanyGrantable("doch1", "admin", "company")).toBe(false);
+    expect(isCompanyGrantable("company", "admin", "company")).toBe(false);
   });
 });
