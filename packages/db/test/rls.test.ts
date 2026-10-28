@@ -2286,4 +2286,61 @@ describe("company", () => {
       expect(await db.select().from(days).where(eq(days.personId, d))).toHaveLength(1);
     });
   });
+  describe("vehicles (רכבים)", () => {
+    const { doch1Vehicles: vehicles, kesherEvents: kEvents, kesherVehicleStock: vStock, kesherStock: kStock } = schema;
+    let truck = "";
+    let battalionTruck = "";
+    let radio = "";
+    let batteries = "";
+
+    beforeAll(async () => {
+      truck = (await db.select().from(vehicles).where(eq(vehicles.number, "CO-777")))[0]!.id;
+      battalionTruck = (await db.select().from(vehicles).where(eq(vehicles.number, "CO-780")))[0]!.id;
+      radio = (await db.select().from(kSerials).where(eq(kSerials.serial, "CO-K1")))[0]!.id;
+      const [b] = await db.insert(kItems).values({ name: "סוללות פלוגה", kind: "bulk", brigadeQty: 10 }).returning();
+      batteries = b!.id;
+      await db.insert(kStock).values({ itemId: batteries, unitId: ids.plsr, qty: 3 });
+    });
+    const mount = (u: TestUser, vehicle: string, on = true) => call(u, sql`select app.company_vehicle_mount(${vehicle}::uuid, ${radio}::uuid, ${on})`);
+    const setQty = (u: TestUser, qty: number) => call(u, sql`select app.company_vehicle_stock(${truck}::uuid, ${batteries}::uuid, ${qty})`);
+
+    it("the company's vehicles and what can go on them; the options for the company admin only", async () => {
+      const vs = await call<{ number: string; team_name: string | null }>(cCmdr, sql`select * from app.company_vehicles(${ids.plsr}::uuid)`);
+      expect(vs.map((v) => v.number)).toEqual(["CO-777"]);
+      expect(await call(cPlntAdmin, sql`select * from app.company_vehicles(${ids.plsr}::uuid)`)).toHaveLength(0);
+      const opts = await call<{ kind: string; serial: string | null; name: string; available: number | null }>(cAdmin, sql`select * from app.company_vehicle_options(${ids.plsr}::uuid)`);
+      expect(opts.find((o) => o.serial === "CO-K1")).toMatchObject({ kind: "serial" });
+      expect(opts.find((o) => o.name === "סוללות פלוגה")?.available).toBe(7);
+      expect(await call(cCmdr, sql`select * from app.company_vehicle_options(${ids.plsr}::uuid)`)).toHaveLength(0);
+    });
+
+    it("the company admin mounts a צ׳ of the company on its vehicle — logged in kesher's יומן in their name", async () => {
+      await rejects(mount(cCmdr, truck));
+      await rejects(mount(cPlntAdmin, truck));
+      await failsWith(mount(cAdmin, battalionTruck), "GD121");
+      await mount(cAdmin, truck);
+      const [after] = await db.select().from(kSerials).where(eq(kSerials.id, radio));
+      expect(after).toMatchObject({ vehicle: "CO-777", location: "company", unitId: ids.plsr });
+      const [ev] = await db.select().from(kEvents).where(and(eq(kEvents.kind, "serial_edit"), eq(kEvents.serial, "CO-K1")));
+      expect(ev).toMatchObject({ unitId: ids.plsr, actorUserId: cAdmin.appId, actorName: cAdmin.email });
+      const gear = await call<{ kind: string; serial: string | null }>(cCmdr, sql`select * from app.company_vehicle_gear(${ids.plsr}::uuid)`);
+      expect(gear).toEqual([expect.objectContaining({ kind: "serial", serial: "CO-K1" })]);
+      await mount(cAdmin, truck, false);
+      expect((await db.select().from(kSerials).where(eq(kSerials.id, radio)))[0]!.vehicle).toBeNull();
+      await failsWith(mount(cAdmin, truck, false), "GD121");
+    });
+
+    it("ציוד משלים comes out of the kesher warehouse's תקינים and goes back to it", async () => {
+      await setQty(cAdmin, 5);
+      expect((await db.select().from(vStock).where(eq(vStock.vehicleId, truck)))[0]!.qty).toBe(5);
+      // the warehouse now has 10 − 3 (company) − 5 (vehicle) = 2
+      await failsWith(setQty(cAdmin, 8), "GD120");
+      await rejects(setQty(cCmdr, 6));
+      await setQty(cAdmin, 0);
+      expect(await db.select().from(vStock).where(eq(vStock.vehicleId, truck))).toHaveLength(0);
+      const logged = (await db.select().from(kEvents).where(eq(kEvents.kind, "vehicle_stock"))).filter((e) => e.item === "סוללות פלוגה");
+      expect(logged.map((e) => e.qty)).toEqual([5, 0]);
+      expect(logged.every((e) => e.actorUserId === cAdmin.appId && e.unitId === ids.plsr)).toBe(true);
+    });
+  });
 });

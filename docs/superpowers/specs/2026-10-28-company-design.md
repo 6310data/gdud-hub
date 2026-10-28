@@ -286,6 +286,9 @@ Answered with the user after using the first version; these replace the matching
 50. **The commander of a פעילות is a soldier of the company** (picked by name); the company's own vehicles are now readable by every member of the company (platoon commanders put them on activities).
 51. **A soldier sees an activity they take part in** (name, day, times, place, their role, the commander) on אני, but not the list of the other participants.
 
+52. **The vehicles page is read by every member of the company,** edited by its admin only (call 34). The kesher events of a change carry the company (`unit_id`) and "ניהול פלוגה" in the details, so kesher's battalion admins and the company's kesher users see them in the יומן.
+53. **Mounting a צ׳ that is on another of the company's vehicles moves it to this one** (the same as on /kesher/vehicles: a צ׳ is on one vehicle at most). Only צ׳ on the company can be mounted; unmounting checks the צ׳ is on this vehicle.
+
 ## Left to the builder
 
 Exact column types and indexes, the rate-limit mechanism on `request_join`, phone format validation, component breakdown, how the roster paginates, and the wording of individual messages (Hebrew, specific, says what to fix).

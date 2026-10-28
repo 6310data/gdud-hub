@@ -267,6 +267,13 @@
       "when": 1793205944332,
       "tag": "0037_company_activities_security",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1793206367307,
+      "tag": "0038_company_vehicles_security",
+      "breakpoints": true
     }
   ]
 }

@@ -483,3 +483,59 @@ export async function loadPersonActivities(tx: Tx, personId: string): Promise<Pe
 /** "08:00–12:00" */
 export const timeRange = (a: { startsAt: string | null; endsAt: string | null }) =>
   [a.startsAt?.slice(0, 5), a.endsAt?.slice(0, 5)].filter(Boolean).join("–");
+
+/* ── רכבים ───────────────────────────────────────────────────────────────── */
+
+export interface VehicleCardVM {
+  id: string;
+  number: string;
+  kind: string | null;
+  state: string;
+  active: boolean;
+  teamName: string | null;
+  serials: { id: string; item: string; serial: string }[];
+  bulk: { itemId: string; item: string; qty: number }[];
+}
+
+/** The company's vehicles with the kesher gear on them (app.company_vehicles / company_vehicle_gear). */
+export async function loadVehicleCards(tx: Tx, companyId: string): Promise<VehicleCardVM[]> {
+  type V = { id: string; number: string; kind: string | null; state: string; active: boolean; team_name: string | null };
+  type G = { vehicle_id: string; kind: "serial" | "bulk"; item_id: string; item: string; serial_id: string | null; serial: string | null; qty: number };
+  const [vs, gear] = await Promise.all([
+    tx.execute(sql`select * from app.company_vehicles(${companyId}::uuid)`).then((r) => rowsOf<V>(r)),
+    tx.execute(sql`select * from app.company_vehicle_gear(${companyId}::uuid)`).then((r) => rowsOf<G>(r)),
+  ]);
+  return vs
+    .map((v) => ({
+      id: v.id,
+      number: v.number,
+      kind: v.kind,
+      state: v.state,
+      active: v.active,
+      teamName: v.team_name,
+      serials: gear
+        .filter((g) => g.vehicle_id === v.id && g.kind === "serial")
+        .map((g) => ({ id: g.serial_id!, item: g.item, serial: g.serial! }))
+        .sort((a, b) => byHe(a.item, b.item) || byHe(a.serial, b.serial)),
+      bulk: gear
+        .filter((g) => g.vehicle_id === v.id && g.kind === "bulk")
+        .map((g) => ({ itemId: g.item_id, item: g.item, qty: Number(g.qty) }))
+        .sort((a, b) => byHe(a.item, b.item)),
+    }))
+    .sort((a, b) => Number(b.active) - Number(a.active) || a.number.localeCompare(b.number, "en", { numeric: true }));
+}
+
+export interface VehicleOptions {
+  serials: { id: string; name: string; serial: string; vehicle: string | null }[];
+  bulk: { id: string; name: string; available: number }[];
+}
+
+/** For the company admin: the company's kesher צ׳ and the ציוד משלים items with the warehouse's תקינים. */
+export async function loadVehicleOptions(tx: Tx, companyId: string): Promise<VehicleOptions> {
+  type Row = { kind: "serial" | "bulk"; id: string; name: string; serial: string | null; vehicle: string | null; available: number | null };
+  const rows = rowsOf<Row>(await tx.execute(sql`select * from app.company_vehicle_options(${companyId}::uuid)`));
+  return {
+    serials: rows.filter((r) => r.kind === "serial").map((r) => ({ id: r.id, name: r.name, serial: r.serial!, vehicle: r.vehicle })).sort((a, b) => byHe(a.name, b.name) || byHe(a.serial, b.serial)),
+    bulk: rows.filter((r) => r.kind === "bulk").map((r) => ({ id: r.id, name: r.name, available: Number(r.available ?? 0) })).sort((a, b) => byHe(a.name, b.name)),
+  };
+}

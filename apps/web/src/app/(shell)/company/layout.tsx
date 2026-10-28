@@ -21,6 +21,7 @@ export default async function CompanyLayout({ children }: { children: React.Reac
     ...(home ? [{ ...section("/signings"), label: "החתמות", icon: "swap" } as const] : []),
     ...(home?.isAdmin ? [{ ...section("/items"), label: "פריטי פלוגה", short: "פריטים", icon: "box" } as const] : []),
     ...(home ? [{ ...section("/activities"), label: "פעילויות", icon: "calendar" } as const] : []),
+    ...(home ? [{ ...section("/vehicles"), label: "רכבים", icon: "truck" } as const] : []),
     ...(home ? [{ ...section("/reports"), label: "דוחות", icon: "report" } as const] : []),
   ];
   const bottom: AppNavItem[] = home?.isAdmin ? [{ ...section("/settings"), label: "הגדרות", icon: "gear" }] : [];
