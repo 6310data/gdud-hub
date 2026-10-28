@@ -4,7 +4,7 @@ import { desc, schema, withUser } from "@gdud/db";
 import { Icon, tintStyle } from "@gdud/ui";
 import { Kpi, PageHeader, Panel, SmallTile } from "@/components/page-parts";
 import { kesherAccess } from "@/lib/kesher/access";
-import { companyStatus, groupBy, leftCompany, loadKesher, loadLastChecks, loadLastSeen, placeTotal, stockKey } from "@/lib/kesher/data";
+import { companyStatus, groupBy, leftCompany, loadKesher, loadLastChecks, loadLastSeen, placeTotal } from "@/lib/kesher/data";
 import { companiesOf } from "@/lib/logistics/data";
 import { fmtCount, fmtDate, fmtWhen } from "@/lib/logistics/format";
 import { requireModule } from "@/lib/session";
@@ -66,13 +66,20 @@ export default async function KesherOverview() {
   const noSigner = held.filter((x) => !x.holder!.signer).length;
   if (noSigner) attention.push({ href: "/kesher/serials?f=nosigner", tile: <SmallTile color="var(--tile-neutral)" icon="person" size={28} />, title: `${fmtCount(noSigner)} צ׳ על פלוגות בלי חותם`, sub: "יובאו מהגיליון בלי חייל מרשימת דוח 1" });
 
-  const low = data.warehouseTracked
-    ? data.items
-        .filter((i) => i.kind === "bulk")
-        .map((i) => ({ ...i, qty: data.stock.get(stockKey(i.id, null)) ?? 0 }))
-        .filter((i) => i.qty <= 1)
-        .sort((a, b) => a.qty - b.qty)
-    : [];
+  const low = data.items
+    .filter((i) => i.kind === "bulk" && i.brigadeQty !== null)
+    .map((i) => ({ ...i, qty: data.available(i.id) }))
+    .filter((i) => i.qty <= 1)
+    .sort((a, b) => a.qty - b.qty);
+  const brokenSerials = data.serials.filter((x) => x.condition === "broken").length;
+  const brokenBulk = data.items.reduce((n, i) => n + i.brokenQty, 0);
+  if (access.isAdmin && (brokenSerials || brokenBulk))
+    attention.push({
+      href: "/kesher/broken",
+      tile: <SmallTile color="var(--tile-broken)" icon="wrench" size={28} />,
+      title: [brokenSerials ? `${fmtCount(brokenSerials)} צ׳ תקולים` : null, brokenBulk ? `${fmtCount(brokenBulk)} ציוד משלים תקול` : null].filter(Boolean).join(" · "),
+      sub: "במחסן — לתיקון או לזיכוי לחטיבה",
+    });
 
   return (
     <>
@@ -92,10 +99,16 @@ export default async function KesherOverview() {
               הפקת דוחות
             </Link>
             {access.isAdmin ? (
-              <Link href="/kesher/import" className="tz-btn tz-btn-tinted tz-btn-sm">
-                <Icon name="upload" size={16} />
-                ייבוא מהגיליון
-              </Link>
+              <>
+                <Link href="/kesher/credit" className="tz-btn tz-btn-tinted tz-btn-sm">
+                  <Icon name="undo" size={16} />
+                  זיכוי
+                </Link>
+                <Link href="/kesher/sign" className="tz-btn tz-btn-filled tz-btn-sm">
+                  <Icon name="pencil" size={16} />
+                  החתמה
+                </Link>
+              </>
             ) : null}
           </>
         }
@@ -210,8 +223,8 @@ export default async function KesherOverview() {
             )}
           </Panel>
 
-          {data.warehouseTracked && low.length ? (
-            <Panel title="ציוד משלים בחוסר במחסן" action={<span className="text-xs text-ink-muted">במחסן</span>}>
+          {low.length ? (
+            <Panel title="ציוד משלים בחוסר במחסן" action={<span className="text-xs text-ink-muted">תקינים במחסן</span>}>
               {low.map((i) => (
                 <Link key={i.id} href="/kesher/stock" className="tz-row">
                   <span className="tz-row-body min-h-[42px] py-0">

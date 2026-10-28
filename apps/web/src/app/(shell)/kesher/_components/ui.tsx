@@ -1,11 +1,9 @@
 /** Small presentational pieces shared by the kesher screens (server-safe, no hooks). */
 import Link from "next/link";
-import type { CheckStatus, UnitNode } from "@gdud/core";
+import { checkAge, type CheckStatus, type UnitNode } from "@gdud/core";
 import { Chip, Icon, tintStyle } from "@gdud/ui";
 import { leftCompany, type KPerson, type KSerial, type LastSeen } from "@/lib/kesher/data";
-import { fmtCount } from "@/lib/logistics/format";
-
-const DAY_MS = 86_400_000;
+import { fmtCount, fmtDate } from "@/lib/logistics/format";
 
 /** A company as the units tree names and colors it (ניהול מערכת › יחידות). */
 export interface CompanyRef {
@@ -31,10 +29,11 @@ export function CompanyDot({ color }: { color: string | null }) {
   return <span aria-hidden="true" className="tz-dot" style={tintStyle(color)} />;
 }
 
-/** במחסן / the company / ללא שיוך */
+/** במחסן / the company / ללא שיוך / הוחזר לחטיבה */
 export function LocationChip({ serial, company }: { serial: Pick<KSerial, "location">; company?: CompanyRef | null }) {
   if (serial.location === "warehouse") return <Chip tone="ok">במחסן</Chip>;
   if (serial.location === "none") return <Chip tone="broken">ללא שיוך</Chip>;
+  if (serial.location === "brigade") return <Chip tone="brigade">הוחזר לחטיבה</Chip>;
   return <CompanyChip company={company ?? { name: "פלוגה", color: null }} />;
 }
 
@@ -46,21 +45,56 @@ export function ReportChip({ status }: { status: CheckStatus }) {
   return <Chip tone="ok">תקין</Chip>;
 }
 
-/** When a צ׳ was last seen in a דוח צ׳ (dimmed when older than staleDays). */
-export function SeenChip({ seen, staleDays, now }: { seen: LastSeen | undefined; staleDays: number; now: Date }) {
-  if (!seen)
+/** "היום" / "אתמול" / "לפני N ימים" */
+export const daysAgo = (days: number) => (days === 0 ? "היום" : days === 1 ? "אתמול" : `לפני ${days} ימים`);
+
+/**
+ * How long ago a צ׳ was checked (a company דוח צ׳ or צהוב בעיניים), colored by checkAge: plain up
+ * to warnDays, yellow after it, red after alertDays; never → `empty` (muted). Sorts by the date.
+ */
+export function AgeChip({
+  at,
+  now,
+  warnDays,
+  alertDays,
+  by,
+  empty = "לא נבדק",
+}: {
+  at: Date | null | undefined;
+  now: Date;
+  warnDays: number;
+  alertDays: number;
+  /** who checked, for the tooltip */
+  by?: string | null;
+  empty?: string;
+}) {
+  const { tone, days } = checkAge(at, now, warnDays, alertDays);
+  if (!at || tone === "none")
     return (
       <span className="text-xs text-ink-muted" data-sort="">
-        לא נבדק
+        {empty}
       </span>
     );
-  if (!seen.found) return <Chip tone="broken">לא נמצא</Chip>;
-  const days = Math.max(0, Math.floor((now.getTime() - seen.at.getTime()) / DAY_MS));
+  const title = [fmtDate(at), by].filter(Boolean).join(" · ");
   return (
-    <span className={`text-xs ${days > staleDays ? "text-ink-muted" : ""}`} data-sort={seen.at.toISOString()}>
-      {days === 0 ? "היום" : `לפני ${days} ימים`}
+    <span data-sort={at.toISOString()} title={title}>
+      {tone === "ok" ? <span className="text-xs">{daysAgo(days)}</span> : <Chip tone={tone === "alert" ? "broken" : "admin"}>{daysAgo(days)}</Chip>}
     </span>
   );
+}
+
+/**
+ * When a צ׳ was last seen in its company's דוח צ׳: "לא נמצא" (red) when the last report didn't find
+ * it, otherwise an AgeChip colored by warnDays / alertDays (KesherData).
+ */
+export function SeenChip({ seen, now, warnDays, alertDays }: { seen: LastSeen | undefined; now: Date; warnDays: number; alertDays: number }) {
+  if (seen && !seen.found)
+    return (
+      <span data-sort={seen.at.toISOString()} title={fmtDate(seen.at)}>
+        <Chip tone="broken">לא נמצא</Chip>
+      </span>
+    );
+  return <AgeChip at={seen?.at} now={now} warnDays={warnDays} alertDays={alertDays} />;
 }
 
 /** done/total with a small bar. */

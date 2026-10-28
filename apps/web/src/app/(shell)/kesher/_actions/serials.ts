@@ -2,7 +2,8 @@
 /**
  * Editing a צ׳ — the same fields on צ׳ במערכת and on the company page. Anyone covering the company
  * sets who holds a צ׳ inside it (soldier · תפקיד · מסגרת); only a battalion kesher admin changes its
- * place (מחסן / פלוגה / ללא שיוך), who signed for it (חותם על הפלוגה), its vehicle (האמר) and its note.
+ * place (מחסן / פלוגה / ללא שיוך), who signed for it (חותם על הפלוגה), its vehicle (from דוח 1's list)
+ * and its note.
  * RLS and the triggers of 0018_kesher_security.sql enforce the same: kesher_serials updates and
  * kesher_holders inserts are admin-only, the signer columns too (kesher_holders_guard), and moving a
  * צ׳ to another place drops its holder row (kesher_serials_moved).
@@ -11,6 +12,7 @@ import { z } from "zod";
 import { placement, type KesherLocation } from "@gdud/core";
 import { eq, inArray, schema, withUser } from "@gdud/db";
 import { actionError, UserError, type ActionOutcome } from "@/lib/action-result";
+import { loadVehicles } from "@/lib/kesher/data";
 import { unitsById } from "@/lib/logistics/data";
 import { firstIssue, kesherCtx, NO_PERMISSION, revalidateKesher, uuid } from "./common";
 
@@ -117,6 +119,9 @@ export async function saveSerials(input: z.input<typeof saveSchema>): Promise<Ac
           else if (placement(p.unitId, byUnit).company?.id !== unitId) errors.push(`${p.fullName} לא בפלוגה ${unitName(unitId ?? null) ?? ""}`.trim());
         }
       }
+      // a vehicle comes from דוח 1's list
+      const numbers = rows.some((r) => r.vehicle) ? new Set((await loadVehicles(tx)).map((v) => v.number)) : null;
+      for (const r of rows) if (r.vehicle && !numbers!.has(r.vehicle)) errors.push(`הרכב ${r.vehicle} לא ברשימת הרכבים של דוח 1`);
       if (errors.length) throw new UserError([...new Set(errors)].join("\n"));
 
       const name = (id: string | null) => (id ? (person.get(id)?.fullName ?? null) : null);

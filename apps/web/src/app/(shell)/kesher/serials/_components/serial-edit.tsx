@@ -2,7 +2,7 @@
 /** "עריכה" on the צ׳ במערכת inspector: opens the same sheet as the company page. */
 import { useEffect, useState } from "react";
 import { Icon } from "@gdud/ui";
-import { SerialSheet, type SheetPerson, type SheetRow, type SheetSuggestions } from "../../_components/serial-sheet";
+import { SerialSheet, type SheetPerson, type SheetRow, type SheetSuggestions, type SheetVehicle } from "../../_components/serial-sheet";
 
 const TOAST_MS = 4000;
 
@@ -11,12 +11,14 @@ export function SerialEdit({
   people,
   companies,
   suggestions,
+  vehicles,
   isAdmin,
 }: {
   row: SheetRow;
   people: SheetPerson[];
   companies: Array<{ id: string; name: string }>;
   suggestions: SheetSuggestions;
+  vehicles: SheetVehicle[];
   isAdmin: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -40,6 +42,7 @@ export function SerialEdit({
           people={people}
           companies={companies}
           suggestions={suggestions}
+          vehicles={vehicles}
           isAdmin={isAdmin}
           onClose={() => setOpen(false)}
           onSaved={(n) => {

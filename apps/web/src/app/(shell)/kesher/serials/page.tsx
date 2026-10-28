@@ -1,24 +1,24 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { z } from "zod";
-import { KESHER_EVENT_LABEL, matches } from "@gdud/core";
+import { KESHER_EVENT_LABEL, checkAge, matches } from "@gdud/core";
 import { desc, eq, schema, withUser, type Tx } from "@gdud/db";
 import { Icon, Serial } from "@gdud/ui";
 import { Empty, PageHeader, Panel, SmallTile, withParams } from "@/components/page-parts";
 import { kesherAccess } from "@/lib/kesher/access";
-import { leftCompany, loadKesher, loadLastSeen, type KSerial, type LastSeen } from "@/lib/kesher/data";
+import { leftCompany, loadKesher, loadLastEye, loadLastSeen, type EyeCheck, type KSerial, type LastSeen, loadVehicles, vehicleLabel } from "@/lib/kesher/data";
 import { companiesOf, loadPeople, personPlace } from "@/lib/logistics/data";
-import { fmtCount, fmtWhen } from "@/lib/logistics/format";
+import { fmtCount, fmtDate, fmtWhen } from "@/lib/logistics/format";
 import { requireModule } from "@/lib/session";
 import { distinct } from "@/lib/kesher/suggestions";
 import type { SheetPerson } from "../_components/serial-sheet";
-import { LocationChip, SearchBox, SeenChip, companyRefs, pillCount, type CompanyRef } from "../_components/ui";
+import { AgeChip, LocationChip, SearchBox, SeenChip, companyRefs, pillCount, type CompanyRef } from "../_components/ui";
 import { SerialEdit } from "./_components/serial-edit";
 
 export const metadata = { title: "צ׳ במערכת" };
 
 const SHOWN = 500;
-const FILTERS = ["", "wh", "co", "none", "miss", "left", "nosigner"] as const;
+const FILTERS = ["", "wh", "co", "none", "miss", "noeye", "left", "nosigner", "returned"] as const;
 type Filter = (typeof FILTERS)[number];
 const searchSchema = z.object({
   q: z.string().trim().max(80).optional().catch(undefined),
@@ -32,11 +32,24 @@ const FILTER_LABEL: Record<Filter, string> = {
   co: "בפלוגות",
   none: "ללא שיוך",
   miss: "לא נמצאו בדוח",
+  noeye: "לא נבדקו בעין",
   left: "חותם שעבר / הוסר",
   nosigner: "בלי חותם",
+  returned: "הוחזרו לחטיבה",
 };
 
-function keep(x: KSerial, f: Filter, seen: LastSeen | undefined): boolean {
+/** What a row is filtered by besides the צ׳ itself. */
+interface Checks {
+  seen: LastSeen | undefined;
+  eye: EyeCheck | undefined;
+  now: Date;
+  warnDays: number;
+  alertDays: number;
+}
+
+function keep(x: KSerial, f: Filter, { seen, eye, now, warnDays, alertDays }: Checks): boolean {
+  // the צ׳ returned to the brigade show under their own pill only
+  if ((f === "returned") !== (x.location === "brigade")) return false;
   switch (f) {
     case "wh":
       return x.location === "warehouse";
@@ -50,6 +63,8 @@ function keep(x: KSerial, f: Filter, seen: LastSeen | undefined): boolean {
       return Boolean(x.holder && (leftCompany(x.holder.holder, x.holder.unitId) || leftCompany(x.holder.signer, x.holder.unitId)));
     case "nosigner":
       return Boolean(x.holder && !x.holder.signer);
+    case "noeye":
+      return ["none", "alert"].includes(checkAge(eye?.at, now, warnDays, alertDays).tone);
     default:
       return true;
   }
@@ -67,32 +82,40 @@ export default async function KesherSerials({ searchParams }: { searchParams: Pr
   const companies = companyRefs(companiesOf(s.units));
 
   const access = kesherAccess(s);
-  const { data, lastSeen, history, soldiers } = await withUser(s.claims, async (tx) => {
-    const [data, lastSeen] = await Promise.all([loadKesher(tx, s.units), loadLastSeen(tx)]);
+  const { data, lastSeen, lastEye, history, soldiers, vehicles } = await withUser(s.claims, async (tx) => {
+    // with the צ׳ returned to the brigade (their own pill); every other view leaves them out
+    const [data, lastSeen, lastEye] = await Promise.all([loadKesher(tx, s.units, { returned: true }), loadLastSeen(tx), loadLastEye(tx)]);
     const sel = f.sel ? data.serials.find((x) => x.id === f.sel) : undefined;
-    const editable = sel && (access.isAdmin || (sel.location === "company" && access.covers(sel.unitId)));
-    const [history, soldiers] = await Promise.all([sel ? loadHistory(tx, sel.id, sel.serial) : [], editable ? loadPeople(tx, s.units) : null]);
-    return { data, lastSeen, history, soldiers };
+    // a צ׳ returned to the brigade is history only (it comes back through the brigade screen)
+    const editable = sel && sel.location !== "brigade" && (access.isAdmin || (sel.location === "company" && access.covers(sel.unitId)));
+    const [history, soldiers, vehicles] = await Promise.all([
+      sel ? loadHistory(tx, sel.id, sel.serial) : [],
+      editable ? loadPeople(tx, s.units) : null,
+      editable && access.isAdmin ? loadVehicles(tx) : [],
+    ]);
+    return { data, lastSeen, lastEye, history, soldiers, vehicles };
   });
 
-  const counts = Object.fromEntries(FILTERS.map((k) => [k, data.serials.filter((x) => keep(x, k, lastSeen.get(x.id))).length])) as Record<Filter, number>;
+  const checks = (x: KSerial): Checks => ({ seen: lastSeen.get(x.id), eye: lastEye.get(x.id), now, warnDays: data.warnDays, alertDays: data.alertDays });
+  const counts = Object.fromEntries(FILTERS.map((k) => [k, data.serials.filter((x) => keep(x, k, checks(x))).length])) as Record<Filter, number>;
+  const inSystem = data.serials.filter((x) => x.location !== "brigade");
   const rows = data.serials.filter(
     (x) =>
-      keep(x, f.f, lastSeen.get(x.id)) &&
+      keep(x, f.f, checks(x)) &&
       (!f.q || matches(f.q, x.serial, x.itemName, companies.get(x.unitId ?? "")?.name, x.holder?.holder?.name, x.holder?.signer?.name, x.holder?.frame, x.holder?.holderRole)),
   );
   const shown = rows.slice(0, SHOWN);
   const sel = f.sel ? data.serials.find((x) => x.id === f.sel) : undefined;
   const current = { q: f.q, f: f.f || undefined };
-  const types = new Set(data.serials.map((x) => x.itemId)).size;
+  const types = new Set(inSystem.map((x) => x.itemId)).size;
 
   return (
     <>
-      <PageHeader title="צ׳ במערכת" sub={`${fmtCount(data.serials.length)} צ׳ · ${types} סוגי מכשירים`} />
+      <PageHeader title="צ׳ במערכת" sub={`${fmtCount(inSystem.length)} צ׳ · ${types} סוגי מכשירים`} />
       <div className="flex flex-wrap items-center gap-3">
         <SearchBox action="/kesher/serials" q={f.q} placeholder="צ׳, מכשיר, חותם או מסגרת" keep={{ f: f.f || undefined }} />
         <nav className="tz-pills" aria-label="סינון">
-          {FILTERS.filter((k) => k === "" || counts[k] || k === f.f || ["wh", "co", "none", "miss"].includes(k)).map((k) => (
+          {FILTERS.filter((k) => k === "" || counts[k] || k === f.f || ["wh", "co", "none", "miss", "noeye"].includes(k)).map((k) => (
             <Link key={k} href={withParams("/kesher/serials", current, { f: k || null, sel: null })} className="tz-pill" aria-current={f.f === k ? "page" : undefined}>
               {FILTER_LABEL[k]} {pillCount(counts[k])}
             </Link>
@@ -112,7 +135,8 @@ export default async function KesherSerials({ searchParams }: { searchParams: Pr
                     <th>מיקום</th>
                     <th>חותם</th>
                     <th className="max-md:hidden">תפקיד · מסגרת</th>
-                    <th className="max-md:hidden">נבדק</th>
+                    <th className="max-md:hidden">נבדק בפלוגה</th>
+                    <th className="max-md:hidden">צהוב בעיניים</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -129,7 +153,14 @@ export default async function KesherSerials({ searchParams }: { searchParams: Pr
                       </td>
                       <td>{x.holder?.holder?.name ?? <span className="tz-zero">—</span>}</td>
                       <td className="text-ink-muted max-md:hidden">{[x.holder?.holderRole, x.holder?.frame].filter(Boolean).join(" · ")}</td>
-                      <td className="max-md:hidden">{x.location === "company" ? <SeenChip seen={lastSeen.get(x.id)} staleDays={data.staleDays} now={now} /> : null}</td>
+                      <td className="max-md:hidden">
+                        {x.location === "company" ? <SeenChip seen={lastSeen.get(x.id)} warnDays={data.warnDays} alertDays={data.alertDays} now={now} /> : null}
+                      </td>
+                      <td className="max-md:hidden">
+                        {x.location === "brigade" ? null : (
+                          <AgeChip at={lastEye.get(x.id)?.at} by={lastEye.get(x.id)?.byName} warnDays={data.warnDays} alertDays={data.alertDays} now={now} />
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -150,6 +181,7 @@ export default async function KesherSerials({ searchParams }: { searchParams: Pr
               soldiers ? (
                 <SerialEdit
                   isAdmin={access.isAdmin}
+                  vehicles={vehicles.map((v) => ({ number: v.number, label: vehicleLabel(v) }))}
                   companies={access.companies.map((c) => ({ id: c.id, name: c.name }))}
                   people={soldiers
                     .filter((p) => access.isAdmin || p.companyId === sel.unitId)
@@ -179,7 +211,9 @@ export default async function KesherSerials({ searchParams }: { searchParams: Pr
             x={sel}
             company={companies.get(sel.unitId ?? "")}
             seen={lastSeen.get(sel.id)}
-            staleDays={data.staleDays}
+            eye={lastEye.get(sel.id)}
+            warnDays={data.warnDays}
+            alertDays={data.alertDays}
             history={history}
             closeHref={withParams("/kesher/serials", current, {})}
             now={now}
@@ -226,7 +260,9 @@ function Inspector({
   x,
   company,
   seen,
-  staleDays,
+  eye,
+  warnDays,
+  alertDays,
   history,
   closeHref,
   now,
@@ -236,7 +272,9 @@ function Inspector({
   x: KSerial;
   company?: CompanyRef;
   seen: LastSeen | undefined;
-  staleDays: number;
+  eye: EyeCheck | undefined;
+  warnDays: number;
+  alertDays: number;
   history: HistoryItem[];
   closeHref: string;
   now: Date;
@@ -249,7 +287,21 @@ function Inspector({
     ["מסגרת", x.holder?.frame ?? "—"],
     ["האמר", x.vehicle ? <Serial key="v">{x.vehicle}</Serial> : "—"],
     ["הערה", x.notes ?? "—"],
-    ["דוח צ׳ אחרון", x.location === "company" ? <SeenChip key="s" seen={seen} staleDays={staleDays} now={now} /> : <span className="text-ink-muted">{x.location === "warehouse" ? "במחסן" : "—"}</span>],
+    [
+      "נבדק בפלוגה",
+      x.location === "company" ? <SeenChip key="s" seen={seen} warnDays={warnDays} alertDays={alertDays} now={now} /> : <span className="text-ink-muted">{x.location === "warehouse" ? "במחסן" : "—"}</span>,
+    ],
+    [
+      "צהוב בעיניים",
+      x.location === "brigade" ? (
+        <span className="text-ink-muted">—</span>
+      ) : (
+        <span key="e" className="inline-flex flex-wrap items-center gap-1.5">
+          <AgeChip at={eye?.at} by={eye?.byName} warnDays={warnDays} alertDays={alertDays} now={now} />
+          {eye ? <span className="text-xs text-ink-muted">{[fmtDate(eye.at), eye.byName].filter(Boolean).join(" · ")}</span> : null}
+        </span>
+      ),
+    ],
   ];
   return (
     <aside className="flex flex-col gap-3 lg:sticky lg:top-6" aria-label={`צ׳ ${x.serial}`}>

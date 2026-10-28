@@ -24,7 +24,7 @@ export default async function KesherReports() {
           <ReportRow
             tile={<SmallTile color="var(--primary)" icon="report" />}
             title="דוח קשר גדודי לחטיבה"
-            sub="צ׳ לפי סוג מכשיר ומיקום, ציוד משלים מול המלאי הכללי (קבלות חטיבה), ופירוט כל הצ׳"
+            sub="המכשירים מטבלת הצ׳ בלבד, ממוינים לפי קטגוריה: כמה מכל סוג בכל מיקום, ופירוט כל מכשיר"
             query="r=brigade"
           />
         </Panel>

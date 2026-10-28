@@ -1,8 +1,10 @@
 "use client";
 /**
- * ציוד משלים by place. A battalion admin turns on "עדכון כמויות": every quantity and מלאי כללי
- * becomes a field, the totals follow what is typed, and "שמירה" sends only the changed cells.
+ * ציוד משלים by place. A company's quantities change only through החתמה / זיכוי, and the warehouse
+ * is computed (מלאי כללי − the companies − the vehicles), so the one number a battalion admin edits
+ * here is מלאי כללי: "עדכון מלאי כללי" turns that column into fields and the warehouse follows.
  */
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition, type ReactNode } from "react";
 import { Chip, Icon, Spinner, tintStyle } from "@gdud/ui";
@@ -10,41 +12,32 @@ import { fmtCount as fmt } from "@/lib/logistics/format";
 import { saveStock } from "../../_actions/stock";
 
 export interface StockCol {
-  /** null = the warehouse */
-  id: string | null;
+  id: string;
   name: string;
   color: string | null;
 }
 export interface StockRow {
   id: string;
   name: string;
+  /** מלאי כללי; null = unknown */
   brigadeQty: number | null;
-  /** place key (unit id, "" = warehouse) → qty */
+  /** of the warehouse's, תקול */
+  brokenQty: number;
+  /** company id → qty */
   qty: Record<string, number>;
+  /** on vehicles */
+  vehicles: number;
 }
 
 const TOAST_MS = 4000;
-const key = (unitId: string | null) => unitId ?? "";
 /** "" = blank; NaN = not a whole number */
-const num = (v: string) => (v.trim() === "" ? null : /^-?\d+$/.test(v.trim()) ? Number(v.trim()) : Number.NaN);
+const num = (v: string) => (v.trim() === "" ? null : /^\d+$/.test(v.trim()) ? Number(v.trim()) : Number.NaN);
 
-type Draft = Record<string, string>;
-
-export function StockEditor({
-  cats,
-  cols,
-  canEdit,
-  warehouseTracked,
-}: {
-  cats: [string, StockRow[]][];
-  cols: StockCol[];
-  canEdit: boolean;
-  warehouseTracked: boolean;
-}) {
+export function StockEditor({ cats, cols, canEdit }: { cats: [string, StockRow[]][]; cols: StockCol[]; canEdit: boolean }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
-  /** `${itemId}|${placeKey}` or `${itemId}|brigade` → typed text */
-  const [draft, setDraft] = useState<Draft>({});
+  /** item id → typed מלאי כללי */
+  const [draft, setDraft] = useState<Record<string, string>>({});
   const [error, setError] = useState<string>();
   const [toast, setToast] = useState<string>();
   const [pending, start] = useTransition();
@@ -55,30 +48,27 @@ export function StockEditor({
     return () => clearTimeout(t);
   }, [toast]);
 
-  const cell = (r: StockRow, c: StockCol) => draft[`${r.id}|${key(c.id)}`] ?? String(r.qty[key(c.id)] ?? 0);
-  const brigade = (r: StockRow) => draft[`${r.id}|brigade`] ?? (r.brigadeQty === null ? "" : String(r.brigadeQty));
-  const qtyOf = (r: StockRow, c: StockCol) => (editing ? (num(cell(r, c)) ?? 0) : (r.qty[key(c.id)] ?? 0));
-  const set = (k: string, v: string) => setDraft((d) => ({ ...d, [k]: v }));
   const all = cats.flatMap(([, list]) => list);
+  const typed = (r: StockRow) => draft[r.id] ?? (r.brigadeQty === null ? "" : String(r.brigadeQty));
+  const total = (r: StockRow) => (editing ? num(typed(r)) : r.brigadeQty);
+  const signed = (r: StockRow) => cols.reduce((n, c) => n + (r.qty[c.id] ?? 0), 0) + r.vehicles;
 
   function changes() {
     const rows = [];
     for (const r of all) {
-      const cells = [];
-      for (const c of cols) {
-        const v = draft[`${r.id}|${key(c.id)}`];
-        if (v === undefined) continue;
-        const n = num(v) ?? 0;
-        if (Number.isNaN(n)) throw new Error(`${r.name} · ${c.name}: "${v}" אינו מספר שלם`);
-        if (n !== (r.qty[key(c.id)] ?? 0)) cells.push({ unitId: c.id, qty: n });
-      }
-      const b = draft[`${r.id}|brigade`];
-      const bq = b === undefined ? undefined : num(b);
-      if (bq !== undefined && bq !== null && (Number.isNaN(bq) || bq < 0)) throw new Error(`${r.name} · מלאי כללי: "${b}" אינו מספר שלם`);
-      const brigadeQty = bq === undefined || bq === r.brigadeQty ? undefined : bq;
-      if (cells.length || brigadeQty !== undefined) rows.push({ itemId: r.id, cells, brigadeQty });
+      const v = draft[r.id];
+      if (v === undefined) continue;
+      const n = num(v);
+      if (n !== null && Number.isNaN(n)) throw new Error(`${r.name}: "${v}" אינו מספר שלם`);
+      if (n !== r.brigadeQty) rows.push({ itemId: r.id, brigadeQty: n });
     }
     return rows;
+  }
+
+  function cancel() {
+    setEditing(false);
+    setDraft({});
+    setError(undefined);
   }
 
   function save() {
@@ -89,31 +79,15 @@ export function StockEditor({
     } catch (e) {
       return setError((e as Error).message);
     }
-    if (!rows.length) {
-      setEditing(false);
-      setDraft({});
-      return;
-    }
+    if (!rows.length) return cancel();
     start(async () => {
       const r = await saveStock({ rows });
       if (!r.ok) return setError(r.error);
-      setEditing(false);
-      setDraft({});
-      setToast(`עודכנו ${r.data.changed} כמויות`);
+      cancel();
+      setToast(`עודכן מלאי כללי של ${r.data.changed} פריטים`);
       router.refresh();
     });
   }
-
-  const input = (k: string, value: string, label: string) => (
-    <input
-      className="tz-input tz-num min-h-8 w-[72px] px-2 py-0 text-center text-[15px]"
-      inputMode="numeric"
-      value={value}
-      onChange={(e) => set(k, e.target.value)}
-      aria-label={label}
-      disabled={pending}
-    />
-  );
 
   return (
     <>
@@ -125,30 +99,29 @@ export function StockEditor({
                 {pending ? <Spinner size={14} /> : null}
                 שמירה
               </button>
-              <button
-                type="button"
-                className="tz-btn tz-btn-plain tz-btn-sm"
-                disabled={pending}
-                onClick={() => {
-                  setEditing(false);
-                  setDraft({});
-                  setError(undefined);
-                }}
-              >
+              <button type="button" className="tz-btn tz-btn-plain tz-btn-sm" disabled={pending} onClick={cancel}>
                 ביטול
               </button>
-              <span className="tz-footnote">שדה ריק = 0. מלאי כללי ריק = לא ידוע.</span>
+              <span className="tz-footnote">שדה ריק = לא ידוע. המחסן מתעדכן לפי מה שמוקלד.</span>
             </>
           ) : (
-            <button type="button" className="tz-btn tz-btn-tinted tz-btn-sm" onClick={() => setEditing(true)}>
-              <Icon name="pencil" size={16} />
-              עדכון כמויות
-            </button>
+            <>
+              <button type="button" className="tz-btn tz-btn-tinted tz-btn-sm" onClick={() => setEditing(true)}>
+                <Icon name="pencil" size={16} />
+                עדכון מלאי כללי
+              </button>
+              <Link href="/kesher/sign" className="tz-btn tz-btn-plain tz-btn-sm">
+                החתמה לפלוגה
+              </Link>
+              <Link href="/kesher/credit" className="tz-btn tz-btn-plain tz-btn-sm">
+                זיכוי מפלוגה
+              </Link>
+            </>
           )}
         </div>
       ) : null}
       {error ? (
-        <p role="alert" className="tz-alert tz-alert-error m-0">
+        <p role="alert" className="tz-alert tz-alert-error m-0 whitespace-pre-line">
           {error}
         </p>
       ) : null}
@@ -157,50 +130,70 @@ export function StockEditor({
           <thead>
             <tr>
               <th>פריט</th>
+              <th>מלאי כללי</th>
+              <th>במחסן</th>
               {cols.map((c) => (
-                <th key={key(c.id)} className={c.color ? "tz-tint" : undefined} style={tintStyle(c.color)}>
+                <th key={c.id} className={c.color ? "tz-tint" : undefined} style={tintStyle(c.color)}>
                   {c.name}
                 </th>
               ))}
-              <th>סה״כ</th>
-              <th className={editing ? undefined : "max-md:hidden"}>מלאי כללי</th>
+              <th>על רכבים</th>
             </tr>
           </thead>
           <tbody>
             {cats.map(([cat, list]) => (
-              <CategoryRows key={cat || "—"} cat={cat} span={cols.length + 3}>
+              <CategoryRows key={cat || "—"} cat={cat} span={cols.length + 4}>
                 {list.map((r) => {
-                  const total = cols.reduce((n, c) => n + qtyOf(r, c), 0);
-                  const ref = editing ? num(brigade(r)) : r.brigadeQty;
+                  const t = total(r);
+                  const known = t !== null && !Number.isNaN(t);
+                  const wh = known ? t - signed(r) : null;
                   return (
                     <tr key={r.id}>
                       <th scope="row">{r.name}</th>
-                      {cols.map((c) => {
-                        const n = qtyOf(r, c);
-                        const wh = c.id === null;
-                        const cls = wh ? (!warehouseTracked ? "text-ink-muted" : n <= 1 ? "font-semibold text-danger" : "font-semibold") : n ? "" : "tz-zero";
-                        return (
-                          <td key={key(c.id)} className={`tz-num ${editing ? "" : cls} ${c.color ? "tz-tint" : ""}`} style={tintStyle(c.color)}>
-                            {editing ? input(`${r.id}|${key(c.id)}`, cell(r, c), `${r.name} · ${c.name}`) : fmt(n)}
-                          </td>
-                        );
-                      })}
-                      <td className="tz-num font-semibold">{fmt(total)}</td>
-                      <td className={`tz-num ${editing ? "" : "max-md:hidden"}`}>
+                      <td className="tz-num">
                         {editing ? (
-                          input(`${r.id}|brigade`, brigade(r), `${r.name} · מלאי כללי`)
-                        ) : ref === null || Number.isNaN(ref) ? (
+                          <input
+                            className="tz-input tz-num min-h-8 w-[80px] px-2 py-0 text-center text-[15px]"
+                            inputMode="numeric"
+                            value={typed(r)}
+                            onChange={(e) => setDraft((d) => ({ ...d, [r.id]: e.target.value }))}
+                            aria-label={`${r.name} · מלאי כללי`}
+                            disabled={pending}
+                          />
+                        ) : known ? (
+                          <span className="font-semibold">{fmt(t)}</span>
+                        ) : (
+                          <span className="tz-zero">—</span>
+                        )}
+                      </td>
+                      <td className="tz-num" data-sort={wh ?? ""}>
+                        {wh === null ? (
                           <span className="tz-zero">—</span>
                         ) : (
-                          fmt(ref)
+                          <span className={wh < 0 ? "font-semibold text-danger" : wh - r.brokenQty <= 1 ? "font-semibold text-danger" : "font-semibold"}>{fmt(wh)}</span>
                         )}
-                        {!editing && ref !== null && !Number.isNaN(ref) && total > ref ? (
+                        {r.brokenQty ? (
                           <>
                             {" "}
-                            <Chip tone="broken">מעל</Chip>
+                            <Chip tone="broken">{fmt(r.brokenQty)} תקול</Chip>
+                          </>
+                        ) : null}
+                        {wh !== null && wh < 0 ? (
+                          <>
+                            {" "}
+                            <Chip tone="broken">חסר במלאי הכללי</Chip>
                           </>
                         ) : null}
                       </td>
+                      {cols.map((c) => {
+                        const n = r.qty[c.id] ?? 0;
+                        return (
+                          <td key={c.id} className={`tz-num ${n ? "" : "tz-zero"} ${c.color ? "tz-tint" : ""}`} style={tintStyle(c.color)}>
+                            {fmt(n)}
+                          </td>
+                        );
+                      })}
+                      <td className={`tz-num ${r.vehicles ? "" : "tz-zero"}`}>{fmt(r.vehicles)}</td>
                     </tr>
                   );
                 })}

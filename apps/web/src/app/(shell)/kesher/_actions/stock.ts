@@ -1,36 +1,35 @@
 "use server";
 /**
- * ציוד משלים: quantities per place and the item's מלאי כללי (brigade_qty), and the תקן lines. A
- * battalion kesher admin only (kesher_stock, kesher_items and kesher_kit_items writes are admin-only
- * in 0018_kesher_security.sql; kesher_stock_guard and kesher_kit_guard check kinds, the warehouse
- * floor and cycles). Every change is a `stock_edit` / `kit_edit` event.
+ * ציוד משלים: the item's מלאי כללי (brigade_qty) and the תקן lines. A battalion kesher admin only
+ * (kesher_items and kesher_kit_items writes are admin-only in 0018_kesher_security.sql; kesher_kit_guard
+ * rejects cycles). A company's quantities change only through החתמה / זיכוי (moves.ts) and the
+ * warehouse is computed (מלאי כללי − companies − vehicles), so neither is edited here.
+ * Every change is a `stock_edit` / `kit_edit` event.
  */
 import { z } from "zod";
-import { and, eq, inArray, isNull, schema, withUser } from "@gdud/db";
+import { eq, inArray, schema, withUser } from "@gdud/db";
 import { actionError, UserError, type ActionOutcome } from "@/lib/action-result";
 import { firstIssue, kesherCtx, NO_PERMISSION, revalidateKesher, uuid } from "./common";
+import { signedQty } from "./moves-common";
 
-const { kesherStock: stock, kesherItems: items, kesherKitItems: kits, kesherEvents: events } = schema;
+const { kesherItems: items, kesherKitItems: kits, kesherEvents: events } = schema;
 
 const ADMIN_ONLY = { error: "רק מנהל קשר גדודי מעדכן ציוד משלים ותקן." } as const;
-const qty = z.number({ error: "כמות לא תקינה" }).int("כמות שלמה בלבד").min(-9999).max(99999, "כמות גדולה מדי");
 
 const stockSchema = z.object({
   rows: z
     .array(
       z.object({
         itemId: uuid,
-        /** undefined = unchanged; null = clear */
-        brigadeQty: z.number().int("כמות שלמה בלבד").min(0, "מלאי כללי לא יכול להיות שלילי").max(99999).nullish(),
-        /** unitId null = the warehouse */
-        cells: z.array(z.object({ unitId: uuid.nullable(), qty })).max(50).default([]),
+        /** null = unknown */
+        brigadeQty: z.number({ error: "כמות לא תקינה" }).int("כמות שלמה בלבד").min(0, "מלאי כללי לא יכול להיות שלילי").max(99999, "כמות גדולה מדי").nullable(),
       }),
     )
     .min(1, "אין מה לשמור")
     .max(500, "יותר מדי פריטים בבת אחת"),
 });
 
-/** "עדכון כמויות": the changed cells and מלאי כללי of one or more ציוד משלים items. */
+/** "עדכון מלאי כללי": the new מלאי כללי of one or more ציוד משלים items. */
 export async function saveStock(input: z.input<typeof stockSchema>): Promise<ActionOutcome<{ changed: number }>> {
   const ctx = await kesherCtx();
   if (!ctx) return NO_PERMISSION;
@@ -38,49 +37,24 @@ export async function saveStock(input: z.input<typeof stockSchema>): Promise<Act
   const parsed = stockSchema.safeParse(input);
   if (!parsed.success) return { error: firstIssue(parsed.error) };
   const { rows } = parsed.data;
-  const { s } = ctx;
-  const companyName = new Map(s.units.filter((u) => u.kind === "company").map((u) => [u.id, u.name]));
-  for (const c of rows.flatMap((r) => r.cells)) {
-    if (c.unitId && !companyName.has(c.unitId)) return { error: "פלוגה לא מוכרת — רעננו את הדף" };
-    if (c.unitId && c.qty < 0) return { error: "כמות בפלוגה לא יכולה להיות שלילית" };
-  }
 
   try {
-    const changed = await withUser(s.claims, async (tx) => {
+    const changed = await withUser(ctx.s.claims, async (tx) => {
       const ids = [...new Set(rows.map((r) => r.itemId))];
-      const itemRows = await tx.select({ id: items.id, name: items.name, kind: items.kind, brigadeQty: items.brigadeQty }).from(items).where(inArray(items.id, ids));
+      const itemRows = await tx.select({ id: items.id, name: items.name, kind: items.kind, brigadeQty: items.brigadeQty, brokenQty: items.brokenQty }).from(items).where(inArray(items.id, ids));
       const byId = new Map(itemRows.map((i) => [i.id, i]));
-      const have = new Map(
-        (await tx.select({ itemId: stock.itemId, unitId: stock.unitId, qty: stock.qty }).from(stock).where(inArray(stock.itemId, ids))).map((r) => [
-          `${r.itemId}|${r.unitId ?? ""}`,
-          r.qty,
-        ]),
-      );
+      const signed = await signedQty(tx, ids);
       const log: (typeof events.$inferInsert)[] = [];
       for (const r of rows) {
         const item = byId.get(r.itemId);
         if (!item) throw new UserError("אחד הפריטים לא נמצא — רעננו את הדף");
         if (item.kind !== "bulk") throw new UserError(`"${item.name}" אינו ציוד משלים`);
-        if (r.brigadeQty !== undefined && r.brigadeQty !== item.brigadeQty) {
-          await tx.update(items).set({ brigadeQty: r.brigadeQty }).where(eq(items.id, item.id));
-          log.push({ kind: "stock_edit", item: item.name, qty: r.brigadeQty, details: `מלאי כללי: ${item.brigadeQty ?? "—"} ← ${r.brigadeQty ?? "—"}` });
-        }
-        for (const c of r.cells) {
-          const before = have.get(`${item.id}|${c.unitId ?? ""}`) ?? 0;
-          if (before === c.qty) continue;
-          const where = and(eq(stock.itemId, item.id), c.unitId ? eq(stock.unitId, c.unitId) : isNull(stock.unitId));
-          const updated = await tx.update(stock).set({ qty: c.qty }).where(where).returning({ id: stock.id });
-          if (!updated.length) await tx.insert(stock).values({ itemId: item.id, unitId: c.unitId, qty: c.qty });
-          const place = c.unitId ? companyName.get(c.unitId)! : "מחסן";
-          log.push({
-            kind: "stock_edit",
-            unitId: c.unitId,
-            company: c.unitId ? place : null,
-            item: item.name,
-            qty: c.qty,
-            details: `${place}: ${before} ← ${c.qty}`,
-          });
-        }
+        if (r.brigadeQty === item.brigadeQty) continue;
+        const floor = (signed.get(item.id) ?? 0) + item.brokenQty;
+        if (r.brigadeQty !== null && r.brigadeQty < floor)
+          throw new UserError(`${item.name}: מלאי כללי לא יכול להיות פחות מ־${floor} — החתום בפלוגות ועל רכבים והתקול במחסן`);
+        await tx.update(items).set({ brigadeQty: r.brigadeQty }).where(eq(items.id, item.id));
+        log.push({ kind: "stock_edit", item: item.name, qty: r.brigadeQty, details: `מלאי כללי: ${item.brigadeQty ?? "—"} ← ${r.brigadeQty ?? "—"}` });
       }
       if (log.length) await tx.insert(events).values(log);
       return log.length;
@@ -88,14 +62,8 @@ export async function saveStock(input: z.input<typeof stockSchema>): Promise<Act
     revalidateKesher();
     return { ok: true, data: { changed } };
   } catch (e) {
-    return { error: stockError(e) };
+    return { error: actionError(e) };
   }
-}
-
-/** The warehouse floor (kesher_stock_guard) is the likely 23514 here. */
-function stockError(e: unknown): string {
-  const msg = actionError(e);
-  return msg === "אחד השדות לא בפורמט הנכון." ? "כמות לא תקינה (במחסן מנוהל הכמות לא יורדת מתחת לאפס)." : msg;
 }
 
 const kitQty = z.number({ error: "כמות לא תקינה" }).int("כמות שלמה בלבד").min(1, "כמות ליחידה: 1 עד 99").max(99, "כמות ליחידה: 1 עד 99");

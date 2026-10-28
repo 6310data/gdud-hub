@@ -81,7 +81,8 @@ export const MODULES = [
     icon: "antenna",
     status: "live",
     roles: [
-      { id: "admin", label: "מנהל", description: "החתמות, קליטה, מלאי וייבוא — כשההרשאה על כל הגדוד" },
+      { id: "master_admin", label: "מנהל ראשי", description: "כל מה שמנהל עושה, וגם הרשאות המשתמשים במחלקה" },
+      { id: "admin", label: "מנהל", description: "החתמות, זיכויים, חטיבה, מלאי, צהוב בעיניים והגדרות — כשההרשאה על כל הגדוד" },
       { id: "user", label: "משתמש", description: "צפייה, שיוך חותמים בפלוגה ודוח צ׳" },
     ],
   },

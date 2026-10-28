@@ -275,7 +275,7 @@ class Differ {
       const appPlace: Place =
         existing.location === "company" && existing.unitId
           ? { location: "company", unit: this.st.companiesById.get(existing.unitId) ?? { id: existing.unitId, name: "—" } }
-          : { location: existing.location as "warehouse" | "none", unit: null };
+          : { location: existing.location === "warehouse" ? "warehouse" : "none", unit: null };
       const moved = existing.location !== place.location || existing.unitId !== unitId;
       const detailsDiffer = existing.vehicle !== vehicle || existing.notes !== notes;
       let lineId: string | null = null;
@@ -326,7 +326,8 @@ class Differ {
 
     // in the app, not in the sheet: removable only when not on a company
     for (const s of this.st.serialsBySerial.values()) {
-      if (seen.has(s.serial)) continue;
+      // returned to the brigade in the app: history, not something the sheet should still list
+      if (seen.has(s.serial) || s.location === "brigade") continue;
       const item = this.st.itemsById.get(s.itemId)?.name ?? null;
       if (s.location === "company") {
         const company = this.st.companiesById.get(s.unitId ?? "")?.name ?? "פלוגה";

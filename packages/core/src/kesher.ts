@@ -7,14 +7,27 @@
 export const KESHER_ITEM_KINDS = ["serial", "bulk"] as const;
 export type KesherItemKind = (typeof KESHER_ITEM_KINDS)[number];
 
-/** Where a צ׳ is: the battalion warehouse, a company, or nowhere (ללא שיוך). */
-export const KESHER_LOCATIONS = ["warehouse", "company", "none"] as const;
+/**
+ * Where a צ׳ is: the battalion warehouse, a company, nowhere (ללא שיוך), or back at the brigade
+ * (זיכוי לחטיבה — kept for its history, left out of every count).
+ */
+export const KESHER_LOCATIONS = ["warehouse", "company", "none", "brigade"] as const;
 export type KesherLocation = (typeof KESHER_LOCATIONS)[number];
 
 export const KESHER_LOCATION_LABEL: Record<KesherLocation, string> = {
   warehouse: "במחסן",
   company: "בפלוגה",
   none: "ללא שיוך",
+  brigade: "הוחזר לחטיבה",
+};
+
+/** A צ׳ comes back from a company תקין or תקול; a תקול one isn't signed out until it is fixed. */
+export const KESHER_CONDITIONS = ["ok", "broken"] as const;
+export type KesherCondition = (typeof KESHER_CONDITIONS)[number];
+
+export const KESHER_CONDITION_LABEL: Record<KesherCondition, string> = {
+  ok: "תקין",
+  broken: "תקול",
 };
 
 export const KESHER_EVENT_KINDS = [
@@ -29,6 +42,16 @@ export const KESHER_EVENT_KINDS = [
   "import",
   /** a row of the old sheet's יומן whose action text isn't recognised */
   "legacy",
+  /** קבלה מחטיבה: new צ׳ into the warehouse, מלאי כללי up */
+  "brigade_in",
+  /** זיכוי לחטיבה: צ׳ out of the warehouse, מלאי כללי down */
+  "brigade_out",
+  /** תקול → תקין (a צ׳, or ציוד משלים in the warehouse) */
+  "repair",
+  /** צהוב בעיניים: someone of מחלקת הקשר saw the צ׳ */
+  "eye_check",
+  /** ציוד משלים quantities on a vehicle */
+  "vehicle_stock",
 ] as const;
 export type KesherEventKind = (typeof KESHER_EVENT_KINDS)[number];
 
@@ -43,6 +66,11 @@ export const KESHER_EVENT_LABEL: Record<KesherEventKind, string> = {
   check: "דוח צ׳",
   import: "ייבוא מהגיליון",
   legacy: "פעולה מהגיליון",
+  brigade_in: "קבלה מחטיבה",
+  brigade_out: "זיכוי לחטיבה",
+  repair: "תיקון ציוד",
+  eye_check: "צהוב בעיניים",
+  vehicle_stock: "ציוד משלים לרכב",
 };
 
 /** The warehouse's name in the sheet (פיזור צ כללי column E, כללי headers). */
@@ -100,6 +128,29 @@ export function checkStatus(
   if (missing) return { kind: "missing", missing, days };
   if (days > staleDays) return { kind: "stale", missing, days };
   return { kind: "ok", missing, days };
+}
+
+/* ── how long ago a צ׳ was checked ─────────────────────────────────────────── */
+
+/** none = never checked; warn = more than warnDays (yellow); alert = more than alertDays (red). */
+export type AgeTone = "none" | "ok" | "warn" | "alert";
+
+/** Whole days since `at`, and its color: over `warnDays` yellow, over `alertDays` red. */
+export function checkAge(at: Date | null | undefined, now: Date, warnDays: number, alertDays: number): { tone: AgeTone; days: number } {
+  if (!at) return { tone: "none", days: 0 };
+  const days = Math.max(0, Math.floor((now.getTime() - at.getTime()) / DAY_MS));
+  return { tone: days > alertDays ? "alert" : days > warnDays ? "warn" : "ok", days };
+}
+
+/* ── ציוד משלים in the warehouse ───────────────────────────────────────────── */
+
+/**
+ * The warehouse is what is left of מלאי כללי after the companies and the vehicles; `broken` of it
+ * (returned תקול) can't be signed out. `available` may go negative when the numbers disagree.
+ */
+export function warehouseStock(total: number | null, signed: number, broken: number): { qty: number; available: number } {
+  const qty = (total ?? 0) - signed;
+  return { qty, available: qty - broken };
 }
 
 /* ── the old sheet's יומן חתימות ──────────────────────────────────────────── */

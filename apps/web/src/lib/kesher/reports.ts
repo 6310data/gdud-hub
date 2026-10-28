@@ -1,11 +1,11 @@
 import "server-only";
 /**
- * הפקת דוחות: the brigade report (the whole battalion's צ׳ and ציוד משלים by place) and a company
+ * הפקת דוחות: the brigade report (the whole battalion's devices by category and place) and a company
  * report (the company's צ׳ with who holds them, its ציוד משלים against the תקן, a receipt line).
  * One model for both outputs: the print page (browser "save as PDF") and the Excel file.
  * Built from what the caller's RLS shows — holders only for the companies they cover.
  */
-import { byHe, expandKit, type UnitNode } from "@gdud/core";
+import { byHe, expandKit, KESHER_CONDITION_LABEL, type UnitNode } from "@gdud/core";
 import { withUser } from "@gdud/db";
 import type { XlsxSheet, XlsxTable, XlsxValue } from "@gdud/db/xlsx";
 import { battalionName, companiesOf } from "@/lib/logistics/data";
@@ -37,10 +37,14 @@ const signer = (x: KSerial) => dash(x.holder?.signer?.name);
 function placeName(x: KSerial, companies: ReadonlyMap<string, UnitNode>): string {
   if (x.location === "warehouse") return "במחסן";
   if (x.location === "none") return "ללא שיוך";
+  if (x.location === "brigade") return "הוחזר לחטיבה";
   return companies.get(x.unitId ?? "")?.name ?? "פלוגה";
 }
 
-/** דוח לחטיבה: counts by device type and place, ציוד משלים against the brigade receipt, every צ׳. */
+/**
+ * דוח לחטיבה: devices only (the צ׳ table, no ציוד משלים), by category — counts per device type and
+ * place, then every צ׳. Device types without a category come last ("ללא קטגוריה").
+ */
 export function brigadeReport(data: KesherData, companies: readonly UnitNode[], battalion: string, day: string): KesherReport {
   const byId = new Map(companies.map((c) => [c.id, c]));
   const places: { id: string | null | "none"; name: string; color: string | null }[] = [
@@ -49,44 +53,46 @@ export function brigadeReport(data: KesherData, companies: readonly UnitNode[], 
     { id: "none", name: "ללא שיוך", color: null },
   ];
   const where = (x: KSerial) => (x.location === "warehouse" ? null : x.location === "none" ? "none" : x.unitId);
-  const types = [...groupBy(data.serials, (x) => x.itemName)].sort(([a], [b]) => byHe(a, b));
+  const category = (x: KSerial) => data.itemsById.get(x.itemId)?.category ?? "";
+  const byCategory = (a: string, b: string) => (a ? (b ? byHe(a, b) : -1) : b ? 1 : 0);
+  const cats = [...groupBy(data.serials, category)].sort(([a], [b]) => byCategory(a, b));
 
   const serialsTable: ReportTable = {
-    title: "צ׳ לפי סוג מכשיר ומיקום",
-    head: ["סוג מכשיר", ...places.map((p) => p.name), "סה״כ"],
-    tints: [null, ...places.map((p) => p.color), null],
-    rows: types.map(([type, list]) => [type, ...places.map((p) => list.filter((x) => where(x) === p.id).length), list.length]),
-    foot: ["סה״כ", ...places.map((p) => data.serials.filter((x) => where(x) === p.id).length), data.serials.length],
+    title: "מכשירים לפי קטגוריה, סוג ומיקום",
+    head: ["קטגוריה", "סוג מכשיר", ...places.map((p) => p.name), "מתוכם תקולים", "סה״כ"],
+    tints: [null, null, ...places.map((p) => p.color), null, null],
+    rows: cats.flatMap(([cat, inCat]) =>
+      [...groupBy(inCat, (x) => x.itemName)]
+        .sort(([a], [b]) => byHe(a, b))
+        .map(([type, list]) => [
+          cat || "ללא קטגוריה",
+          type,
+          ...places.map((p) => list.filter((x) => where(x) === p.id).length),
+          list.filter((x) => x.condition === "broken").length,
+          list.length,
+        ]),
+    ),
+    foot: [
+      "סה״כ",
+      null,
+      ...places.map((p) => data.serials.filter((x) => where(x) === p.id).length),
+      data.serials.filter((x) => x.condition === "broken").length,
+      data.serials.length,
+    ],
   };
 
-  const bulk = data.items.filter((i) => i.kind === "bulk");
-  const stockPlaces = places.filter((p) => p.id !== "none") as { id: string | null; name: string; color: string | null }[];
-  const qty = (itemId: string, unitId: string | null) => data.stock.get(stockKey(itemId, unitId)) ?? 0;
-  const total = (itemId: string) => stockPlaces.reduce((n, p) => n + qty(itemId, p.id), 0);
-  const stockTable: ReportTable = {
-    title: data.warehouseTracked ? "ציוד משלים לפי מיקום" : "ציוד משלים לפי מיקום (מלאי המחסן לא מנוהל)",
-    head: ["פריט", "קטגוריה", ...stockPlaces.map((p) => p.name), "סה״כ בגדוד", "מלאי כללי / חטיבה", "הפרש"],
-    tints: [null, null, ...stockPlaces.map((p) => p.color), null, null, null],
-    rows: bulk.map((i) => [
-      i.name,
-      dash(i.category),
-      ...stockPlaces.map((p) => qty(i.id, p.id)),
-      total(i.id),
-      i.brigadeQty,
-      i.brigadeQty === null ? null : total(i.id) - i.brigadeQty,
-    ]),
-    foot: ["סה״כ", null, ...stockPlaces.map((p) => bulk.reduce((n, i) => n + qty(i.id, p.id), 0)), bulk.reduce((n, i) => n + total(i.id), 0), null, null],
-  };
-
-  const order = new Map(places.map((p, i) => [p.id, i]));
-  const list = [...data.serials].sort((a, b) => (order.get(where(a)) ?? 0) - (order.get(where(b)) ?? 0) || byHe(a.itemName, b.itemName));
+  const list = [...data.serials].sort(
+    (a, b) => byCategory(category(a), category(b)) || byHe(a.itemName, b.itemName) || a.serial.localeCompare(b.serial, "en", { numeric: true }),
+  );
   const listTable: ReportTable = {
-    title: "פירוט הצ׳",
-    head: ["סוג מכשיר", "צ׳", "מיקום", "האמר", "חותם על הפלוגה", "תפקיד", "חתום בפלוגה", "מסגרת", "הערות"],
+    title: "פירוט המכשירים",
+    head: ["קטגוריה", "סוג מכשיר", "צ׳", "מיקום", "מצב", "רכב", "חותם על הפלוגה", "תפקיד", "חתום בפלוגה", "מסגרת", "הערות"],
     rows: list.map((x) => [
+      category(x) || "ללא קטגוריה",
       x.itemName,
       x.serial,
       placeName(x, byId),
+      KESHER_CONDITION_LABEL[x.condition],
       dash(x.vehicle),
       signer(x),
       dash(x.holder?.signerRole),
@@ -98,11 +104,11 @@ export function brigadeReport(data: KesherData, companies: readonly UnitNode[], 
 
   return {
     title: `דוח קשר לחטיבה · ${battalion}`,
-    sub: `נכון ל־${day} · ${data.serials.length} צ׳ · ${bulk.length} סוגי ציוד משלים`,
+    sub: `נכון ל־${day} · ${data.serials.length} מכשירים · ${cats.length} קטגוריות`,
     file: "kesher-brigade",
     sheets: [
-      { name: "סיכום", tables: [serialsTable, stockTable] },
-      { name: "פירוט צ׳", tables: [listTable] },
+      { name: "סיכום", tables: [serialsTable] },
+      { name: "פירוט מכשירים", tables: [listTable] },
     ],
   };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkStatus, expandKit, kesherLogKind, type KesherKitLine } from "./kesher";
+import { checkAge, checkStatus, expandKit, kesherLogKind, warehouseStock, type KesherKitLine } from "./kesher";
 
 describe("expandKit()", () => {
   const kits = new Map<string, KesherKitLine[]>([
@@ -56,5 +56,28 @@ describe("kesherLogKind()", () => {
   it("anything else is legacy", () => {
     expect(kesherLogKind("סנכרון").kind).toBe("legacy");
     expect(kesherLogKind("").kind).toBe("legacy");
+  });
+});
+
+describe("checkAge()", () => {
+  const now = new Date("2026-10-28T09:00:00Z");
+  const ago = (days: number) => new Date(now.getTime() - days * 86_400_000);
+
+  it("is yellow over the warn days and red over the alert days", () => {
+    expect(checkAge(ago(3), now, 3, 7)).toEqual({ tone: "ok", days: 3 });
+    expect(checkAge(ago(4), now, 3, 7)).toEqual({ tone: "warn", days: 4 });
+    expect(checkAge(ago(7), now, 3, 7)).toEqual({ tone: "warn", days: 7 });
+    expect(checkAge(ago(8), now, 3, 7)).toEqual({ tone: "alert", days: 8 });
+  });
+
+  it("never checked", () => {
+    expect(checkAge(null, now, 3, 7).tone).toBe("none");
+  });
+});
+
+describe("warehouseStock()", () => {
+  it("is מלאי כללי minus what is signed, and broken can't be signed out", () => {
+    expect(warehouseStock(40, 12, 3)).toEqual({ qty: 28, available: 25 });
+    expect(warehouseStock(null, 2, 0)).toEqual({ qty: -2, available: -2 });
   });
 });
