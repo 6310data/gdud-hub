@@ -2257,6 +2257,14 @@ describe("company", () => {
       await rejects(add(cAdmin, act, s.c));
     });
 
+    it("a soldier's דוח 1 presence only through the checked reads — company_present_on is the guard's alone", async () => {
+      const presentOn = (u: TestUser) => call(u, sql`select app.company_present_on(${d}::uuid, ${today}::date)`);
+      // the commander covering the soldier gets the answer from the picker / the participants list
+      expect((await call<{ person_id: string; qualifies: boolean }>(cCmdr2, sql`select * from app.company_activity_people(${act}::uuid)`)).find((x) => x.person_id === d)?.qualifies).toBe(true);
+      // nobody calls the helper directly: not the company, not another company, not a soldier without a role
+      for (const u of [cAdmin, cCmdr2, cPlntAdmin, gB, stranger]) await failsWith(presentOn(u), "42501");
+    });
+
     it("a participant whose status changes is flagged, not removed; the soldier sees the activity on אני", async () => {
       await db.update(days).set({ statusId: home }).where(and(eq(days.personId, s.a), eq(days.day, today)));
       const people_ = await call<{ person_id: string; qualifies: boolean }>(cCmdr2, sql`select * from app.company_activity_people(${act}::uuid)`);
