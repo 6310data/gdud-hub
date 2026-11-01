@@ -1,12 +1,13 @@
 /**
  * GET /api/doch1/cron — called every 5 minutes by Supabase pg_cron (docs/DOCH1.md). Runs דוח 1's
- * reminder jobs, מחלקת קשר's and ניהול פלוגה's notification jobs, each on its own (one failing doesn't
- * skip the others).
+ * reminder jobs and its "הדוח נשלח" notifications, מחלקת קשר's and ניהול פלוגה's notification jobs, each
+ * on its own (one failing doesn't skip the others).
  * Requires `Authorization: Bearer <CRON_SECRET>`; public in proxy.ts because the caller has no session.
  */
 import { createHash, timingSafeEqual } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { runArrivalReminders, runReminderJob } from "@/lib/doch1/reminder-job";
+import { runReportSentJob, type ReportSentJobResult } from "@/lib/doch1/report-sent-job";
 import { runCompanyNotifyJob, type CompanyNotifyResult } from "@/lib/company/notify-job";
 import { runKesherNotifyJob, type KesherNotifyResult } from "@/lib/kesher/notify-job";
 
@@ -36,6 +37,12 @@ export async function GET(request: NextRequest) {
   } catch (err) {
     console.error("doch1 reminder job failed", err);
   }
+  let sent: ReportSentJobResult | null = null;
+  try {
+    sent = await runReportSentJob(now);
+  } catch (err) {
+    console.error("doch1 report-sent job failed", err);
+  }
   let kesher: KesherNotifyResult | null = null;
   try {
     kesher = await runKesherNotifyJob(now);
@@ -48,9 +55,14 @@ export async function GET(request: NextRequest) {
   } catch (err) {
     console.error("company notify job failed", err);
   }
-  const failed = !doch1 || !kesher || !company;
+  const failed = !doch1 || !sent || !kesher || !company;
   return NextResponse.json(
-    { ...(doch1 ?? { error: "doch1 job failed" }), kesher: kesher ?? { error: "job failed" }, company: company ?? { error: "job failed" } },
+    {
+      ...(doch1 ?? { error: "doch1 job failed" }),
+      sent: sent ?? { error: "job failed" },
+      kesher: kesher ?? { error: "job failed" },
+      company: company ?? { error: "job failed" },
+    },
     { status: failed ? 500 : 200, headers: NO_STORE },
   );
 }

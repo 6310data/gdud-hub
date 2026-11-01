@@ -5,8 +5,10 @@ import { fillFromYesterdayPlan, summarize, type Day, type DayWrite, type StatusD
 import { Avatar, Icon, Spinner } from "@gdud/ui";
 import { bulkSetStatus, fillFromYesterday, restoreDays, setDayStatus } from "../../_actions/days";
 import { setInReport } from "../../_actions/members";
+import { reopenReport, sendReport } from "../../_actions/report-sends";
 import { StatusChip } from "../../_components/status-chip";
 import { BulkSheet } from "./bulk-sheet";
+import { SendSheet } from "./send-sheet";
 import { StatusSheet } from "./status-sheet";
 import { UndoToast } from "./undo-toast";
 
@@ -18,6 +20,19 @@ export interface TodayMember {
   platoonId: string | null;
   platoonName: string | null;
   inReport: boolean;
+  /** under a sent report ("שליחת הדוח", e.g. their platoon sent) and the user is not their doch1 admin: read-only */
+  closed: boolean;
+}
+
+/** The send that closes the unit's day (its own, or its company's). */
+export interface ReportSent {
+  id: string;
+  /** the unit that sent: this one, or the company above it */
+  unitName: string;
+  own: boolean;
+  byName: string | null;
+  /** "09:42", or the day and time when sent on a later day */
+  at: string;
 }
 
 /** day → personId → statusId */
@@ -52,6 +67,10 @@ export function TodayList({
   lockAt,
   canEdit,
   writable,
+  sent,
+  sentBelow,
+  canSend,
+  canReopen,
   canEditMembers,
   members: serverMembers,
   statuses,
@@ -71,8 +90,16 @@ export function TodayList({
   lockAt: string;
   /** the user reports for this unit */
   canEdit: boolean;
-  /** canEdit and the day is open for this user (lock / past days) */
+  /** canEdit and the day is open for this user (lock / past days / a sent report) */
   writable: boolean;
+  /** the unit's report for the day was sent (null = not yet) */
+  sent: ReportSent | null;
+  /** units below this one that sent their own report (a company's platoons) */
+  sentBelow: readonly string[];
+  /** may send the unit's report for the day (reports for it, not sent, not a future day) */
+  canSend: boolean;
+  /** a doch1 admin covering the sending unit: "פתיחת הדוח מחדש" */
+  canReopen: boolean;
   /** may take soldiers in / out of the report (company user / admin) */
   canEditMembers: boolean;
   /** round members of the unit, ordered by platoon then name (out-of-report ones included) */
@@ -100,6 +127,7 @@ export function TodayList({
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [sendOpen, setSendOpen] = useState(false);
   const [toast, setToast] = useState<{ message: string; undo: DayWrite[] } | null>(null);
 
   const byId = useMemo(() => new Map(statuses.map((s) => [s.id, s])), [statuses]);
@@ -108,7 +136,9 @@ export function TodayList({
 
   const todayMap = asMap(days[day]);
   const summary = summarize(members, todayMap, statuses);
-  const fillable = writable ? fillFromYesterdayPlan(members, todayMap, asMap(days[yesterday])).length : 0;
+  // soldiers under a platoon that already sent stay as they are
+  const openMembers = members.filter((m) => !m.closed);
+  const fillable = writable ? fillFromYesterdayPlan(openMembers, todayMap, asMap(days[yesterday])).length : 0;
   const statusOf = (personId: string) => byId.get(todayMap.get(personId) ?? "") ?? null;
 
   const q = query.trim();
@@ -133,7 +163,7 @@ export function TodayList({
     ? [...new Set(members.map((m) => m.platoonId))].map((pid) => {
         const list = members.filter((m) => m.platoonId === pid);
         const s = summarize(list, todayMap, statuses);
-        return { key: pid ?? "company", name: list[0]?.platoonName ?? "ברמת הפלוגה", reported: s.reported, roster: s.roster };
+        return { key: pid ?? "company", name: list[0]?.platoonName ?? "ברמת הפלוגה", reported: s.reported, roster: s.roster, sent: !!pid && sentBelow.includes(pid) };
       })
     : [];
 
@@ -163,7 +193,7 @@ export function TodayList({
   }
 
   function fill() {
-    const plan = fillFromYesterdayPlan(members, todayMap, asMap(days[yesterday]));
+    const plan = fillFromYesterdayPlan(openMembers, todayMap, asMap(days[yesterday]));
     run(
       plan.map((p) => ({ personId: p.personId, day, statusId: p.statusId })),
       () => fillFromYesterday({ unitId, day }),
@@ -183,6 +213,24 @@ export function TodayList({
       setSelecting(false);
       setSelected(new Set());
       setToast({ message: `עודכנו ${r.data.written} ימים`, undo: r.data.undo });
+    });
+  }
+
+  function send() {
+    setError(undefined);
+    start(async () => {
+      const r = await sendReport({ unitId, day });
+      setSendOpen(false);
+      if (r?.error) setError(r.error);
+    });
+  }
+
+  function reopen() {
+    if (!sent) return;
+    setError(undefined);
+    start(async () => {
+      const r = await reopenReport({ sendId: sent.id });
+      if (r?.error) setError(r.error);
     });
   }
 
@@ -206,6 +254,10 @@ export function TodayList({
   const cardHref = (personId: string) =>
     soldierHref ? `${soldierHref}/${personId}` : `/doch1/soldiers/${personId}?back=${encodeURIComponent(back)}`;
   const closeBulk = useCallback(() => setBulkOpen(false), [setBulkOpen]);
+  const closeSend = useCallback(() => setSendOpen(false), [setSendOpen]);
+  const selectable = visible.filter((m) => !m.closed);
+  /** sent, and this user may no longer change it */
+  const closedForMe = !!sent && !canReopen;
 
   const overwrittenFor = (list: Day[], statusId: string) => {
     let n = 0;
@@ -267,7 +319,28 @@ export function TodayList({
         )}
       </div>
 
-      {canEdit && !writable ? (
+      {sent ? (
+        <div className="tz-alert tz-alert-ok m-0 flex flex-wrap items-center gap-2" role="status">
+          <Icon name="send" size={16} />
+          <span className="min-w-0 flex-1">
+            {sent.own ? "הדוח נשלח" : `${sent.unitName} שלחה את הדוח`} · {sent.byName ?? "—"} · <span className="tz-num">{sent.at}</span>
+            {closedForMe && canEdit ? <span className="block">רק מנהל דוח 1 יכול לשנות אותו או לפתוח אותו מחדש.</span> : null}
+          </span>
+          {canReopen ? (
+            <button type="button" className="tz-btn tz-btn-plain tz-btn-sm" disabled={pending} aria-busy={pending || undefined} onClick={reopen}>
+              {pending ? <Spinner size={14} /> : null}
+              פתיחת הדוח מחדש
+            </button>
+          ) : null}
+        </div>
+      ) : canSend ? (
+        <button type="button" className="tz-btn tz-btn-filled min-h-11 text-base" disabled={pending} onClick={() => setSendOpen(true)}>
+          <Icon name="send" size={17} />
+          שליחת הדוח
+        </button>
+      ) : null}
+
+      {canEdit && !writable && !closedForMe ? (
         <p className="tz-alert m-0" style={{ background: "var(--status-broken-soft)", color: "var(--status-broken)" }}>
           {isToday ? `היום ננעל ב-${lockAt}. רק מנהל גדודי יכול לשנות.` : "יום שעבר. רק מנהל גדודי יכול לשנות."}
         </p>
@@ -284,6 +357,7 @@ export function TodayList({
             <div key={p.key} className="tz-row">
               <span className="tz-row-body">
                 <span className="tz-row-title">{p.name}</span>
+                {p.sent ? <span className="tz-chip tz-chip-signed">נשלח</span> : null}
                 <span className={`tz-num text-[15px] ${p.reported < p.roster ? "text-danger" : "text-ok"}`}>
                   {p.reported}/{p.roster}
                 </span>
@@ -353,7 +427,14 @@ export function TodayList({
                   </span>
                 </>
               );
-              return writable ? (
+              if (selecting && m.closed) {
+                return (
+                  <div key={m.personId} className="tz-row opacity-60" aria-disabled="true">
+                    {body}
+                  </div>
+                );
+              }
+              return writable && !m.closed ? (
                 <button
                   key={m.personId}
                   type="button"
@@ -407,9 +488,9 @@ export function TodayList({
           <button
             type="button"
             className="tz-btn tz-btn-plain tz-btn-sm"
-            onClick={() => setSelected(new Set(selected.size === visible.length ? [] : visible.map((m) => m.personId)))}
+            onClick={() => setSelected(new Set(selected.size === selectable.length ? [] : selectable.map((m) => m.personId)))}
           >
-            {selected.size === visible.length ? "ניקוי" : "בחירת כל המוצגים"}
+            {selected.size === selectable.length ? "ניקוי" : "בחירת כל המוצגים"}
           </button>
           <button type="button" className="tz-btn tz-btn-filled tz-btn-sm ms-auto" disabled={!selected.size} onClick={() => setBulkOpen(true)}>
             עדכון
@@ -441,6 +522,9 @@ export function TodayList({
           onSubmit={bulk}
           onClose={closeBulk}
         />
+      ) : null}
+      {sendOpen ? (
+        <SendSheet unitName={unitName} isCompany={isCompany} dayLabel={dayLabel} missing={summary.missing} pending={pending} onSend={send} onClose={closeSend} />
       ) : null}
       {toast ? <UndoToast message={toast.message} onUndo={undo} onDone={hideToast} pending={pending} /> : null}
     </div>

@@ -1095,6 +1095,65 @@ describe("doch1", () => {
       }
     });
   });
+
+  describe("doch1 report sends", () => {
+    const { doch1ReportSends: sends } = schema;
+    const send = (u: TestUser, unitId: string, day = today, extra: Partial<typeof sends.$inferInsert> = {}) =>
+      as(u, (tx) => tx.insert(sends).values({ roundId, unitId, day, ...extra }).returning());
+    const codeOf = (p: Promise<unknown>) => p.then(() => "ok", pgCodeOf);
+    const sendsOf = (u: TestUser) =>
+      as(u, async (tx) => {
+        const r = await tx.execute<{ unit_id: string; sent_by_name: string | null }>(sql`select * from app.doch1_report_sends_of(${roundId}::uuid, ${today}::date)`);
+        return Array.isArray(r) ? r : ((r as { rows: unknown[] }).rows as typeof r);
+      });
+
+    it("the unit's reporters send it, in their own name; another company, a viewer or a future day can't", async () => {
+      await rejects(send(plntClerk, ids.plsr));
+      await rejects(send(d1Viewer, ids.plsr));
+      await rejects(send(stranger, ids.plsr));
+      await rejects(send(plsr1Cmdr, ids.plsr)); // a platoon commander sends their platoon, not the company
+      await rejects(send(plsrClerk, ids.plsr, addDays(today, 1)));
+      await rejects(send(plsrClerk, ids.plsr, addDays(today, 31))); // outside the round
+      const [row] = await send(plsr1Cmdr, ids.plsr1, today, { sentBy: d1Admin.appId!, sentAt: new Date(0), notifiedAt: new Date() });
+      expect(row!.sentBy).toBe(plsr1Cmdr.appId);
+      expect(row!.notifiedAt).toBeNull();
+      expect(row!.sentAt.getTime()).toBeGreaterThan(0);
+      expect(await codeOf(send(plsrClerk, ids.plsr1))).toBe("23505"); // once per unit and day
+      expect(await as(plntClerk, (tx) => tx.select().from(sends))).toHaveLength(1); // everyone in doch1 sees what was sent
+      expect(await as(stranger, (tx) => tx.select().from(sends))).toHaveLength(0);
+      await rejects(as(plsr1Cmdr, (tx) => tx.update(sends).set({ notifiedAt: new Date() }))); // the job's column
+    });
+
+    it("a sent platoon is closed to its company user and commander; the company level and an admin still write", async () => {
+      expect(await codeOf(setDay(plsr1Cmdr, p.plsr1Soldier, today, st.A))).toBe("GD007");
+      expect(await codeOf(setDay(plsrClerk, p.plsr1Soldier, today, st.Z))).toBe("GD007");
+      await setDay(d1Admin, p.plsr1Soldier, today, st.Z);
+      const del = as(plsrClerk, (tx) => tx.delete(days).where(and(eq(days.personId, p.plsr1Soldier), eq(days.day, today))));
+      expect(await codeOf(del)).toBe("GD007");
+      await setDay(plsrClerk, p.plsrSoldier, today, st.A); // company level: not part of the platoon's send
+      await setDay(plsr1Cmdr, p.plsr1Soldier, addDays(today, 1), st.A); // another day stays open
+    });
+
+    it("a company send closes the company and its platoons; the sender's name is readable", async () => {
+      await send(plsrClerk, ids.plsr);
+      expect(await codeOf(setDay(plsrClerk, p.plsrSoldier, today, st.Z))).toBe("GD007");
+      await setDay(plntClerk, p.plntSoldier, today, st.A); // another company
+      await setDay(d1Admin, p.plsrSoldier, today, st.Z);
+      const seen = await sendsOf(plntClerk);
+      expect(seen.find((r) => r.unit_id === ids.plsr)?.sent_by_name).toBe(plsrClerk.email);
+      expect(await sendsOf(stranger)).toHaveLength(0);
+    });
+
+    it("only a doch1 admin covering the unit reopens; reopening is audited", async () => {
+      expect(await as(plsrClerk, (tx) => tx.delete(sends).returning())).toHaveLength(0);
+      expect(await as(plsr1Cmdr, (tx) => tx.delete(sends).returning())).toHaveLength(0);
+      expect(await as(d1Admin, (tx) => tx.delete(sends).returning())).toHaveLength(2);
+      await setDay(plsrClerk, p.plsrSoldier, today, st.A);
+      await setDay(plsr1Cmdr, p.plsr1Soldier, today, st.A);
+      const log = await db.select().from(auditLog).where(and(eq(auditLog.tableName, "doch1_report_sends"), eq(auditLog.action, "delete")));
+      expect(log.filter((r) => r.actorUserId === d1Admin.appId)).toHaveLength(2);
+    });
+  });
 });
 
 describe("department master admins", () => {

@@ -1,14 +1,15 @@
 "use server";
 /**
  * Writing day statuses: one soldier, "fill the missing from yesterday", group update and its undo.
- * can() decides the clear message; RLS and the doch1_days_guard trigger (lock time, round dates)
- * enforce the same rules again — a page opened before the lock gets GD001 on submit.
+ * can() decides the clear message; RLS and the doch1_days_guard trigger (lock time, round dates, a sent
+ * report) enforce the same rules again — a page opened before the lock gets GD001 on submit, after the
+ * report was sent GD007.
  */
 import { z } from "zod";
 import { addDays, dayRange, dayKey, fillFromYesterdayPlan, planBulkWrite, type DayWrite } from "@gdud/core";
 import { and, eq, inArray, schema, sql, withUser, type Tx } from "@gdud/db";
 import { actionError, UserError, type ActionOutcome, type ActionResult } from "@/lib/action-result";
-import { listedOn, loadDays, loadMembers, loadStatuses, membersUnder } from "@/lib/doch1/data";
+import { listedOn, loadDays, loadMembers, loadReportSends, loadStatuses, membersUnder, sendClosing } from "@/lib/doch1/data";
 import { dayParam, doch1Ctx, firstIssue, NO_PERMISSION, NO_ROUND, revalidateDoch1, uuid, type Doch1Ctx } from "./common";
 
 const { people, doch1Days: days } = schema;
@@ -86,9 +87,17 @@ export async function fillFromYesterday(input: { unitId: string; day: string }):
   try {
     assertInRound(ctx, day);
     const filled = await withUser(ctx.s.claims, async (tx) => {
-      const members = listedOn(membersUnder(await loadMembers(tx, ctx.round.id, ctx.s.units), unitId, ctx.s.units), day);
       const yesterday = addDays(day, -1);
-      const [loaded, statuses] = await Promise.all([loadDays(tx, ctx.round.id, [day, yesterday]), loadStatuses(tx, ctx.round.id, { includeInactive: true })]);
+      const [all, loaded, statuses, sends] = await Promise.all([
+        loadMembers(tx, ctx.round.id, ctx.s.units),
+        loadDays(tx, ctx.round.id, [day, yesterday]),
+        loadStatuses(tx, ctx.round.id, { includeInactive: true }),
+        loadReportSends(tx, ctx.round.id, day),
+      ]);
+      // soldiers under a sent report (a platoon that already sent) stay as they are, unless the user is their admin
+      const members = listedOn(membersUnder(all, unitId, ctx.s.units), day).filter(
+        (m) => ctx.access.canReopen(m.unitId) || !sendClosing(m.unitId, sends, ctx.s.parents),
+      );
       // a status replaced since yesterday (new flags version) is written as its current version
       const replacedBy = new Map(
         (await tx.select({ id: schema.doch1Statuses.id, replacesId: schema.doch1Statuses.replacesId }).from(schema.doch1Statuses).where(eq(schema.doch1Statuses.roundId, ctx.round.id)))

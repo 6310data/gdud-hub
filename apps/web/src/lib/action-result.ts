@@ -16,6 +16,8 @@ export function dbErrorMessage(err: unknown): string {
   // raised by the company-standby guards (0035_company_standby_security.sql)
   if (code === "GD005") return "צוות של פלוגה מקבל רק חיילים ורכבים של אותה פלוגה.";
   if (code === "GD006") return "רק מנהל גדודי בדוח 1 מעביר צוות או רכב בין פלוגות.";
+  // raised by the doch1_days_guard trigger once the report was sent (0043_doch1_report_sends_security.sql)
+  if (code === "GD007") return "הדוח של היום הזה כבר נשלח. רק מנהל דוח 1 יכול לשנות אותו או לפתוח אותו מחדש.";
   // raised by the vehicle-stock guards (0041_kesher_vehicle_company_stock_security.sql)
   if (code === "GD120") return "אין מספיק מהפריט הזה חתום על הפלוגה (חלק כבר על רכבים).";
   if (code === "GD121") return "הרכב או הציוד לא של הפלוגה. רעננו את הדף.";

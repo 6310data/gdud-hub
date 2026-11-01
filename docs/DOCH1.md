@@ -20,8 +20,11 @@ The daily personnel report module (`/doch1`). Design: `docs/superpowers/specs/20
 | שבצ״ק וכוננות pages | `apps/web/src/app/(shell)/doch1/standby/` (actions: `_actions/standby.ts`; loaders: `apps/web/src/lib/doch1/standby.ts`) |
 | Sheet import (xlsx → parse → plan → apply) | `packages/db/src/doch1-import/`, tested in `packages/db/test/doch1-import.test.ts` |
 | Push sender + reminder job | `apps/web/src/lib/doch1/push.ts`, `reminder-job.ts`, endpoint `apps/web/src/app/api/doch1/cron/route.ts` |
+| שליחת הדוח (send / reopen, the closed day `GD007`, the admins' push) | actions `_actions/report-sends.ts`; table `doch1_report_sends` (`0042_doch1_report_sends.sql`), RLS and the guard `0043_doch1_report_sends_security.sql`; push `apps/web/src/lib/doch1/report-sent-job.ts` |
 
 The lock is enforced by the database: a write to today after the round's lock time (Israel time) by anyone but a battalion-wide doch1 admin is rejected, whatever the screen shows.
+
+**שליחת הדוח.** The today screen (also ניהול פלוגה › דוחות) has "שליחת הדוח" for the unit and day shown (today or a past day), for whoever reports for that unit; a sheet confirms it and warns while soldiers have no status. Sending records who and when and closes the day: soldiers under that unit (a company's send covers its platoons; a platoon's only that platoon) can no longer be changed by company users and platoon commanders (`GD007`, enforced by the day guard) — the screen shows "הדוח נשלח · <name> · <time>" read-only. A doch1 admin covering the unit still edits and can "פתיחת הדוח מחדש" (deletes the send, audited). The next cron run pushes "<unit> שלחה את דוח 1 להיום" to the doch1 admins and master admins covering the unit (not the sender); a report reopened before the run sends nothing. Migrations: `0042_doch1_report_sends`, `0043_doch1_report_sends_security`.
 
 ## Environment variables
 
