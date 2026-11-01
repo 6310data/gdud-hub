@@ -136,7 +136,7 @@ export default async function KesherSerials({ searchParams }: { searchParams: Pr
                     <th>חותם</th>
                     <th className="max-md:hidden">תפקיד · מסגרת</th>
                     <th className="max-md:hidden">נבדק בפלוגה</th>
-                    <th className="max-md:hidden">צהוב בעיניים</th>
+                    <th>צהוב בעיניים</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -156,7 +156,7 @@ export default async function KesherSerials({ searchParams }: { searchParams: Pr
                       <td className="max-md:hidden">
                         {x.location === "company" ? <SeenChip seen={lastSeen.get(x.id)} warnDays={data.warnDays} alertDays={data.alertDays} now={now} /> : null}
                       </td>
-                      <td className="max-md:hidden">
+                      <td>
                         {x.location === "brigade" ? null : (
                           <AgeChip at={lastEye.get(x.id)?.at} by={lastEye.get(x.id)?.byName} warnDays={data.warnDays} alertDays={data.alertDays} now={now} />
                         )}

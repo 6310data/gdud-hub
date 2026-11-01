@@ -11,6 +11,7 @@
  *   import answers (tab/platoon/status)      → doch1_import_mappings
  *   push reminders                           → doch1_push_subscriptions, doch1_reminder_requests, doch1_reminder_log
  *   brigade WhatsApp text copies             → doch1_brigade_log
+ *   "שליחת הדוח" (a unit closed its day)     → doch1_report_sends
  *   שבצ״ק מיקום (E)                          → doch1_locations + doch1_members.location_id
  *   שבצ״ק כוננות (G) + שיבוץ כלים (צ כלי, F) → doch1_standby_types / _teams / _holders / _members,
  *                                              doch1_vehicles (battalion-wide, not per round)
@@ -323,6 +324,36 @@ export const doch1BrigadeLog = pgTable(
   (t) => [
     check("doch1_brigade_log_content_len", sql`length(${t.content}) <= 20000`),
     index("doch1_brigade_log_round_day_idx").on(t.roundId, t.day),
+  ],
+).enableRLS();
+
+/**
+ * "שליחת הדוח": a unit's report for a day was sent. It closes the day for the soldiers under that unit
+ * (a company's row closes its platoons too) for everyone but a דוח 1 admin covering them (the day guard,
+ * GD007 in 0043). Reopening deletes the row (audited). The cron job pushes it to the battalion's דוח 1
+ * admins once (`notified_at`, claimed before sending).
+ */
+export const doch1ReportSends = pgTable(
+  "doch1_report_sends",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    roundId: uuid("round_id")
+      .notNull()
+      .references(() => doch1Rounds.id, { onDelete: "cascade" }),
+    unitId: uuid("unit_id")
+      .notNull()
+      .references(() => units.id, { onDelete: "cascade" }),
+    day: day("day").notNull(),
+    sentBy: actor("sent_by"),
+    sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
+    /** set by the cron job when it takes the row (pushed or too old to push) */
+    notifiedAt: timestamp("notified_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("doch1_report_sends_round_unit_day").on(t.roundId, t.unitId, t.day),
+    index("doch1_report_sends_round_day_idx").on(t.roundId, t.day),
+    index("doch1_report_sends_open_idx").on(t.notifiedAt),
   ],
 ).enableRLS();
 

@@ -6,7 +6,7 @@ import { withUser } from "@gdud/db";
 import { doch1Access } from "@/lib/doch1/access";
 import { listedOn, loadDays, loadMembers, loadRoundCompanies, loadStatuses } from "@/lib/doch1/data";
 import { doch1Rounds } from "@/lib/doch1/rounds";
-import { loadLocations, loadStandbyTypes, loadTeams, loadVehicles, standbyCompanies, withReadiness } from "@/lib/doch1/standby";
+import { loadLocations, loadStandbyTypes, loadTeams, loadVehicleGear, loadVehicles, standbyCompanies, withReadiness } from "@/lib/doch1/standby";
 import type { UnitNode } from "@gdud/core";
 import type { Session } from "@/lib/session";
 import { DayNav } from "../_components/day-nav";
@@ -57,7 +57,7 @@ export async function StandbyScreen({ s, sp, path, company }: StandbyScreenProps
   const data = await withUser(s.claims, async (tx) => {
     // teams, members and locations are current; availability and the checks follow `day`'s דוח 1
     const day = sp.day && isDay(sp.day) && sp.day >= round.startsOn && sp.day <= round.endsOn ? sp.day : today;
-    const [companies, members, statuses, locations, types, vehicles, teams, days] = await Promise.all([
+    const [companies, members, statuses, locations, types, vehicles, teams, days, gear] = await Promise.all([
       loadRoundCompanies(tx, round.id),
       loadMembers(tx, round.id, s.units),
       loadStatuses(tx, round.id, { includeInactive: true }),
@@ -66,9 +66,11 @@ export async function StandbyScreen({ s, sp, path, company }: StandbyScreenProps
       loadVehicles(tx),
       loadTeams(tx, round.id),
       loadDays(tx, round.id, [day]),
+      // only the battalion admin moves vehicles between companies (and only they get rows)
+      doch1Access(s).isAdmin && !company ? loadVehicleGear(tx) : Promise.resolve(new Map<string, { serials: number; bulk: number }>()),
     ]);
     // soldiers not called up yet or already released that day are not in the שבצ״ק lists
-    return { round, shownDay: day, companies, members: listedOn(members, day), statuses, locations, types, vehicles, teams, day: days.get(day)! };
+    return { round, shownDay: day, companies, members: listedOn(members, day), statuses, locations, types, vehicles, teams, day: days.get(day)!, gear };
   });
   if (!data) return null; // the layout shows "אין סבב פעיל"
 
@@ -157,6 +159,7 @@ export async function StandbyScreen({ s, sp, path, company }: StandbyScreenProps
       teams: using.map((t) => `${t.name}${t.holders && !company ? ` · ${t.holders}` : ""}`).join(", "),
       company: v.unitId ? (s.units.find((u) => u.id === v.unitId)?.name ?? null) : null,
       editable: access.isAdmin || (!!v.unitId && access.canEditCompanyStandby(v.unitId)) || using.some(canEdit),
+      gear: data.gear.get(v.id) ?? null,
     };
   });
 

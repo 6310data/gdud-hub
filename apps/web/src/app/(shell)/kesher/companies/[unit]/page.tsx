@@ -6,13 +6,14 @@ import { withUser } from "@gdud/db";
 import { Icon, Serial } from "@gdud/ui";
 import { Empty, PageHeader, SmallTile } from "@/components/page-parts";
 import { kesherAccess } from "@/lib/kesher/access";
-import { companyStatus, groupBy, loadKesher, loadLastChecks, loadLastSeen, loadMissing, loadVehicles, placeTotal, stockKey, vehicleLabel } from "@/lib/kesher/data";
+import { companyStatus, groupBy, loadKesher, loadLastChecks, loadLastSeen, loadMissing, loadVehicles, placeTotal, stockKey, vehicleLabel, type KVehicle } from "@/lib/kesher/data";
 import { loadPeople, personPlace } from "@/lib/logistics/data";
 import { fmtCount, fmtWhen } from "@/lib/logistics/format";
 import { requireModule } from "@/lib/session";
 import { CompanyDot, ReportChip, SearchBox, SeenChip, SegLinks, SoldierName, pillCount } from "../../_components/ui";
 import type { SheetPerson } from "../../_components/serial-sheet";
 import { AssignProvider, GroupCheck, RowCheck, RowEdit } from "./_components/assign";
+import { VehicleAssign } from "./_components/vehicle-assign";
 
 export const metadata = { title: "פלוגה" };
 
@@ -24,9 +25,10 @@ const searchSchema = z.object({
 
 /**
  * פלוגה (mockup #/companies/<unit>): the company's צ׳ grouped by device type with who holds each
- * inside the company, and its ציוד משלים against the תקן. Anyone covering the company edits the
- * שיוך בתוך הפלוגה (soldier · תפקיד · מסגרת) and files a דוח צ׳ (/kesher/check); a battalion admin
- * also edits חותם על הפלוגה.
+ * inside the company, and its ציוד משלים against the תקן with how much of it is on each of the
+ * company's vehicles. Anyone covering the company edits the שיוך בתוך הפלוגה (soldier · תפקיד ·
+ * מסגרת), puts ציוד משלים on the company's vehicles and files a דוח צ׳ (/kesher/check); a battalion
+ * admin also edits חותם על הפלוגה.
  */
 export default async function KesherCompany({
   params,
@@ -49,7 +51,7 @@ export default async function KesherCompany({
       loadLastChecks(tx),
       loadLastSeen(tx),
       loadPeople(tx, s.units),
-      access.isAdmin ? loadVehicles(tx) : Promise.resolve([]),
+      loadVehicles(tx),
     ]);
     const last = lastChecks.get(company.id);
     const missing = last && last.found < last.total ? await loadMissing(tx, last.id) : [];
@@ -155,11 +157,11 @@ export default async function KesherCompany({
       </div>
 
       {f.tab === "comp" ? (
-        <CompTable data={data} unitId={company.id} serials={mine} />
+        <CompTable data={data} unitId={company.id} serials={mine} vehicles={vehicles.filter((v) => v.unitId === company.id)} canAssign={access.covers(company.id)} />
       ) : (
         <AssignProvider
           isAdmin={access.isAdmin}
-          vehicles={vehicles.map((v) => ({ number: v.number, label: vehicleLabel(v) }))}
+          vehicles={(access.isAdmin ? vehicles : []).map((v) => ({ number: v.number, label: vehicleLabel(v) }))}
           people={people}
           companies={access.companies.map((c) => ({ id: c.id, name: c.name }))}
           rows={mine.map((x) => ({
@@ -313,8 +315,22 @@ function GroupRows({
   );
 }
 
-/** חתומים / לפי תקן / פער per ציוד משלים item. */
-function CompTable({ data, unitId, serials }: { data: Awaited<ReturnType<typeof loadKesher>>; unitId: string; serials: { itemName: string }[] }) {
+/** חתומים / על רכבים / לפי תקן / פער per ציוד משלים item, and שיוך לרכב. */
+function CompTable({
+  data,
+  unitId,
+  serials,
+  vehicles,
+  canAssign,
+}: {
+  data: Awaited<ReturnType<typeof loadKesher>>;
+  unitId: string;
+  serials: { itemName: string }[];
+  /** the company's vehicles */
+  vehicles: KVehicle[];
+  canAssign: boolean;
+}) {
+  const number = new Map(vehicles.map((v) => [v.id, v.number]));
   const counts = new Map<string, number>();
   for (const x of serials) counts.set(x.itemName, (counts.get(x.itemName) ?? 0) + 1);
   const std = expandKit(counts, data.kits);
@@ -329,8 +345,10 @@ function CompTable({ data, unitId, serials }: { data: Awaited<ReturnType<typeof 
                 <th>פריט</th>
                 <th>קטגוריה</th>
                 <th>חתומים</th>
+                <th>על רכבים</th>
                 <th>לפי תקן</th>
                 <th>פער</th>
+                {canAssign && vehicles.length ? <th /> : null}
               </tr>
             </thead>
             <tbody>
@@ -338,13 +356,38 @@ function CompTable({ data, unitId, serials }: { data: Awaited<ReturnType<typeof 
                 const have = data.stock.get(stockKey(i.id, unitId)) ?? 0;
                 const want = std.get(i.name) ?? 0;
                 const d = have - want;
+                const shares = data.onVehicles.get(stockKey(i.id, unitId)) ?? [];
+                const onVehicles = shares.reduce((n, x) => n + x.qty, 0);
                 return (
                   <tr key={i.id}>
                     <th scope="row">{i.name}</th>
                     <td className="text-ink-muted">{i.category ?? ""}</td>
                     <td className="tz-num font-semibold">{fmtCount(have)}</td>
+                    <td>
+                      {shares.length ? (
+                        <span className="flex flex-col gap-0.5 text-[13px]">
+                          {shares.map((x) => (
+                            <span key={x.vehicleId}>
+                              <span className="tz-num font-semibold">{fmtCount(x.qty)}</span> ברכב <Serial>{number.get(x.vehicleId) ?? "—"}</Serial>
+                            </span>
+                          ))}
+                        </span>
+                      ) : (
+                        <span className="tz-zero">—</span>
+                      )}
+                    </td>
                     <td className={`tz-num ${want ? "" : "tz-zero"}`}>{fmtCount(want)}</td>
                     <td className="tz-num">{d === 0 ? <span className="tz-zero">—</span> : d < 0 ? <span className="font-semibold text-danger">{d}</span> : `+${d}`}</td>
+                    {canAssign && vehicles.length ? (
+                      <td>
+                        <VehicleAssign
+                          itemId={i.id}
+                          itemName={i.name}
+                          free={Math.max(0, have - onVehicles)}
+                          vehicles={vehicles.map((v) => ({ id: v.id, label: vehicleLabel(v), qty: shares.find((x) => x.vehicleId === v.id)?.qty ?? 0 }))}
+                        />
+                      </td>
+                    ) : null}
                   </tr>
                 );
               })}
@@ -354,7 +397,10 @@ function CompTable({ data, unitId, serials }: { data: Awaited<ReturnType<typeof 
           <Empty>אין ציוד משלים על הפלוגה</Empty>
         )}
       </div>
-      <p className="tz-section-footer">&quot;לפי תקן&quot; מחושב מהצ׳ שעל הפלוגה ומטבלת תקן הציוד המשלים. פער שלילי = הפלוגה חתומה על פחות מהתקן.</p>
+      <p className="tz-section-footer">
+        &quot;לפי תקן&quot; מחושב מהצ׳ שעל הפלוגה ומטבלת תקן הציוד המשלים. פער שלילי = הפלוגה חתומה על פחות מהתקן. &quot;על רכבים&quot; הוא חלק מהחתומים — ציוד
+        שהפלוגה שמה על הרכבים שלה.
+      </p>
     </>
   );
 }

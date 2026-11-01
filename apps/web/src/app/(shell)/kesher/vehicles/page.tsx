@@ -5,7 +5,7 @@ import { withUser } from "@gdud/db";
 import { Chip, Serial } from "@gdud/ui";
 import { Empty, Kpi, PageHeader, SmallTile } from "@/components/page-parts";
 import { kesherAccess } from "@/lib/kesher/access";
-import { groupBy, loadKesher, loadVehicles, vehicleLabel, type KSerial, type KVehicle } from "@/lib/kesher/data";
+import { groupBy, loadKesher, loadVehicles, stockKey, vehicleLabel, type KesherData, type KSerial, type KVehicle } from "@/lib/kesher/data";
 import { companiesOf } from "@/lib/logistics/data";
 import { fmtCount } from "@/lib/logistics/format";
 import { requireModule } from "@/lib/session";
@@ -120,19 +120,35 @@ export default async function KesherVehicles({ searchParams }: { searchParams: P
         number: v.number,
         label: vehicleLabel(v),
         stock: Object.fromEntries(data.vehicleStock.get(v.id) ?? []),
+        unitId: v.unitId,
+        company: v.unitId ? (refs.get(v.unitId)?.name ?? "הפלוגה") : null,
       }))}
       serials={data.serials.map((x) => ({
         id: x.id,
         serial: x.serial,
         item: x.itemName,
-        place: x.location === "company" ? (refs.get(x.unitId ?? "")?.name ?? "פלוגה") : x.location === "warehouse" ? "במחסן" : "ללא שיוך",
+        place: x.location === "company" ? (refs.get(x.unitId ?? "")?.name ?? "פלוגה") : x.location === "warehouse" ? (x.condition === "ok" ? "במחסן" : "במחסן · תקול") : "ללא שיוך",
         vehicle: x.vehicle,
+        unitId: x.unitId,
+        signable: x.location === "warehouse" && x.condition === "ok",
       }))}
-      items={data.items.filter((i) => i.kind === "bulk").map((i) => ({ id: i.id, name: i.name, available: data.available(i.id) }))}
+      items={data.items
+        .filter((i) => i.kind === "bulk")
+        .map((i) => ({ id: i.id, name: i.name, available: data.available(i.id), free: companyFree(data, i.id, vehicles) }))}
     >
       {page}
     </VehicleProvider>
   );
+}
+
+/** company id → how much of an item the company holds and has not put on a vehicle yet. */
+function companyFree(data: KesherData, itemId: string, vehicles: readonly KVehicle[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const unitId of new Set(vehicles.map((v) => v.unitId).filter((u): u is string => Boolean(u)))) {
+    const on = (data.onVehicles.get(stockKey(itemId, unitId)) ?? []).reduce((n, x) => n + x.qty, 0);
+    out[unitId] = Math.max(0, (data.stock.get(stockKey(itemId, unitId)) ?? 0) - on);
+  }
+  return out;
 }
 
 function VehicleCard({ card, refs, admin }: { card: Card; refs: ReadonlyMap<string, CompanyRef>; admin: boolean }) {

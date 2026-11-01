@@ -281,7 +281,11 @@ export const kesherSettings = pgTable(
   ],
 ).enableRLS();
 
-/** ציוד משלים on a vehicle (from דוח 1's vehicle list). It comes out of the warehouse, like a company's. */
+/**
+ * ציוד משלים on a vehicle (from דוח 1's vehicle list). `unit_id` = the company whose signed quantity
+ * (kesher_stock) it is part of — a company puts on its vehicles only what it signed for. Null = it
+ * came straight out of the warehouse (a battalion vehicle, no company).
+ */
 export const kesherVehicleStock = pgTable(
   "kesher_vehicle_stock",
   {
@@ -292,10 +296,15 @@ export const kesherVehicleStock = pgTable(
     itemId: uuid("item_id")
       .notNull()
       .references(() => kesherItems.id, { onDelete: "cascade" }),
+    unitId: uuid("unit_id").references(() => units.id, { onDelete: "restrict" }),
     qty: integer("qty").notNull(),
     ...timestamps,
   },
-  (t) => [unique("kesher_vehicle_stock_vehicle_item").on(t.vehicleId, t.itemId), check("kesher_vehicle_stock_qty", sql`${t.qty} between 1 and 9999`)],
+  (t) => [
+    unique("kesher_vehicle_stock_vehicle_item").on(t.vehicleId, t.itemId),
+    index("kesher_vehicle_stock_unit_idx").on(t.unitId, t.itemId),
+    check("kesher_vehicle_stock_qty", sql`${t.qty} between 1 and 9999`),
+  ],
 ).enableRLS();
 
 /** צהוב בעיניים: someone of מחלקת הקשר saw the צ׳. Append-only; the newest row per צ׳ counts. */

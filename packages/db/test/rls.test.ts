@@ -1095,6 +1095,65 @@ describe("doch1", () => {
       }
     });
   });
+
+  describe("doch1 report sends", () => {
+    const { doch1ReportSends: sends } = schema;
+    const send = (u: TestUser, unitId: string, day = today, extra: Partial<typeof sends.$inferInsert> = {}) =>
+      as(u, (tx) => tx.insert(sends).values({ roundId, unitId, day, ...extra }).returning());
+    const codeOf = (p: Promise<unknown>) => p.then(() => "ok", pgCodeOf);
+    const sendsOf = (u: TestUser) =>
+      as(u, async (tx) => {
+        const r = await tx.execute<{ unit_id: string; sent_by_name: string | null }>(sql`select * from app.doch1_report_sends_of(${roundId}::uuid, ${today}::date)`);
+        return Array.isArray(r) ? r : ((r as { rows: unknown[] }).rows as typeof r);
+      });
+
+    it("the unit's reporters send it, in their own name; another company, a viewer or a future day can't", async () => {
+      await rejects(send(plntClerk, ids.plsr));
+      await rejects(send(d1Viewer, ids.plsr));
+      await rejects(send(stranger, ids.plsr));
+      await rejects(send(plsr1Cmdr, ids.plsr)); // a platoon commander sends their platoon, not the company
+      await rejects(send(plsrClerk, ids.plsr, addDays(today, 1)));
+      await rejects(send(plsrClerk, ids.plsr, addDays(today, 31))); // outside the round
+      const [row] = await send(plsr1Cmdr, ids.plsr1, today, { sentBy: d1Admin.appId!, sentAt: new Date(0), notifiedAt: new Date() });
+      expect(row!.sentBy).toBe(plsr1Cmdr.appId);
+      expect(row!.notifiedAt).toBeNull();
+      expect(row!.sentAt.getTime()).toBeGreaterThan(0);
+      expect(await codeOf(send(plsrClerk, ids.plsr1))).toBe("23505"); // once per unit and day
+      expect(await as(plntClerk, (tx) => tx.select().from(sends))).toHaveLength(1); // everyone in doch1 sees what was sent
+      expect(await as(stranger, (tx) => tx.select().from(sends))).toHaveLength(0);
+      await rejects(as(plsr1Cmdr, (tx) => tx.update(sends).set({ notifiedAt: new Date() }))); // the job's column
+    });
+
+    it("a sent platoon is closed to its company user and commander; the company level and an admin still write", async () => {
+      expect(await codeOf(setDay(plsr1Cmdr, p.plsr1Soldier, today, st.A))).toBe("GD007");
+      expect(await codeOf(setDay(plsrClerk, p.plsr1Soldier, today, st.Z))).toBe("GD007");
+      await setDay(d1Admin, p.plsr1Soldier, today, st.Z);
+      const del = as(plsrClerk, (tx) => tx.delete(days).where(and(eq(days.personId, p.plsr1Soldier), eq(days.day, today))));
+      expect(await codeOf(del)).toBe("GD007");
+      await setDay(plsrClerk, p.plsrSoldier, today, st.A); // company level: not part of the platoon's send
+      await setDay(plsr1Cmdr, p.plsr1Soldier, addDays(today, 1), st.A); // another day stays open
+    });
+
+    it("a company send closes the company and its platoons; the sender's name is readable", async () => {
+      await send(plsrClerk, ids.plsr);
+      expect(await codeOf(setDay(plsrClerk, p.plsrSoldier, today, st.Z))).toBe("GD007");
+      await setDay(plntClerk, p.plntSoldier, today, st.A); // another company
+      await setDay(d1Admin, p.plsrSoldier, today, st.Z);
+      const seen = await sendsOf(plntClerk);
+      expect(seen.find((r) => r.unit_id === ids.plsr)?.sent_by_name).toBe(plsrClerk.email);
+      expect(await sendsOf(stranger)).toHaveLength(0);
+    });
+
+    it("only a doch1 admin covering the unit reopens; reopening is audited", async () => {
+      expect(await as(plsrClerk, (tx) => tx.delete(sends).returning())).toHaveLength(0);
+      expect(await as(plsr1Cmdr, (tx) => tx.delete(sends).returning())).toHaveLength(0);
+      expect(await as(d1Admin, (tx) => tx.delete(sends).returning())).toHaveLength(2);
+      await setDay(plsrClerk, p.plsrSoldier, today, st.A);
+      await setDay(plsr1Cmdr, p.plsr1Soldier, today, st.A);
+      const log = await db.select().from(auditLog).where(and(eq(auditLog.tableName, "doch1_report_sends"), eq(auditLog.action, "delete")));
+      expect(log.filter((r) => r.actorUserId === d1Admin.appId)).toHaveLength(2);
+    });
+  });
 });
 
 describe("department master admins", () => {
@@ -2318,7 +2377,8 @@ describe("company", () => {
       expect(await call(cPlntAdmin, sql`select * from app.company_vehicles(${ids.plsr}::uuid)`)).toHaveLength(0);
       const opts = await call<{ kind: string; serial: string | null; name: string; available: number | null }>(cAdmin, sql`select * from app.company_vehicle_options(${ids.plsr}::uuid)`);
       expect(opts.find((o) => o.serial === "CO-K1")).toMatchObject({ kind: "serial" });
-      expect(opts.find((o) => o.name === "סוללות פלוגה")?.available).toBe(7);
+      // the ציוד משלים the company signed for, all of it free (none on a vehicle yet)
+      expect(opts.find((o) => o.name === "סוללות פלוגה")?.available).toBe(3);
       expect(await call(cCmdr, sql`select * from app.company_vehicle_options(${ids.plsr}::uuid)`)).toHaveLength(0);
     });
 
@@ -2338,17 +2398,76 @@ describe("company", () => {
       await failsWith(mount(cAdmin, truck, false), "GD121");
     });
 
-    it("ציוד משלים comes out of the kesher warehouse's תקינים and goes back to it", async () => {
-      await setQty(cAdmin, 5);
-      expect((await db.select().from(vStock).where(eq(vStock.vehicleId, truck)))[0]!.qty).toBe(5);
-      // the warehouse now has 10 − 3 (company) − 5 (vehicle) = 2
-      await failsWith(setQty(cAdmin, 8), "GD120");
-      await rejects(setQty(cCmdr, 6));
+    it("ציוד משלים on a vehicle comes out of the company's signed quantity, never the warehouse", async () => {
+      await setQty(cAdmin, 2);
+      const [row] = await db.select().from(vStock).where(eq(vStock.vehicleId, truck));
+      expect(row).toMatchObject({ qty: 2, unitId: ids.plsr });
+      // the company signed for 3: no more than that on its vehicles, whatever the warehouse holds
+      await failsWith(setQty(cAdmin, 4), "GD120");
+      await rejects(setQty(cCmdr, 3));
+      await setQty(cAdmin, 3);
+      // the warehouse is 10 − 3 (company, vehicle part included)
+      const opts = await call<{ name: string; available: number }>(cAdmin, sql`select * from app.company_vehicle_options(${ids.plsr}::uuid)`);
+      expect(opts.find((o) => o.name === "סוללות פלוגה")?.available).toBe(0);
+      // the company's quantity can't drop below what is on its vehicles (זיכוי takes it off first)
+      await failsWith(db.update(kStock).set({ qty: 2 }).where(and(eq(kStock.itemId, batteries), eq(kStock.unitId, ids.plsr))), "GD122");
+      // nor can a direct row put more on a vehicle than the company holds
+      await failsWith(db.update(vStock).set({ qty: 4 }).where(eq(vStock.vehicleId, truck)), "GD120");
       await setQty(cAdmin, 0);
       expect(await db.select().from(vStock).where(eq(vStock.vehicleId, truck))).toHaveLength(0);
       const logged = (await db.select().from(kEvents).where(eq(kEvents.kind, "vehicle_stock"))).filter((e) => e.item === "סוללות פלוגה");
-      expect(logged.map((e) => e.qty)).toEqual([5, 0]);
+      expect(logged.map((e) => e.qty)).toEqual([2, 3, 0]);
       expect(logged.every((e) => e.actorUserId === cAdmin.appId && e.unitId === ids.plsr)).toBe(true);
+    });
+
+    it("a kesher user covering the company sets it too; one of another company can't; a battalion vehicle isn't a company's", async () => {
+      const mine: TestUser = { authId: randomUUID(), email: "veh-kesher-plsr@example.com" };
+      const other: TestUser = { authId: randomUUID(), email: "veh-kesher-plnt@example.com" };
+      for (const [u, unitId] of [
+        [mine, ids.plsr],
+        [other, ids.plnt],
+      ] as const) {
+        const [row] = await db.insert(appUsers).values({ email: u.email, authUserId: u.authId }).returning();
+        await db.insert(memberships).values({ userId: row!.id, module: "kesher", role: "user", unitId });
+      }
+      await rejects(setQty(other, 1));
+      await setQty(mine, 1);
+      expect((await db.select().from(vStock).where(eq(vStock.vehicleId, truck)))[0]!.qty).toBe(1);
+      await failsWith(call(mine, sql`select app.company_vehicle_stock(${battalionTruck}::uuid, ${batteries}::uuid, 1)`), "GD121");
+      await setQty(mine, 0);
+    });
+
+    it("a vehicle's gear is its own company's; it goes with the vehicle when דוח 1 moves it; the company's row can't go while gear is on", async () => {
+      // not another company's, not the warehouse's on a company vehicle
+      await failsWith(db.insert(vStock).values({ vehicleId: truck, itemId: batteries, unitId: null, qty: 1 }), "GD121");
+      await failsWith(db.insert(vStock).values({ vehicleId: truck, itemId: batteries, unitId: ids.plnt, qty: 1 }), "GD121");
+      await setQty(cAdmin, 2);
+      await mount(cAdmin, truck);
+      await failsWith(db.delete(kStock).where(and(eq(kStock.itemId, batteries), eq(kStock.unitId, ids.plsr))), "GD122");
+      const qtyOf = async (unitId: string) => (await db.select().from(kStock).where(and(eq(kStock.itemId, batteries), eq(kStock.unitId, unitId))))[0]?.qty ?? 0;
+
+      // the battalion admin sees what is on it before moving it
+      const d1: TestUser = { authId: randomUUID(), email: "veh-doch1-admin@example.com" };
+      const [u] = await db.insert(appUsers).values({ email: d1.email, authUserId: d1.authId }).returning();
+      await db.insert(memberships).values({ userId: u!.id, module: "doch1", role: "admin", unitId: null });
+      const gear = await call<{ vehicle_id: string; serials: number; bulk: number }>(d1, sql`select * from app.vehicle_kesher_gear()`);
+      expect(gear.find((g) => g.vehicle_id === truck)).toMatchObject({ serials: 1, bulk: 2 });
+      expect(await call(cAdmin, sql`select * from app.vehicle_kesher_gear()`)).toHaveLength(0);
+
+      const [before] = await db.select().from(vehicles).where(eq(vehicles.id, truck));
+      await db.update(vehicles).set({ unitId: ids.plnt }).where(eq(vehicles.id, truck));
+      expect((await db.select().from(vStock).where(eq(vStock.vehicleId, truck)))[0]).toMatchObject({ unitId: ids.plnt, qty: 2 });
+      expect([await qtyOf(ids.plsr), await qtyOf(ids.plnt)]).toEqual([1, 2]);
+      expect((await db.select().from(kSerials).where(eq(kSerials.id, radio)))[0]).toMatchObject({ location: "company", unitId: ids.plnt, vehicle: "CO-777" });
+      const moved = (await db.select().from(kEvents)).filter((e) => e.details?.startsWith("עם רכב CO-777"));
+      expect(moved.map((e) => `${e.kind}:${e.unitId === ids.plsr ? "plsr" : "plnt"}:${e.serial ?? e.qty}`).sort()).toEqual(["credit:plsr:2", "credit:plsr:CO-K1", "sign:plnt:2", "sign:plnt:CO-K1"]);
+
+      // and back
+      await db.update(vehicles).set({ unitId: before!.unitId }).where(eq(vehicles.id, truck));
+      expect([await qtyOf(ids.plsr), await qtyOf(ids.plnt)]).toEqual([3, 0]);
+      expect((await db.select().from(kSerials).where(eq(kSerials.id, radio)))[0]).toMatchObject({ unitId: ids.plsr, vehicle: "CO-777" });
+      await setQty(cAdmin, 0);
+      await mount(cAdmin, truck, false);
     });
   });
 });

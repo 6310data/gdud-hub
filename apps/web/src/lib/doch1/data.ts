@@ -3,7 +3,21 @@ import "server-only";
  * דוח 1 read models. Every loader takes the caller's `withUser` transaction, so what comes
  * back is already filtered by RLS (a platoon commander sees their platoon).
  */
-import { byHe, inService, inServiceBetween, placement, type ArrivalEffect, type Day, type EnlistmentEffect, type ReportMember, type ServiceDates, type StatusDef, type UnitNode } from "@gdud/core";
+import {
+  byHe,
+  inService,
+  inServiceBetween,
+  lineage,
+  placement,
+  type ArrivalEffect,
+  type Day,
+  type EnlistmentEffect,
+  type ReportMember,
+  type ServiceDates,
+  type StatusDef,
+  type UnitNode,
+  type UnitParents,
+} from "@gdud/core";
 import { and, asc, eq, inArray, schema, sql, type Tx } from "@gdud/db";
 
 const { people, doch1Rounds: rounds, doch1RoundCompanies: roundCompanies, doch1Statuses: statuses } = schema;
@@ -257,4 +271,32 @@ export async function countMembersByCompany(tx: Tx, roundId: string, units: Unit
     if (company) out.set(company.id, (out.get(company.id) ?? 0) + 1);
   }
   return out;
+}
+
+/** A sent report of a day ("שליחת הדוח"). */
+export interface ReportSendVM {
+  id: string;
+  unitId: string;
+  sentAt: Date;
+  /** the sender's name from the invite list (users can't read app_users themselves) */
+  sentByName: string | null;
+}
+
+/** The sends of a day, with the sender's name (app.doch1_report_sends_of, 0043). */
+export async function loadReportSends(tx: Tx, roundId: string, day: Day): Promise<ReportSendVM[]> {
+  const res = await tx.execute(sql`select * from app.doch1_report_sends_of(${roundId}::uuid, ${day}::date)`);
+  const rows = (Array.isArray(res) ? res : (res as { rows: unknown[] }).rows) as Array<{ id: string; unit_id: string; sent_at: Date | string; sent_by_name: string | null }>;
+  return rows.map((r) => ({ id: r.id, unitId: r.unit_id, sentAt: new Date(r.sent_at), sentByName: r.sent_by_name }));
+}
+
+/**
+ * The send that closes `unitId`'s day: its own, else the nearest one above it (a company's send closes its
+ * platoons). Same walk as app.doch1_day_closed() in 0043.
+ */
+export function sendClosing(unitId: string, sends: readonly ReportSendVM[], parents: UnitParents): ReportSendVM | null {
+  for (const id of lineage(unitId, parents)) {
+    const found = sends.find((x) => x.unitId === id);
+    if (found) return found;
+  }
+  return null;
 }

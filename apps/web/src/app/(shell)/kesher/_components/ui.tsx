@@ -49,8 +49,8 @@ export function ReportChip({ status }: { status: CheckStatus }) {
 export const daysAgo = (days: number) => (days === 0 ? "היום" : days === 1 ? "אתמול" : `לפני ${days} ימים`);
 
 /**
- * How long ago a צ׳ was checked (a company דוח צ׳ or צהוב בעיניים), colored by checkAge: plain up
- * to warnDays, yellow after it, red after alertDays; never → `empty` (muted). Sorts by the date.
+ * How long ago a צ׳ was checked (a company דוח צ׳ or צהוב בעיניים), colored by checkAge: green up
+ * to warnDays, yellow after it, red after alertDays; never → `empty` in red. Sorts by the date.
  */
 export function AgeChip({
   at,
@@ -71,14 +71,14 @@ export function AgeChip({
   const { tone, days } = checkAge(at, now, warnDays, alertDays);
   if (!at || tone === "none")
     return (
-      <span className="text-xs text-ink-muted" data-sort="">
-        {empty}
+      <span data-sort="">
+        <Chip tone="broken">{empty}</Chip>
       </span>
     );
   const title = [fmtDate(at), by].filter(Boolean).join(" · ");
   return (
     <span data-sort={at.toISOString()} title={title}>
-      {tone === "ok" ? <span className="text-xs">{daysAgo(days)}</span> : <Chip tone={tone === "alert" ? "broken" : "admin"}>{daysAgo(days)}</Chip>}
+      <Chip tone={tone === "alert" ? "broken" : tone === "warn" ? "admin" : "ok"}>{daysAgo(days)}</Chip>
     </span>
   );
 }

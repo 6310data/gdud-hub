@@ -1,0 +1,3 @@
+ALTER TABLE "kesher_vehicle_stock" ADD COLUMN "unit_id" uuid;--> statement-breakpoint
+ALTER TABLE "kesher_vehicle_stock" ADD CONSTRAINT "kesher_vehicle_stock_unit_id_units_id_fk" FOREIGN KEY ("unit_id") REFERENCES "public"."units"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "kesher_vehicle_stock_unit_idx" ON "kesher_vehicle_stock" USING btree ("unit_id","item_id");

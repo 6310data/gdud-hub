@@ -69,12 +69,21 @@ export function dayRange(from: Day, to: Day): Day[] {
 }
 
 /**
- * May this user write `day` now? Admin: always. Future days: always. Today: until the
- * lock time (Israel clock). Past days: never. Same rule as app.doch1_day_open() in
- * packages/db/migrations/0005_doch1_security.sql — keep them in sync.
+ * May this user write `day` now? Admin: always. A sent report (`closed`): never. Future days:
+ * always. Today: until the lock time (Israel clock). Past days: never. Same rule as
+ * app.doch1_day_open() in packages/db/migrations/0005_doch1_security.sql and the GD007 check of
+ * app.doch1_days_guard() in 0043_doch1_report_sends_security.sql — keep them in sync.
  */
-export function isDayWritable(a: { day: Day; now: Date; lockAt: string; isAdmin: boolean }): boolean {
+export function isDayWritable(a: {
+  day: Day;
+  now: Date;
+  lockAt: string;
+  isAdmin: boolean;
+  /** the unit's report for the day was sent ("שליחת הדוח") and the user is not a doch1 admin covering it */
+  closed?: boolean;
+}): boolean {
   if (a.isAdmin) return true;
+  if (a.closed) return false;
   const today = israelToday(a.now);
   if (a.day > today) return true;
   if (a.day < today) return false;

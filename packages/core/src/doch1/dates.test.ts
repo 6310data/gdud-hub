@@ -44,6 +44,11 @@ describe("isDayWritable", () => {
     expect(isDayWritable({ day: "2026-10-21", now, lockAt: "23:59", isAdmin: false })).toBe(false);
     expect(isDayWritable({ day: "2026-10-21", now, lockAt: "23:59", isAdmin: true })).toBe(true);
   });
+  it("a sent report closes even a future day; the admin still writes", () => {
+    expect(isDayWritable({ day: "2026-10-22", now, lockAt: "10:00", isAdmin: false, closed: true })).toBe(false);
+    expect(isDayWritable({ day: "2026-10-23", now, lockAt: "10:00", isAdmin: false, closed: true })).toBe(false);
+    expect(isDayWritable({ day: "2026-10-21", now, lockAt: "10:00", isAdmin: true, closed: true })).toBe(true);
+  });
   it("a save at 00:30 Israel time counts against the new day", () =>
     expect(isDayWritable({ day: "2026-10-22", now: new Date("2026-10-21T21:30:00Z"), lockAt: "10:00", isAdmin: false })).toBe(true));
 });

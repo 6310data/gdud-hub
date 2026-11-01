@@ -16,6 +16,7 @@ export default async function CompanyLayout({ children }: { children: React.Reac
   const section = (path: string) => ({ href: `/company/${home?.company.id}${path}`, also: others.map((o) => `${o}${path}`) });
 
   const main: AppNavItem[] = [
+    ...(home ? [{ ...section("/dashboard"), label: "לוח בקרה", short: "לוח", icon: "grid" } as const] : []),
     ...(access.personId ? [{ href: "/company/me", label: "אני", icon: "person" } as const] : []),
     ...(home ? [{ ...section(""), label: "הפלוגה", icon: "people" } as const] : []),
     ...(home ? [{ ...section("/signings"), label: "החתמות", icon: "swap" } as const] : []),
@@ -35,7 +36,11 @@ export default async function CompanyLayout({ children }: { children: React.Reac
       bottom={bottom}
       user={{ name: displayName(s.user, s.claims), email: s.user.email, role: role?.role ?? (access.personId ? "חייל" : undefined), roleTone: role?.tone }}
       current="tinted"
-      phoneTabs={["/company/me", ...(home ? [`/company/${home.company.id}`, `/company/${home.company.id}/signings`, `/company/${home.company.id}/reports`] : [])]}
+      phoneTabs={[
+        ...(home ? [`/company/${home.company.id}/dashboard`] : []),
+        "/company/me",
+        ...(home ? [`/company/${home.company.id}`, `/company/${home.company.id}/reports`] : []),
+      ]}
     >
       {children}
     </AppShell>

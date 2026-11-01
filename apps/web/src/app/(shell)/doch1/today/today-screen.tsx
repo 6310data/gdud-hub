@@ -5,15 +5,15 @@
  */
 import Link from "next/link";
 import { can, scopesFor } from "@gdud/auth";
-import { addDays, dayRange, hebrewDayLabel, isDay, isDayWritable, israelToday } from "@gdud/core";
+import { addDays, dayRange, hebrewDayLabel, isDay, isDayWritable, israelClock, israelToday, lineage } from "@gdud/core";
 import { withUser } from "@gdud/db";
 import { doch1Access } from "@/lib/doch1/access";
-import { listedOn, loadDays, loadMembers, loadRoundCompanies, loadStatuses, membersUnder } from "@/lib/doch1/data";
+import { listedOn, loadDays, loadMembers, loadReportSends, loadRoundCompanies, loadStatuses, membersUnder, sendClosing } from "@/lib/doch1/data";
 import { doch1Rounds } from "@/lib/doch1/rounds";
 import type { Session } from "@/lib/session";
 import { DayNav } from "../_components/day-nav";
 import { PushToggle } from "../_components/push-toggle";
-import { TodayList, type DaysByDay, type TodayMember } from "./_components/today-list";
+import { TodayList, type DaysByDay, type ReportSent, type TodayMember } from "./_components/today-list";
 
 /** Days after the screen's day loaded for the group update's "planned days" warning. */
 const PLAN_DAYS = 30;
@@ -63,14 +63,30 @@ export async function TodayScreen({ s, sp, path, only, soldierHref, datesHref = 
     const under = membersUnder(all, unitId, s.units);
     // only soldiers called up by `day` and not released before it
     const members = listedOn(under, day);
-    const loaded = await loadDays(tx, round.id, dayRange(yesterday, lastDay), { personIds: members.map((m) => m.personId) });
-    return { access, scopes, unitId, members, statuses, loaded, hidden: under.length - members.length, companyId: under[0]?.companyId ?? null };
+    const [loaded, sends] = await Promise.all([
+      loadDays(tx, round.id, dayRange(yesterday, lastDay), { personIds: members.map((m) => m.personId) }),
+      loadReportSends(tx, round.id, day),
+    ]);
+    return { access, scopes, unitId, members, statuses, loaded, sends, hidden: under.length - members.length, companyId: under[0]?.companyId ?? null };
   });
   if (!data) {
     return <p className="tz-card m-0 p-5 text-ink-muted">אין לך פלוגה או מחלקה בדוח של הסבב הפעיל.</p>;
   }
-  const { access, scopes, unitId } = data;
+  const { access, scopes, unitId, sends } = data;
   const unit = unitById.get(unitId)!;
+  // "שליחת הדוח": the send closing this unit's day (its own or its company's) closes it for all but its admin
+  const closing = sendClosing(unitId, sends, s.parents);
+  const sent: ReportSent | null = closing
+    ? {
+        id: closing.id,
+        unitName: unitById.get(closing.unitId)?.name ?? "",
+        own: closing.unitId === unitId,
+        byName: closing.sentByName,
+        at: israelToday(closing.sentAt) === day ? israelClock(closing.sentAt) : `${hebrewDayLabel(israelToday(closing.sentAt))} ${israelClock(closing.sentAt)}`,
+      }
+    : null;
+  /** units below this one that sent on their own (a platoon of the company shown) */
+  const sentBelow = sends.filter((x) => x.unitId !== unitId && lineage(x.unitId, s.parents).includes(unitId)).map((x) => x.unitId);
 
   const platoonOrder = (id: string | null) => (id ? (unitById.get(id)?.sortOrder ?? 0) + 1 : 0);
   const members: TodayMember[] = data.members
@@ -82,12 +98,13 @@ export async function TodayScreen({ s, sp, path, only, soldierHref, datesHref = 
       platoonId: m.platoonId,
       platoonName: m.platoonName,
       inReport: m.inReport,
+      closed: !access.canReopen(m.unitId) && !!sendClosing(m.unitId, sends, s.parents),
     }))
     .sort((a, b) => platoonOrder(a.platoonId) - platoonOrder(b.platoonId) || (a.platoonName ?? "").localeCompare(b.platoonName ?? "", "he"));
   const days: DaysByDay = Object.fromEntries([...data.loaded].map(([d, m]) => [d, Object.fromEntries(m)]));
 
   const canEdit = access.canReport(unitId);
-  const writable = canEdit && isDayWritable({ day, now, lockAt: round.lockAt, isAdmin: access.isAdmin });
+  const writable = canEdit && isDayWritable({ day, now, lockAt: round.lockAt, isAdmin: access.isAdmin, closed: !!closing && !access.canReopen(unitId) });
   const dayLabel = hebrewDayLabel(day);
 
   return (
@@ -132,6 +149,10 @@ export async function TodayScreen({ s, sp, path, only, soldierHref, datesHref = 
         lockAt={round.lockAt}
         canEdit={canEdit}
         writable={writable}
+        sent={sent}
+        sentBelow={sentBelow}
+        canSend={canEdit && !closing && day <= today}
+        canReopen={!!closing && access.canReopen(closing.unitId)}
         canEditMembers={can(s.user, "doch1", ["admin", "company_user"], unitId, s.parents)}
         members={members}
         statuses={data.statuses}

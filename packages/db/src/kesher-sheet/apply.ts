@@ -11,7 +11,7 @@ import { LINE_GROUPS, type LineGroup } from "../sheet-import/preview";
 import { KESHER_TABS, COMPANY_TABS_NAME, type KesherSheetKey } from "./sheet";
 import type { ApplyResult, ChangeLine, ChangeOp, OpKind, SheetDiff } from "./types";
 
-const { kesherItems: items, kesherKitItems: kits, kesherSerials: serials, kesherHolders: holders, kesherStock: stock } = schema;
+const { kesherItems: items, kesherKitItems: kits, kesherSerials: serials, kesherHolders: holders, kesherStock: stock, kesherVehicleStock: vehicleStock } = schema;
 const { kesherEvents: events, kesherChecks: checks, kesherCheckLines: checkLines } = schema;
 
 /** Dependencies always point at an earlier kind in this order. */
@@ -133,6 +133,11 @@ export async function applyKesher(tx: Tx, diff: SheetDiff, selected: ReadonlySet
   for (const o of ops("stock.set")) {
     const item = itemId(o.itemName);
     for (const c of o.cells) {
+      // the sheet wins: a company set below what is on its vehicles has it taken off them first
+      if (c.unitId) {
+        const onVehicles = await tx.select({ qty: vehicleStock.qty }).from(vehicleStock).where(and(eq(vehicleStock.itemId, item), eq(vehicleStock.unitId, c.unitId)));
+        if (onVehicles.reduce((n, r) => n + r.qty, 0) > c.qty) await tx.delete(vehicleStock).where(and(eq(vehicleStock.itemId, item), eq(vehicleStock.unitId, c.unitId)));
+      }
       const where = and(eq(stock.itemId, item), c.unitId ? eq(stock.unitId, c.unitId) : isNull(stock.unitId));
       const updated = await tx.update(stock).set({ qty: c.qty }).where(where).returning({ id: stock.id });
       if (!updated.length) await tx.insert(stock).values({ itemId: item, unitId: c.unitId, qty: c.qty });

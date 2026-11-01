@@ -7,7 +7,8 @@ import { mountSerial, setVehicleQty } from "../_actions/vehicles";
 
 /**
  * One of the company's vehicles: the kesher צ׳ mounted on it and its ציוד משלים. The company admin
- * (`options` given) mounts / unmounts צ׳ of the company and sets quantities from the kesher warehouse.
+ * (`options` given) mounts / unmounts צ׳ of the company and puts on it ציוד משלים out of what the
+ * company signed for (never straight from the kesher warehouse).
  */
 export function VehicleCard({ unitId, vehicle, options }: { unitId: string; vehicle: VehicleCardVM; options: VehicleOptions | null }) {
   const [q, setQ] = useState("");
@@ -109,7 +110,7 @@ export function VehicleCard({ unitId, vehicle, options }: { unitId: string; vehi
       )}
       {options ? (
         <div className="grid grid-cols-[1fr_88px_auto] items-end gap-2 px-4 pb-3 pt-2">
-          <Field label="פריט">
+          <Field label="מהציוד החתום על הפלוגה">
             <select
               className="tz-input"
               value={item}
@@ -118,10 +119,10 @@ export function VehicleCard({ unitId, vehicle, options }: { unitId: string; vehi
                 setQty(String(vehicle.bulk.find((b) => b.itemId === e.target.value)?.qty ?? ""));
               }}
             >
-              <option value="">בחרו…</option>
+              <option value="">{options.bulk.length ? "בחרו…" : "אין ציוד משלים חתום על הפלוגה"}</option>
               {options.bulk.map((b) => (
                 <option key={b.id} value={b.id}>
-                  {b.name} ({b.available} תקינים במחסן)
+                  {b.name} ({b.available} פנויים בפלוגה)
                 </option>
               ))}
             </select>

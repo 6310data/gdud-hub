@@ -58,7 +58,10 @@ function StockTable({ data, companies, canEdit }: { data: Data; companies: Retur
   const bulk = data.items.filter((i) => i.kind === "bulk");
   if (!bulk.length) return <div className="tz-card"><Empty>עדיין אין ציוד משלים. מייבאים אותו מלשונית &quot;כללי&quot; של הגיליון.</Empty></div>;
   const cols: StockCol[] = companies.map((c) => ({ id: c.id, name: c.name, color: c.color }));
-  const onVehicles = (itemId: string) => [...data.vehicleStock.values()].reduce((n, m) => n + (m.get(itemId) ?? 0), 0);
+  // battalion vehicles only: what a company's vehicles carry is already in the company's column
+  const onVehicles = (itemId: string) =>
+    [...data.vehicleStock.values()].reduce((n, m) => n + (m.get(itemId) ?? 0), 0) -
+    cols.reduce((n, c) => n + (data.onVehicles.get(stockKey(itemId, c.id)) ?? []).reduce((m, x) => m + x.qty, 0), 0);
   const cats = [...groupBy(bulk, (i) => i.category ?? "")].sort(([a], [b]) => (a ? (b ? byHe(a, b) : -1) : 1));
   const rows: [string, StockRow[]][] = cats.map(([cat, list]) => [
     cat,
@@ -75,7 +78,7 @@ function StockTable({ data, companies, canEdit }: { data: Data; companies: Retur
     <>
       <StockEditor cats={rows} cols={cols} canEdit={canEdit} />
       <p className="tz-section-footer">
-        מלאי כללי = כל מה שיש לגדוד מהפריט (קבלות חטיבה). במחסן = מלאי כללי פחות החתום בפלוגות ועל רכבים; &quot;תקול&quot; מתוכו לא זמין להחתמה. כמויות הפלוגות משתנות
+        מלאי כללי = כל מה שיש לגדוד מהפריט (קבלות חטיבה). במחסן = מלאי כללי פחות החתום בפלוגות (כולל מה שעל הרכבים שלהן) ועל רכבי הגדוד; &quot;תקול&quot; מתוכו לא זמין להחתמה. כמויות הפלוגות משתנות
         רק בהחתמה ובזיכוי, ומלאי כללי גם בקבלה מחטיבה ובזיכוי לחטיבה.
       </p>
     </>

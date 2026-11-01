@@ -2,7 +2,9 @@
 /**
  * החתמה לפלוגה: 1 company + signing soldier (+ תפקיד, date) · 2 warehouse צ׳ תקינים by device type
  * · 3 the cart: chosen צ׳ and ציוד משלים proposed from their תקן, each line a stepper capped at what
- * the warehouse can sign out. On a phone the submit lives in a sticky bar.
+ * the warehouse can sign out. On a phone the submit lives in a sticky bar. Opened from ציוד על רכבים
+ * ("ציוד המחלקה"), it comes filled in with the vehicle's company and gear, and what is signed goes
+ * onto the vehicle too.
  */
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
@@ -31,21 +33,29 @@ export interface SignData {
 
 const SHOWN = 60;
 
-export function SignForm({ data, initialUnit }: { data: SignData; initialUnit?: string }) {
+/** What the sheet of ציוד על רכבים chose: the gear to sign and the company's vehicle it goes onto. */
+export interface SignPrefill {
+  vehicle: { id: string; label: string };
+  serialIds: string[];
+  /** item id → qty */
+  items: Record<string, number>;
+}
+
+export function SignForm({ data, initialUnit, prefill }: { data: SignData; initialUnit?: string; prefill?: SignPrefill }) {
   const router = useRouter();
   const [unitId, setUnitId] = useState(initialUnit);
   const [personId, setPersonId] = useState<string>();
   const [role, setRole] = useState("");
   const [day, setDay] = useState(data.today);
   const [notes, setNotes] = useState("");
-  const [chosen, setChosen] = useState<ReadonlySet<string>>(new Set());
+  const [chosen, setChosen] = useState<ReadonlySet<string>>(() => new Set(prefill?.serialIds.filter((id) => data.serials.some((x) => x.id === id))));
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
   const [showAll, setShowAll] = useState<ReadonlySet<string>>(new Set());
   /** quantities the admin changed by hand (item id → qty) */
-  const [edits, setEdits] = useState<Record<string, number>>({});
+  const [edits, setEdits] = useState<Record<string, number>>(() => ({ ...prefill?.items }));
   /** items added by hand, in the order added */
-  const [manual, setManual] = useState<string[]>([]);
+  const [manual, setManual] = useState<string[]>(() => Object.keys(prefill?.items ?? {}));
   const [error, setError] = useState<string>();
   const [pending, start] = useTransition();
 
@@ -138,17 +148,26 @@ export function SignForm({ data, initialUnit }: { data: SignData; initialUnit?: 
         notes,
         serialIds: [...chosen],
         lines: sendLines.map((i) => ({ itemId: i.id, qty: qtyOf(i.id) })),
+        vehicleId: prefill?.vehicle.id ?? null,
       });
       if (!r.ok) return setError(r.error);
-      router.push(`/kesher/companies/${unitId}`);
+      router.push(prefill ? "/kesher/vehicles" : `/kesher/companies/${unitId}`);
     });
   }
 
-  const submitLabel = company ? `החתמה ל${company.name}` : "החתמה";
+  const submitLabel = company ? `החתמה ל${company.name}${prefill ? " ולרכב" : ""}` : "החתמה";
 
   return (
     <div className="flex flex-col gap-4 pb-28 lg:pb-0">
       <ErrorAlert error={error} />
+      {prefill ? (
+        <p className="tz-alert m-0 flex items-center gap-2" role="note">
+          <Icon name="truck" size={18} />
+          <span>
+            הציוד נחתם על {company?.name ?? "הפלוגה"} ועולה על רכב <Serial>{prefill.vehicle.label}</Serial>
+          </span>
+        </p>
+      ) : null}
 
       <div className="grid items-start gap-[22px] lg:grid-cols-3">
         {/* 1 · company and soldier */}
@@ -156,7 +175,7 @@ export function SignForm({ data, initialUnit }: { data: SignData; initialUnit?: 
           <StepTitle n={1} title="פלוגה וחותם" />
           <div className="flex flex-wrap gap-1.5" role="group" aria-label="פלוגה">
             {data.companies.map((c) => (
-              <button key={c.id} type="button" className="tz-pill" aria-pressed={c.id === unitId} onClick={() => pickCompany(c.id)} disabled={pending}>
+              <button key={c.id} type="button" className="tz-pill" aria-pressed={c.id === unitId} onClick={() => pickCompany(c.id)} disabled={pending || (Boolean(prefill) && c.id !== unitId)}>
                 <span aria-hidden="true" className="tz-dot" style={tintStyle(c.color)} />
                 {c.name}
               </button>
