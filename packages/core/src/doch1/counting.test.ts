@@ -3,6 +3,7 @@ import {
   fillFromYesterdayPlan,
   inService,
   inServiceBetween,
+  isAtBase,
   missingMembers,
   planBulkWrite,
   statusFlagsChanged,
@@ -88,6 +89,24 @@ it("planBulkWrite keeps an exact undo", () => {
     { personId: "m1", day: "2026-10-25", statusId: null },
   ]);
   expect(r.overwritten).toBe(1);
+});
+
+describe("isAtBase", () => {
+  it("is true for a presence day that is neither a home day nor off duty", () => {
+    expect(isAtBase({ ...NO_FLAGS, countsAsPresent: true })).toBe(true);
+    expect(isAtBase(status("P", "עזה", 1, { countsAsPresent: true, countsInSadak: true, needsOutpost: true }))).toBe(true);
+  });
+  it("is false for home days, off duty and statuses that are not presence days", () => {
+    expect(isAtBase({ ...NO_FLAGS, countsAsPresent: true, homeDay: true })).toBe(false);
+    expect(isAtBase({ ...NO_FLAGS, countsAsPresent: true, offDuty: true })).toBe(false);
+    expect(isAtBase({ ...NO_FLAGS, homeDay: true })).toBe(false);
+    expect(isAtBase({ ...NO_FLAGS, orgDay: true })).toBe(false);
+    expect(isAtBase(NO_FLAGS)).toBe(false);
+  });
+  it("is false without a status", () => {
+    expect(isAtBase(null)).toBe(false);
+    expect(isAtBase(undefined)).toBe(false);
+  });
 });
 
 describe("statusFlagsChanged", () => {

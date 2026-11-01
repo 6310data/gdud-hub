@@ -14,7 +14,11 @@ import { CompanyPills } from "../../_components/ui";
 export const metadata = { title: "פעילויות" };
 
 const paramsSchema = z.object({ unit: z.uuid() });
-const searchSchema = z.object({ tab: z.enum(["coming", "past", "new"]).catch("coming") });
+const searchSchema = z.object({
+  tab: z.enum(["coming", "past", "new"]).catch("coming"),
+  /** the new activity's day (the dashboard's "פעילות חדשה" opens it for today); default tomorrow */
+  day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().catch(undefined),
+});
 
 /** פעילויות: the company's one-time activities (coming / past) and a new one (the company admin and platoon commanders). */
 export default async function ActivitiesPage({
@@ -59,7 +63,7 @@ export default async function ActivitiesPage({
           <ActivityForm
             unitId={company.id}
             soldiers={soldiers.map((x) => ({ id: x.id, name: x.name, personalNumber: null, place: platoonName(x.unitId) ?? "מפקדה" }))}
-            values={{ name: "", day: addDays(today, 1), startsAt: null, endsAt: null, place: null, commanderPersonId: null, notes: null }}
+            values={{ name: "", day: f.day && f.day >= today ? f.day : addDays(today, 1), startsAt: null, endsAt: null, place: null, commanderPersonId: null, notes: null }}
           />
         </Panel>
       ) : (

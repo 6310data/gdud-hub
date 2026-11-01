@@ -175,6 +175,14 @@ export function summarize(members: readonly ReportMember[], day: DayStatuses, st
   };
 }
 
+/**
+ * In the base (במוצב) on a day with this status: a presence day that is not a home day (בבית,
+ * רענון…) and not off duty ("0", נפקד). No status = not known to be in the base.
+ */
+export function isAtBase(status: StatusFlags | null | undefined): boolean {
+  return !!status && status.countsAsPresent && !status.homeDay && !status.offDuty;
+}
+
 /** In-report members with no entry for the day. */
 export function missingMembers<T extends ReportMember>(members: readonly T[], day: DayStatuses): T[] {
   return members.filter((m) => m.inReport && !day.has(m.personId));
