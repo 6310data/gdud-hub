@@ -83,6 +83,14 @@ export interface KVehicle {
   state: string;
   active: boolean;
   standby: string | null;
+  /** the company it belongs to (null = battalion) */
+  unitId: string | null;
+}
+
+/** A company's ציוד משלים on one of its vehicles. */
+export interface KVehicleShare {
+  vehicleId: string;
+  qty: number;
 }
 
 export interface KesherData {
@@ -99,6 +107,8 @@ export interface KesherData {
   available(itemId: string): number;
   /** vehicle id → item id → qty */
   vehicleStock: Map<string, Map<string, number>>;
+  /** stockKey(item, company) → the part of the company's quantity on each of its vehicles */
+  onVehicles: Map<string, KVehicleShare[]>;
   /** parent item name → its תקן */
   kits: Map<string, KesherKitLine[]>;
   staleDays: number;
@@ -133,7 +143,7 @@ export async function loadKesher(tx: Tx, units: readonly UnitNode[], opts: { ret
       .where(opts.returned ? undefined : ne(serials.location, "brigade")),
     tx.select().from(holders),
     tx.select({ itemId: stock.itemId, unitId: stock.unitId, qty: stock.qty }).from(stock).where(isNotNull(stock.unitId)),
-    tx.select({ vehicleId: vehicleStock.vehicleId, itemId: vehicleStock.itemId, qty: vehicleStock.qty }).from(vehicleStock),
+    tx.select({ vehicleId: vehicleStock.vehicleId, itemId: vehicleStock.itemId, unitId: vehicleStock.unitId, qty: vehicleStock.qty }).from(vehicleStock),
     tx.select({ parentItemId: kits.parentItemId, itemId: kits.itemId, qty: kits.qty }).from(kits).orderBy(asc(kits.sortOrder)),
     tx.select().from(settings).limit(1),
   ]);
@@ -163,12 +173,20 @@ export async function loadKesher(tx: Tx, units: readonly UnitNode[], opts: { ret
     if (parent && child) kitMap.set(parent, [...(kitMap.get(parent) ?? []), { item: child, qty: k.qty }]);
   }
 
-  // the warehouse is what is left of מלאי כללי after the companies and the vehicles
+  // the warehouse is what is left of מלאי כללי after the companies and the battalion vehicles (a
+  // company's vehicles carry part of the company's quantity)
   const stockMap = new Map(stockRows.map((r) => [stockKey(r.itemId, r.unitId), r.qty]));
   const signed = new Map<string, number>();
-  for (const r of [...stockRows, ...vehicleRows]) signed.set(r.itemId, (signed.get(r.itemId) ?? 0) + r.qty);
+  for (const r of [...stockRows, ...vehicleRows.filter((v) => !v.unitId)]) signed.set(r.itemId, (signed.get(r.itemId) ?? 0) + r.qty);
   const vehicleStockMap = new Map<string, Map<string, number>>();
-  for (const r of vehicleRows) vehicleStockMap.set(r.vehicleId, (vehicleStockMap.get(r.vehicleId) ?? new Map()).set(r.itemId, r.qty));
+  const onVehicles = new Map<string, KVehicleShare[]>();
+  for (const r of vehicleRows) {
+    vehicleStockMap.set(r.vehicleId, (vehicleStockMap.get(r.vehicleId) ?? new Map()).set(r.itemId, r.qty));
+    if (r.unitId) {
+      const k = stockKey(r.itemId, r.unitId);
+      onVehicles.set(k, [...(onVehicles.get(k) ?? []), { vehicleId: r.vehicleId, qty: r.qty }]);
+    }
+  }
   const warehouse = new Map<string, ReturnType<typeof warehouseStock>>();
   for (const i of itemRows) {
     if (i.kind !== "bulk") continue;
@@ -186,6 +204,7 @@ export async function loadKesher(tx: Tx, units: readonly UnitNode[], opts: { ret
     stock: stockMap,
     available: (itemId) => warehouse.get(itemId)?.available ?? 0,
     vehicleStock: vehicleStockMap,
+    onVehicles,
     kits: kitMap,
     staleDays: cfg?.checkStaleDays ?? 7,
     warnDays: cfg?.eyeWarnDays ?? 3,
@@ -195,8 +214,8 @@ export async function loadKesher(tx: Tx, units: readonly UnitNode[], opts: { ret
 
 /** דוח 1's vehicles (active first, by number) with their standby teams of the active round. */
 export async function loadVehicles(tx: Tx): Promise<KVehicle[]> {
-  const rows = await tx.execute<{ id: string; number: string; kind: string | null; state: string; active: boolean; standby: string | null }>(
-    sql`select id, number, kind, state, active, standby from app.kesher_vehicles()`,
+  const rows = await tx.execute<{ id: string; number: string; kind: string | null; state: string; active: boolean; standby: string | null; unitId: string | null }>(
+    sql`select id, number, kind, state, active, standby, unit_id as "unitId" from app.kesher_vehicles()`,
   );
   return [...rows].sort((a, b) => Number(b.active) - Number(a.active) || a.number.localeCompare(b.number, "en", { numeric: true }));
 }

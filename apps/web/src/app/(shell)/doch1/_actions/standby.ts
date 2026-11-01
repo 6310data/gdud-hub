@@ -101,7 +101,7 @@ export async function setTeamCompany(raw: { teamId: string; unitId: string | nul
   });
 }
 
-/** The battalion admin gives a vehicle to a company, or back to the battalion. */
+/** The battalion admin gives a vehicle to a company, or back to the battalion; its kesher gear goes with it (0041). */
 export async function setVehicleCompany(raw: { vehicleId: string; unitId: string | null }): Promise<ActionResult> {
   const parsed = z.object({ vehicleId: uuid, unitId: uuid.nullable() }).safeParse(raw);
   if (!parsed.success) return { error: firstIssue(parsed.error) };

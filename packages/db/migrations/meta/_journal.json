@@ -281,6 +281,20 @@
       "when": 1793528576099,
       "tag": "0039_company_present_on_access",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1793531291662,
+      "tag": "0040_kesher_vehicle_company_stock",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1793531297836,
+      "tag": "0041_kesher_vehicle_company_stock_security",
+      "breakpoints": true
     }
   ]
 }

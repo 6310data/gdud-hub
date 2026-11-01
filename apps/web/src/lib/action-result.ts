@@ -16,6 +16,10 @@ export function dbErrorMessage(err: unknown): string {
   // raised by the company-standby guards (0035_company_standby_security.sql)
   if (code === "GD005") return "צוות של פלוגה מקבל רק חיילים ורכבים של אותה פלוגה.";
   if (code === "GD006") return "רק מנהל גדודי בדוח 1 מעביר צוות או רכב בין פלוגות.";
+  // raised by the vehicle-stock guards (0041_kesher_vehicle_company_stock_security.sql)
+  if (code === "GD120") return "אין מספיק מהפריט הזה חתום על הפלוגה (חלק כבר על רכבים).";
+  if (code === "GD121") return "הרכב או הציוד לא של הפלוגה. רעננו את הדף.";
+  if (code === "GD122") return "חלק מהכמות הזו על רכבי הפלוגה — מורידים אותו מהרכב קודם.";
   console.error(err);
   return "הפעולה נכשלה. נסו שוב.";
 }

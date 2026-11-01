@@ -3,8 +3,10 @@
  * Moving equipment, battalion kesher admin only (kesher_serials, kesher_holders, kesher_stock and
  * kesher_items writes are admin-only in 0018_kesher_security.sql):
  *
- *   החתמה        warehouse → a company, signed by a soldier of it (צ׳ תקינים, ציוד משלים תקין)
- *   זיכוי         a company → warehouse; each צ׳ and each ציוד משלים line comes back תקין or תקול
+ *   החתמה        warehouse → a company, signed by a soldier of it (צ׳ תקינים, ציוד משלים תקין) —
+ *                optionally straight onto one of the company's vehicles ("ציוד המחלקה" in ציוד על רכבים)
+ *   זיכוי         a company → warehouse; each צ׳ and each ציוד משלים line comes back תקין or תקול. A צ׳
+ *                comes off the company's vehicle; ציוד משלים on a vehicle must be taken off it first.
  *   קבלה מחטיבה   new צ׳ into the warehouse, מלאי כללי up
  *   זיכוי לחטיבה  צ׳ out of the warehouse (kept as "הוחזר לחטיבה"), מלאי כללי down
  *   תיקון         תקול → תקין
@@ -16,12 +18,13 @@
 import { z } from "zod";
 import { normalizeSerial, placement } from "@gdud/core";
 import { and, eq, inArray, schema, withUser, type Tx } from "@gdud/db";
+import { loadVehicles } from "@/lib/kesher/data";
 import { actionError, UserError, type ActionOutcome } from "@/lib/action-result";
 import { unitsById } from "@/lib/logistics/data";
 import { firstIssue, kesherCtx, NO_PERMISSION, optionalText, revalidateKesher, uuid, type KesherCtx } from "./common";
-import { addCompanyStock, companyQty, lockBulk, moveAt, moveDay, personName, qtyText } from "./moves-common";
+import { addCompanyStock, companyQty, lockBulk, moveAt, moveDay, onCompanyVehicles, personName, qtyText } from "./moves-common";
 
-const { people, kesherItems: items, kesherSerials: serials, kesherHolders: holders, kesherEvents: events } = schema;
+const { people, kesherItems: items, kesherSerials: serials, kesherHolders: holders, kesherEvents: events, kesherVehicleStock: vehicleStock } = schema;
 
 const ADMIN_ONLY = { error: "רק מנהל קשר גדודי מחתים, מזכה ומעדכן מלאי." } as const;
 const count = (max: number) => z.number({ error: "כמות לא תקינה" }).int("כמות שלמה בלבד").min(0, "כמות לא יכולה להיות שלילית").max(max, "כמות גדולה מדי");
@@ -71,11 +74,13 @@ const signSchema = z
     notes: optionalText(300),
     serialIds: ids,
     lines: z.array(z.object({ itemId: uuid, qty: count(9999) })).max(200).default([]),
+    /** a vehicle of the company: what is signed goes onto it too */
+    vehicleId: uuid.nullish(),
   })
   .refine((v) => v.serialIds.length || v.lines.some((l) => l.qty > 0), "לא נבחר ציוד");
 export type SignInput = z.input<typeof signSchema>;
 
-/** החתמה: warehouse → company, signed by a soldier of that company. */
+/** החתמה: warehouse → company, signed by a soldier of that company (and onto its vehicle, if given). */
 export async function signToCompany(input: SignInput): Promise<ActionOutcome<{ serials: number; lines: number }>> {
   const ctx = await adminCtx();
   if ("error" in ctx) return ctx;
@@ -90,6 +95,9 @@ export async function signToCompany(input: SignInput): Promise<ActionOutcome<{ s
       const [p] = await tx.select({ id: people.id, name: people.fullName, unitId: people.unitId, active: people.active }).from(people).where(eq(people.id, v.signerPersonId));
       if (!p || !p.active) throw new UserError("החייל החותם לא ברשימת דוח 1 (או הוסר ממנה)");
       if (placement(p.unitId, unitsById(ctx.s.units)).company?.id !== v.unitId) throw new UserError(`${p.name} לא בפלוגה ${company}`);
+
+      const vehicle = v.vehicleId ? (await loadVehicles(tx)).find((x) => x.id === v.vehicleId) : null;
+      if (v.vehicleId && vehicle?.unitId !== v.unitId) throw new UserError(`הרכב לא של ${company} — רעננו את הדף`);
 
       const base = { unitId: v.unitId, company, personId: p.id, personName: p.name, personRole: v.signerRole, at, backdated, details: v.notes } as const;
       const log: Event[] = [];
@@ -120,6 +128,8 @@ export async function signToCompany(input: SignInput): Promise<ActionOutcome<{ s
         log.push({ ...base, kind: "sign", item: it.name, qty: l.qty });
       }
 
+      if (vehicle) log.push(...(await mountSigned(tx, vehicle, v.unitId, company, list, lines.map((l) => ({ ...l, name: bulk.get(l.itemId)!.name })))));
+
       if (log.length) await tx.insert(events).values(log);
       return { serials: list.length, lines: lines.length };
     });
@@ -127,6 +137,35 @@ export async function signToCompany(input: SignInput): Promise<ActionOutcome<{ s
   } catch (e) {
     return { error: actionError(e) };
   }
+}
+
+/**
+ * What was just signed to the company goes onto its vehicle: the צ׳ are mounted, the ציוד משלים is
+ * added to the vehicle's part of the company's quantity. Returns the יומן rows.
+ */
+async function mountSigned(
+  tx: Tx,
+  vehicle: { id: string; number: string },
+  unitId: string,
+  company: string,
+  list: readonly { id: string; serial: string; item: string }[],
+  lines: readonly { itemId: string; qty: number; name: string }[],
+): Promise<Event[]> {
+  const log: Event[] = [];
+  if (list.length) {
+    await tx.update(serials).set({ vehicle: vehicle.number }).where(inArray(serials.id, list.map((x) => x.id)));
+    for (const x of list) log.push({ kind: "serial_edit", unitId, company, item: x.item, serial: x.serial, details: `רכב: ללא ← ${vehicle.number}` });
+  }
+  for (const l of lines) {
+    const where = and(eq(vehicleStock.vehicleId, vehicle.id), eq(vehicleStock.itemId, l.itemId));
+    const [row] = await tx.select({ qty: vehicleStock.qty, unitId: vehicleStock.unitId }).from(vehicleStock).where(where);
+    if (row && row.unitId !== unitId) throw new UserError(`${l.name}: על רכב ${vehicle.number} יש כבר ציוד שלא של ${company} — הורידו אותו קודם`);
+    const next = (row?.qty ?? 0) + l.qty;
+    if (row) await tx.update(vehicleStock).set({ qty: next }).where(where);
+    else await tx.insert(vehicleStock).values({ vehicleId: vehicle.id, itemId: l.itemId, unitId, qty: next });
+    log.push({ kind: "vehicle_stock", unitId, company, item: l.name, qty: next, details: `רכב ${vehicle.number}: ${row?.qty ?? 0} ← ${next} · בהחתמה` });
+  }
+  return log;
 }
 
 /* ── זיכוי ─────────────────────────────────────────────────────────────── */
@@ -177,6 +216,13 @@ export async function creditFromCompany(input: CreditInput): Promise<ActionOutco
         if (moved.length !== group.length) throw new UserError("אחד הצ׳ זז בינתיים — רעננו את הדף");
         for (const x of group) log.push({ ...base, kind: "credit", item: x.item, serial: x.serial, qty: 1, details: note(cond === "broken") });
       }
+      // a צ׳ back from the company comes off the company's vehicle
+      const ownVehicles = list.length ? (await loadVehicles(tx)).filter((x) => x.unitId === v.unitId).map((x) => x.number) : [];
+      if (ownVehicles.length)
+        await tx
+          .update(serials)
+          .set({ vehicle: null })
+          .where(and(inArray(serials.id, list.map((x) => x.id)), inArray(serials.vehicle, ownVehicles)));
 
       /* ציוד משלים: off the company; the תקול part is counted apart in the warehouse */
       const lines = v.lines.filter((l) => l.ok + l.broken > 0);
@@ -184,6 +230,10 @@ export async function creditFromCompany(input: CreditInput): Promise<ActionOutco
       const have = await companyQty(tx, v.unitId, lines.map((l) => l.itemId));
       const over = lines.filter((l) => l.ok + l.broken > (have.get(l.itemId) ?? 0));
       if (over.length) throw new UserError(over.map((l) => `${bulk.get(l.itemId)!.name}: ל${company} חתומים רק ${have.get(l.itemId) ?? 0}`).join("\n"));
+      const mounted = await onCompanyVehicles(tx, v.unitId, lines.map((l) => l.itemId));
+      const onVehicle = lines.filter((l) => l.ok + l.broken > (have.get(l.itemId) ?? 0) - (mounted.get(l.itemId) ?? 0));
+      if (onVehicle.length)
+        throw new UserError(onVehicle.map((l) => `${bulk.get(l.itemId)!.name}: ${mounted.get(l.itemId)} מתוך ${have.get(l.itemId)} על רכבי ${company} — הורידו מהרכב קודם`).join("\n"));
       for (const l of lines) {
         const it = bulk.get(l.itemId)!;
         await addCompanyStock(tx, it.id, v.unitId, -(l.ok + l.broken), it.name);

@@ -527,10 +527,11 @@ export async function loadVehicleCards(tx: Tx, companyId: string): Promise<Vehic
 
 export interface VehicleOptions {
   serials: { id: string; name: string; serial: string; vehicle: string | null }[];
+  /** the ציוד משלים signed to the company; available = not on any of its vehicles yet */
   bulk: { id: string; name: string; available: number }[];
 }
 
-/** For the company admin: the company's kesher צ׳ and the ציוד משלים items with the warehouse's תקינים. */
+/** For the company admin: the company's kesher צ׳ and the ציוד משלים signed to it with how much is free. */
 export async function loadVehicleOptions(tx: Tx, companyId: string): Promise<VehicleOptions> {
   type Row = { kind: "serial" | "bulk"; id: string; name: string; serial: string | null; vehicle: string | null; available: number | null };
   const rows = rowsOf<Row>(await tx.execute(sql`select * from app.company_vehicle_options(${companyId}::uuid)`));

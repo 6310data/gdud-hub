@@ -1,7 +1,7 @@
 "use client";
 /**
  * ציוד משלים by place. A company's quantities change only through החתמה / זיכוי, and the warehouse
- * is computed (מלאי כללי − the companies − the vehicles), so the one number a battalion admin edits
+ * is computed (מלאי כללי − the companies − the battalion vehicles), so the one number a battalion admin edits
  * here is מלאי כללי: "עדכון מלאי כללי" turns that column into fields and the warehouse follows.
  */
 import Link from "next/link";
@@ -25,7 +25,7 @@ export interface StockRow {
   brokenQty: number;
   /** company id → qty */
   qty: Record<string, number>;
-  /** on vehicles */
+  /** on battalion vehicles (a company's vehicles carry part of the company's column) */
   vehicles: number;
 }
 
@@ -137,7 +137,7 @@ export function StockEditor({ cats, cols, canEdit }: { cats: [string, StockRow[]
                   {c.name}
                 </th>
               ))}
-              <th>על רכבים</th>
+              <th>על רכבי גדוד</th>
             </tr>
           </thead>
           <tbody>

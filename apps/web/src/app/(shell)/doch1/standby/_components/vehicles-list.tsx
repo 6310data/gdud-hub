@@ -1,7 +1,7 @@
 "use client";
-import { useOptimistic, useState, useTransition } from "react";
+import { useEffect, useOptimistic, useState, useTransition } from "react";
 import { VEHICLE_STATE_LABEL, VEHICLE_STATES, type VehicleState } from "@gdud/core";
-import { Serial } from "@gdud/ui";
+import { Serial, Spinner } from "@gdud/ui";
 import { setVehicleCompany, setVehicleState } from "../../_actions/standby";
 
 export interface VehicleRow {
@@ -15,25 +15,40 @@ export interface VehicleRow {
   company: string | null;
   unitId: string | null;
   editable: boolean;
+  /** the kesher gear on it (battalion admin only): it goes with the vehicle to its new company */
+  gear: { serials: number; bulk: number } | null;
+}
+
+interface Move {
+  vehicle: VehicleRow;
+  unitId: string | null;
+  to: string;
 }
 
 export const VEHICLE_CHIP: Record<VehicleState, string> = { ok: "tz-chip-ok", service: "tz-chip-broken", broken: "tz-chip-broken" };
 
 /**
  * The vehicles of the user's teams and companies (admin: the whole registry) with their state (mockup 11,
- * "רכבים"). With `companies` (the battalion admin) each vehicle's company can be set here.
+ * "רכבים"). With `companies` (the battalion admin) each vehicle's company can be set here; a vehicle
+ * carrying kesher gear asks first, since the gear moves to the new company with it.
  */
 export function VehiclesList({ rows, companies }: { rows: VehicleRow[]; companies?: { id: string; name: string }[] }) {
   const [list, optimistic] = useOptimistic(rows, (cur, c: { id: string; state: VehicleState }) => cur.map((v) => (v.id === c.id ? { ...v, state: c.state } : v)));
   const [pending, start] = useTransition();
   const [error, setError] = useState<string>();
+  const [confirm, setConfirm] = useState<Move>();
 
   const assign = (id: string, unitId: string | null) => {
     setError(undefined);
     start(async () => {
       const r = await setVehicleCompany({ vehicleId: id, unitId });
       if (r?.error) setError(r.error);
+      setConfirm(undefined);
     });
+  };
+  const pick = (v: VehicleRow, unitId: string | null) => {
+    if (!v.gear) return assign(v.id, unitId);
+    setConfirm({ vehicle: v, unitId, to: unitId ? (companies?.find((c) => c.id === unitId)?.name ?? "הפלוגה") : "הגדוד" });
   };
 
   const set = (id: string, state: VehicleState) => {
@@ -70,7 +85,7 @@ export function VehiclesList({ rows, companies }: { rows: VehicleRow[]; companie
                   aria-label={`השייכות של רכב ${v.number}`}
                   value={v.unitId ?? ""}
                   disabled={pending}
-                  onChange={(e) => assign(v.id, e.target.value || null)}
+                  onChange={(e) => pick(v, e.target.value || null)}
                 >
                   <option value="">גדודי</option>
                   {companies.map((c) => (
@@ -103,6 +118,50 @@ export function VehiclesList({ rows, companies }: { rows: VehicleRow[]; companie
           </div>
         ))}
       </div>
+      {confirm ? <MoveSheet move={confirm} pending={pending} onConfirm={() => assign(confirm.vehicle.id, confirm.unitId)} onClose={() => setConfirm(undefined)} /> : null}
     </div>
+  );
+}
+
+/** "להעביר את הרכב עם ציוד הקשר?" — the gear on it is signed over to the new company (or the warehouse). */
+function MoveSheet({ move, pending, onConfirm, onClose }: { move: Move; pending: boolean; onConfirm(): void; onClose(): void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  const { vehicle, to } = move;
+  const gear = [vehicle.gear?.serials ? `${vehicle.gear.serials} צ׳ קשר` : null, vehicle.gear?.bulk ? `${vehicle.gear.bulk} יח׳ ציוד משלים` : null].filter(Boolean).join(" ו־");
+  const from = vehicle.company ?? "הגדוד";
+
+  return (
+    <>
+      <button type="button" className="tz-scrim" aria-label="סגירה" onClick={onClose} />
+      <div className="tz-sheet flex flex-col" role="dialog" aria-modal="true" aria-label="העברת רכב עם ציוד הקשר">
+        <div className="tz-grabber" />
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center px-2 pb-1">
+          <button type="button" className="tz-btn tz-btn-plain justify-self-start" onClick={onClose}>
+            ביטול
+          </button>
+          <span className="tz-headline">
+            העברת רכב <Serial>{vehicle.number}</Serial>
+          </span>
+          <span />
+        </div>
+        <p className="tz-footnote m-0 pb-3.5 text-center">
+          {from} ← {to}
+        </p>
+        <div className="flex flex-col gap-2.5 px-4">
+          <p className="m-0 text-[15px]">
+            על הרכב {gear}. הציוד יעבור יחד עם הרכב ל{to}: {move.unitId ? `הוא ייחתם על ${to}` : "הוא יחזור למחסן הקשר"}
+            {vehicle.unitId ? ` ויזוכה מ${from}` : ""}, וזה יירשם ביומן של מחלקת הקשר.
+          </p>
+          <button type="button" className="tz-btn tz-btn-filled min-h-11 text-base" disabled={pending} aria-busy={pending || undefined} autoFocus onClick={onConfirm}>
+            {pending ? <Spinner /> : null}
+            העברה עם הציוד
+          </button>
+        </div>
+      </div>
+    </>
   );
 }

@@ -4,23 +4,27 @@ import "server-only";
  * of each ציוד משלים item, the warehouse it leaves, and the date of a backdated move.
  *
  * The warehouse is never stored: it is מלאי כללי (kesher_items.brigade_qty) minus what the companies
- * (kesher_stock rows with a unit) and the vehicles (kesher_vehicle_stock) hold; of it, broken_qty is
- * תקול and can't be signed out.
+ * (kesher_stock rows with a unit) and the battalion vehicles (kesher_vehicle_stock without a unit — a
+ * company's vehicles carry part of the company's own quantity) hold; of it, broken_qty is תקול and
+ * can't be signed out.
  */
 import { z } from "zod";
 import { addDays, israelToday, warehouseStock } from "@gdud/core";
-import { and, eq, inArray, isNotNull, schema, type Tx } from "@gdud/db";
+import { and, eq, inArray, isNotNull, isNull, schema, sum, type Tx } from "@gdud/db";
 import { UserError } from "@/lib/action-result";
 
 const { kesherItems: items, kesherStock: stock, kesherVehicleStock: vehicleStock } = schema;
 
-/** item id → what the companies and the vehicles hold of it. */
+/** item id → what the companies and the battalion vehicles hold of it. */
 export async function signedQty(tx: Tx, itemIds: readonly string[]): Promise<Map<string, number>> {
   const out = new Map<string, number>();
   if (!itemIds.length) return out;
   const [companies, vehicles] = await Promise.all([
     tx.select({ itemId: stock.itemId, qty: stock.qty }).from(stock).where(and(inArray(stock.itemId, [...itemIds]), isNotNull(stock.unitId))),
-    tx.select({ itemId: vehicleStock.itemId, qty: vehicleStock.qty }).from(vehicleStock).where(inArray(vehicleStock.itemId, [...itemIds])),
+    tx
+      .select({ itemId: vehicleStock.itemId, qty: vehicleStock.qty })
+      .from(vehicleStock)
+      .where(and(inArray(vehicleStock.itemId, [...itemIds]), isNull(vehicleStock.unitId))),
   ]);
   for (const r of [...companies, ...vehicles]) out.set(r.itemId, (out.get(r.itemId) ?? 0) + r.qty);
   return out;
@@ -79,6 +83,17 @@ export async function companyQty(tx: Tx, unitId: string, itemIds: readonly strin
     .select({ itemId: stock.itemId, qty: stock.qty })
     .from(stock)
     .where(and(eq(stock.unitId, unitId), inArray(stock.itemId, [...itemIds])));
+  return new Map(rows.map((r) => [r.itemId, r.qty]));
+}
+
+/** item id → how much of a company's quantity is on its vehicles. */
+export async function onCompanyVehicles(tx: Tx, unitId: string, itemIds: readonly string[]): Promise<Map<string, number>> {
+  if (!itemIds.length) return new Map();
+  const rows = await tx
+    .select({ itemId: vehicleStock.itemId, qty: sum(vehicleStock.qty).mapWith(Number) })
+    .from(vehicleStock)
+    .where(and(eq(vehicleStock.unitId, unitId), inArray(vehicleStock.itemId, [...itemIds])))
+    .groupBy(vehicleStock.itemId);
   return new Map(rows.map((r) => [r.itemId, r.qty]));
 }
 

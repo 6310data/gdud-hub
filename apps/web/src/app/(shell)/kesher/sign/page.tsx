@@ -6,21 +6,43 @@ import { withUser } from "@gdud/db";
 import { Icon } from "@gdud/ui";
 import { PageHeader } from "@/components/page-parts";
 import { kesherAccess } from "@/lib/kesher/access";
-import { loadKesher } from "@/lib/kesher/data";
+import { loadKesher, loadVehicles } from "@/lib/kesher/data";
 import { loadPeople, personPlace } from "@/lib/logistics/data";
 import { fmtCount } from "@/lib/logistics/format";
 import { displayName, requireModule } from "@/lib/session";
 import type { KitRecord } from "./_components/parts";
-import { SignForm, type SignData } from "./_components/sign-form";
+import { SignForm, type SignData, type SignPrefill } from "./_components/sign-form";
 
 export const metadata = { title: "החתמה לפלוגה" };
 
-const searchSchema = z.object({ unit: z.uuid().optional().catch(undefined) });
+const searchSchema = z.object({
+  unit: z.uuid().optional().catch(undefined),
+  /** from ציוד על רכבים: the company's vehicle the signed gear goes onto, and the gear chosen there */
+  vehicle: z.uuid().optional().catch(undefined),
+  serials: z
+    .string()
+    .optional()
+    .transform((v) => (v ? v.split(",").filter((id) => z.uuid().safeParse(id).success) : []))
+    .catch([]),
+  items: z
+    .string()
+    .optional()
+    .transform((v) =>
+      Object.fromEntries(
+        (v ? v.split(",") : []).flatMap((pair) => {
+          const [id, qty] = pair.split(":");
+          return z.uuid().safeParse(id).success && /^\d{1,4}$/.test(qty ?? "") ? [[id!, Number(qty)]] : [];
+        }),
+      ),
+    )
+    .catch({}),
+});
 
 /**
  * החתמה (mockup #/sign), battalion kesher admin only: warehouse → a company, signed by a soldier
  * of it. 1 company + soldier · 2 warehouse צ׳ תקינים · 3 the cart with ציוד משלים from the תקן.
- * The מחתים is the signed-in user. Writes through signToCompany (_actions/moves.ts).
+ * The מחתים is the signed-in user. Writes through signToCompany (_actions/moves.ts). With `vehicle`
+ * (from ציוד על רכבים → "ציוד המחלקה") the form comes filled in and the gear goes onto the vehicle.
  */
 export default async function KesherSign({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const s = await requireModule("kesher");
@@ -28,9 +50,9 @@ export default async function KesherSign({ searchParams }: { searchParams: Promi
   if (!access.isAdmin) notFound();
   const f = searchSchema.parse(await searchParams);
 
-  const { data, soldiers } = await withUser(s.claims, async (tx) => {
-    const [data, soldiers] = await Promise.all([loadKesher(tx, s.units), loadPeople(tx, s.units)]);
-    return { data, soldiers };
+  const { data, soldiers, vehicle } = await withUser(s.claims, async (tx) => {
+    const [data, soldiers, vehicles] = await Promise.all([loadKesher(tx, s.units), loadPeople(tx, s.units), f.vehicle ? loadVehicles(tx) : Promise.resolve([])]);
+    return { data, soldiers, vehicle: vehicles.find((v) => v.id === f.vehicle && v.unitId === f.unit) };
   });
 
   const companyIds = new Set(access.companies.map((c) => c.id));
@@ -53,6 +75,8 @@ export default async function KesherSign({ searchParams }: { searchParams: Promi
     minDay: addDays(today, -365),
   };
   const initialUnit = f.unit && companyIds.has(f.unit) ? f.unit : undefined;
+  const prefill: SignPrefill | undefined =
+    vehicle && initialUnit ? { vehicle: { id: vehicle.id, label: [vehicle.number, vehicle.kind].filter(Boolean).join(" · ") }, serialIds: f.serials, items: f.items } : undefined;
 
   return (
     <>
@@ -60,13 +84,13 @@ export default async function KesherSign({ searchParams }: { searchParams: Promi
         title="החתמה לפלוגה"
         sub={`מהמחסן לפלוגה · ${fmtCount(props.serials.length)} צ׳ תקינים במחסן`}
         actions={
-          <Link href={initialUnit ? `/kesher/companies/${initialUnit}` : "/kesher"} className="tz-btn tz-btn-plain tz-btn-sm">
+          <Link href={prefill ? "/kesher/vehicles" : initialUnit ? `/kesher/companies/${initialUnit}` : "/kesher"} className="tz-btn tz-btn-plain tz-btn-sm">
             <Icon name="close" size={16} />
             ביטול
           </Link>
         }
       />
-      <SignForm data={props} initialUnit={initialUnit} />
+      <SignForm data={props} initialUnit={initialUnit} prefill={prefill} />
     </>
   );
 }

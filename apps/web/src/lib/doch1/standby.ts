@@ -17,7 +17,7 @@ import {
   type UnitNode,
   type VehicleState,
 } from "@gdud/core";
-import { asc, eq, inArray, schema, type Tx } from "@gdud/db";
+import { asc, eq, inArray, schema, sql, type Tx } from "@gdud/db";
 import type { Session } from "@/lib/session";
 
 const { people, doch1Locations: locations, doch1Vehicles: vehicles, doch1StandbyTypes: types } = schema;
@@ -82,6 +82,22 @@ export async function loadLocations(tx: Tx, roundId: string): Promise<LocationVM
 export async function loadVehicles(tx: Tx): Promise<VehicleVM[]> {
   const rows = await tx.select().from(vehicles).orderBy(asc(vehicles.number));
   return rows.map((r) => ({ id: r.id, number: r.number, unitId: r.unitId, kind: r.kind, state: r.state as VehicleState, notes: r.notes, active: r.active }));
+}
+
+export interface VehicleGear {
+  /** kesher צ׳ mounted on it */
+  serials: number;
+  /** ציוד משלים units on it */
+  bulk: number;
+}
+
+/**
+ * The kesher gear on each vehicle (app.vehicle_kesher_gear, battalion admin only — empty otherwise):
+ * moving a vehicle between companies takes its gear along, so the screen asks first.
+ */
+export async function loadVehicleGear(tx: Tx): Promise<Map<string, VehicleGear>> {
+  const rows = await tx.execute<{ vehicle_id: string; serials: number; bulk: number }>(sql`select * from app.vehicle_kesher_gear()`);
+  return new Map([...rows].filter((r) => r.serials || r.bulk).map((r) => [r.vehicle_id, { serials: Number(r.serials), bulk: Number(r.bulk) }]));
 }
 
 export async function loadStandbyTypes(tx: Tx, roundId: string): Promise<StandbyTypeVM[]> {
